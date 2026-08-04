@@ -1,0 +1,29 @@
+{
+  "name": "league-helper",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "postinstall": "pnpm --filter @league-helper/shared build",
+    "dev": "pnpm -r --parallel --filter @league-helper/web --filter @league-helper/api --filter @league-helper/worker run dev",
+    "dev:web": "pnpm --filter @league-helper/web dev",
+    "dev:api": "pnpm --filter @league-helper/api dev",
+    "dev:worker": "pnpm --filter @league-helper/worker dev",
+    "build": "pnpm --filter @league-helper/shared build && pnpm --filter @league-helper/api build && pnpm --filter @league-helper/worker build && pnpm --filter @league-helper/web build",
+    "lint": "pnpm -r --filter \"@league-helper/*\" run lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --filter \"@league-helper/*\" run typecheck",
+    "test": "pnpm -r --filter \"@league-helper/*\" run test",
+    "db:generate": "pnpm --filter @league-helper/api prisma:generate",
+    "db:migrate": "pnpm --filter @league-helper/api prisma:migrate",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  }
+}
