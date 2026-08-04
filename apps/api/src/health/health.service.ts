@@ -13,11 +13,12 @@ export class HealthService {
       throw new ServiceUnavailableException({
         status: 'error',
         service: 'api',
+        database: 'down',
         message: 'Database unavailable',
         cause: error instanceof Error ? error.message : 'unknown error',
       });
     }
 
-    return createHealthResponse('api');
+    return createHealthResponse('api', { database: 'up' });
   }
 }

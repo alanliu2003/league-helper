@@ -13,5 +13,6 @@ describe('HealthService', () => {
     expect(prisma.$queryRaw).toHaveBeenCalledOnce();
     expect(HealthResponseSchema.parse(result).status).toBe('ok');
     expect(result.service).toBe('api');
+    expect(result.database).toBe('up');
   });
 });

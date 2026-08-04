@@ -19,8 +19,15 @@
     "test": "pnpm -r --filter \"@league-helper/*\" run test",
     "db:generate": "pnpm --filter @league-helper/api prisma:generate",
     "db:migrate": "pnpm --filter @league-helper/api prisma:migrate",
+    "db:migrate:deploy": "pnpm --filter @league-helper/api prisma:migrate:deploy",
+    "db:seed": "pnpm --filter @league-helper/api db:seed",
+    "db:studio": "pnpm --filter @league-helper/api prisma:studio",
+    "db:test:prepare": "pnpm --filter @league-helper/api db:test:prepare",
+    "test:api:integration": "pnpm --filter @league-helper/api test:integration",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "riot:resolve": "pnpm --filter @league-helper/api riot:resolve",
+    "riot:match-ids": "pnpm --filter @league-helper/api riot:match-ids"
   },
   "devDependencies": {
     "prettier": "^3.5.3",

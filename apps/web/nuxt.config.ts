@@ -1,6 +1,8 @@
 import { PRODUCT_NAME } from '@league-helper/shared';
+import { defineNuxtConfig } from 'nuxt/config';
+import type { NuxtConfig } from 'nuxt/schema';
 
-export default defineNuxtConfig({
+const nuxtConfig: NuxtConfig = defineNuxtConfig({
   compatibilityDate: '2025-01-15',
   devtools: { enabled: true },
   modules: ['@nuxtjs/tailwindcss'],
@@ -21,6 +23,11 @@ export default defineNuxtConfig({
     strict: true,
     typeCheck: false,
   },
+  // Avoid Vite pre-transform race on virtual "#app-manifest" during cold/dev starts.
+  // See https://github.com/nuxt/nuxt/issues/30461
+  experimental: {
+    appManifest: false,
+  },
   app: {
     head: {
       title: PRODUCT_NAME,
@@ -33,3 +40,5 @@ export default defineNuxtConfig({
     },
   },
 });
+
+export default nuxtConfig;

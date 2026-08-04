@@ -7,5 +7,578 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Domain models will be added in later milestones.
-// Keep Prisma wired so migrate/generate work from day one.
+// ---------------------------------------------------------------------------
+// Internal status enums (application states — not Riot routing values)
+// ---------------------------------------------------------------------------
+
+enum MatchIngestionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum TimelineFetchStatus {
+  PENDING
+  FETCHED
+  FAILED
+  SKIPPED
+}
+
+enum StaticDataStatus {
+  PENDING
+  READY
+  FAILED
+  STALE
+}
+
+enum AnalysisReportStatus {
+  PENDING
+  READY
+  FAILED
+  EXPIRED
+}
+
+enum AnalysisReportType {
+  PLAYER_OVERVIEW
+  CHAMPION_FOCUS
+  MATCHUP_FOCUS
+}
+
+enum IngestionJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  DEAD_LETTERED
+  CANCELLED
+}
+
+// ---------------------------------------------------------------------------
+// Players / accounts
+// ---------------------------------------------------------------------------
+
+model Player {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  accounts PlayerAccount[]
+}
+
+/// Provider account attached to an internal Player.
+/// For Riot, externalAccountId is the PUUID (persistent external identity).
+/// Riot ID fields are display/lookup only — never used as the permanent identity.
+model PlayerAccount {
+  id                 String    @id @default(uuid())
+  playerId           String
+  /// Shared-domain ProviderId value (e.g. "RIOT"), stored as string for forward compatibility.
+  provider           String
+  /// Persistent external identity (Riot: PUUID).
+  externalAccountId  String
+  /// Shared-domain PlatformRoute value.
+  platformRoute      String
+  /// Shared-domain RegionalRoute value.
+  regionalRoute      String
+  summonerId         String?
+  accountId          String?
+  currentGameName    String
+  currentTagLine     String
+  normalizedGameName String
+  normalizedTagLine  String
+  profileIconId      Int?
+  summonerLevel      Int?
+  lastResolvedAt     DateTime? @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  player                 Player                    @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  aliases                PlayerAccountAlias[]
+  rankSnapshots          RankSnapshot[]
+  masterySnapshots       ChampionMasterySnapshot[]
+  matchParticipants      MatchParticipant[]
+  playerMetricSnapshots  PlayerMetricSnapshot[]
+  playerAnalysisReports  PlayerAnalysisReport[]
+
+  @@unique([provider, externalAccountId])
+  @@index([playerId])
+  @@index([provider, platformRoute, normalizedGameName, normalizedTagLine])
+}
+
+/// Historical Riot ID aliases for a player account.
+model PlayerAccountAlias {
+  id                 String   @id @default(uuid())
+  playerAccountId    String
+  gameName           String
+  tagLine            String
+  normalizedGameName String
+  normalizedTagLine  String
+  firstSeenAt        DateTime @db.Timestamptz(3)
+  lastSeenAt         DateTime @db.Timestamptz(3)
+  isCurrent          Boolean  @default(false)
+
+  playerAccount PlayerAccount @relation(fields: [playerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([playerAccountId, isCurrent])
+  @@index([normalizedGameName, normalizedTagLine])
+}
+
+model RankSnapshot {
+  id              String   @id @default(uuid())
+  playerAccountId String
+  /// Shared-domain QueueType value.
+  queueType       String
+  /// Shared-domain RankTier value.
+  tier            String
+  /// Shared-domain RankDivision value, or null for Master+.
+  division        String?
+  leaguePoints    Int
+  wins            Int
+  losses          Int
+  veteran         Boolean  @default(false)
+  inactive        Boolean  @default(false)
+  freshBlood      Boolean  @default(false)
+  hotStreak       Boolean  @default(false)
+  capturedAt      DateTime @db.Timestamptz(3)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  playerAccount PlayerAccount @relation(fields: [playerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([playerAccountId, queueType, capturedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Matches
+// ---------------------------------------------------------------------------
+
+model Match {
+  id                   String               @id @default(uuid())
+  provider             String
+  externalMatchId      String
+  platformRoute        String?
+  regionalRoute        String
+  gameId               BigInt?
+  queueId              Int
+  mapId                Int?
+  gameMode             String?
+  gameType             String?
+  gameCreation         DateTime             @db.Timestamptz(3)
+  gameEndTimestamp     DateTime?            @db.Timestamptz(3)
+  gameDurationSeconds  Int
+  gameVersion          String
+  /// Nullable — not every Riot version string normalizes cleanly.
+  normalizedPatch      String?
+  remake               Boolean              @default(false)
+  earlySurrender       Boolean              @default(false)
+  ingestionStatus      MatchIngestionStatus @default(PENDING)
+  normalizationVersion String               @default("1")
+  /// Denormalized raw response retained for reprocessing; may be large.
+  rawPayload           Json?
+  ingestedAt           DateTime?            @db.Timestamptz(3)
+  createdAt            DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime             @updatedAt @db.Timestamptz(3)
+
+  participants MatchParticipant[]
+  teams        MatchTeam[]
+  timeline     MatchTimeline?
+
+  @@unique([provider, externalMatchId])
+  @@index([normalizedPatch, queueId])
+  @@index([gameCreation])
+  @@index([ingestionStatus])
+  @@index([platformRoute, queueId, gameCreation])
+  @@index([regionalRoute, queueId, gameCreation])
+}
+
+model MatchParticipant {
+  id                         String   @id @default(uuid())
+  matchId                    String
+  participantId              Int
+  /// SetNull on account delete so historical matches survive.
+  playerAccountId            String?
+  externalAccountId          String?
+  riotIdGameName             String?
+  riotIdTagLine              String?
+  championId                 Int
+  championName               String?
+  teamId                     Int
+  /// Shared-domain TeamPosition (use NONE/INVALID when unknown — do not guess).
+  teamPosition               String
+  individualPosition         String
+  lane                       String?
+  role                       String?
+  rankTierAtIngestion       String?
+  rankDivisionAtIngestion    String?
+  win                        Boolean
+  kills                      Int
+  deaths                     Int
+  assists                    Int
+  largestKillingSpree        Int?
+  totalMinionsKilled         Int      @default(0)
+  neutralMinionsKilled       Int      @default(0)
+  totalCs                    Int      @default(0)
+  goldEarned                 Int      @default(0)
+  goldSpent                  Int      @default(0)
+  totalDamageDealtToChampions Int     @default(0)
+  physicalDamageDealtToChampions Int  @default(0)
+  magicDamageDealtToChampions Int     @default(0)
+  trueDamageDealtToChampions Int      @default(0)
+  totalDamageTaken           Int      @default(0)
+  visionScore                Int      @default(0)
+  wardsPlaced                Int      @default(0)
+  wardsKilled                Int      @default(0)
+  controlWardsPurchased      Int?
+  timePlayedSeconds          Int      @default(0)
+  itemIds                    Int[]    @default([])
+  perkIds                    Int[]    @default([])
+  statPerkIds                Int[]    @default([])
+  summonerSpell1Id           Int      @default(0)
+  summonerSpell2Id           Int      @default(0)
+  goldAt10                   Int?
+  goldAt15                   Int?
+  csAt10                     Int?
+  csAt15                     Int?
+  xpAt10                     Int?
+  xpAt15                     Int?
+  goldDifferenceAt10         Int?
+  goldDifferenceAt15         Int?
+  csDifferenceAt10           Int?
+  csDifferenceAt15           Int?
+  xpDifferenceAt10           Int?
+  xpDifferenceAt15           Int?
+  deathsBefore10             Int?
+  deathsBetween10And20       Int?
+  deathsBeforeObjectives     Int?
+  firstCompletedItemId       Int?
+  firstCompletedItemAtSeconds Int?
+  killParticipation          Float?
+  skillOrder                 Int[]    @default([])
+  rawPayload                 Json?
+  createdAt                  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
+
+  match         Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  playerAccount PlayerAccount? @relation(fields: [playerAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([matchId, participantId])
+  @@index([matchId, teamId])
+  @@index([playerAccountId, matchId])
+  @@index([externalAccountId])
+  @@index([championId, teamPosition])
+  @@index([championId, individualPosition])
+  @@index([championId, matchId])
+  @@index([rankTierAtIngestion, championId])
+}
+
+model MatchTeam {
+  id             String   @id @default(uuid())
+  matchId        String
+  teamId         Int
+  win            Boolean
+  earlySurrender Boolean  @default(false)
+  bans           Int[]    @default([])
+  /// Variable objective payload from Riot match data.
+  objectives     Json?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, teamId])
+}
+
+model MatchTimeline {
+  id                   String              @id @default(uuid())
+  matchId              String              @unique
+  fetchStatus          TimelineFetchStatus @default(PENDING)
+  rawPayload           Json?
+  timelineSchemaVersion String             @default("1")
+  fetchedAt            DateTime?           @db.Timestamptz(3)
+  failureReason        String?
+  createdAt            DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @db.Timestamptz(3)
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([fetchStatus])
+}
+
+model ChampionMasterySnapshot {
+  id                           String    @id @default(uuid())
+  playerAccountId              String
+  championId                   Int
+  championLevel                Int
+  championPoints               Int
+  lastPlayTime                 DateTime? @db.Timestamptz(3)
+  championPointsSinceLastLevel Int?
+  championPointsUntilNextLevel Int?
+  chestGranted                 Boolean?
+  tokensEarned                 Int?
+  capturedAt                   DateTime  @db.Timestamptz(3)
+  createdAt                    DateTime  @default(now()) @db.Timestamptz(3)
+
+  playerAccount PlayerAccount @relation(fields: [playerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([playerAccountId, capturedAt])
+  @@index([playerAccountId, championId, capturedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Static data (patch-scoped)
+// ---------------------------------------------------------------------------
+
+model Patch {
+  id                   String           @id @default(uuid())
+  version              String           @unique
+  normalizedMajorMinor String
+  dataDragonVersion    String?
+  releaseDate          DateTime?        @db.Timestamptz(3)
+  isActive             Boolean          @default(false)
+  staticDataStatus     StaticDataStatus @default(PENDING)
+  createdAt            DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime         @updatedAt @db.Timestamptz(3)
+
+  champions ChampionStaticData[]
+  items     ItemStaticData[]
+  runes     RuneStaticData[]
+
+  @@index([normalizedMajorMinor])
+  @@index([isActive])
+}
+
+model ChampionStaticData {
+  id          String   @id @default(uuid())
+  patchId     String
+  championId  Int
+  championKey String
+  name        String
+  title       String
+  tags        String[] @default([])
+  baseStats   Json
+  passive     Json
+  spells      Json
+  imageData   Json
+  rawPayload  Json?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  patch Patch @relation(fields: [patchId], references: [id], onDelete: Restrict)
+
+  @@unique([patchId, championId])
+  @@unique([patchId, championKey])
+  @@index([name])
+}
+
+model ItemStaticData {
+  id          String   @id @default(uuid())
+  patchId     String
+  itemId      Int
+  name        String
+  description String
+  plaintext   String?
+  goldData    Json
+  stats       Json
+  tags        String[] @default([])
+  imageData   Json
+  purchasable Boolean  @default(true)
+  rawPayload  Json?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  patch Patch @relation(fields: [patchId], references: [id], onDelete: Restrict)
+
+  @@unique([patchId, itemId])
+}
+
+model RuneStaticData {
+  id               String   @id @default(uuid())
+  patchId          String
+  runeId           Int
+  runeKey          String
+  name             String
+  shortDescription String?
+  longDescription  String?
+  icon             String
+  treeId           Int?
+  treeName         String?
+  slotIndex        Int?
+  rawPayload       Json?
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  patch Patch @relation(fields: [patchId], references: [id], onDelete: Restrict)
+
+  @@unique([patchId, runeId])
+}
+
+// ---------------------------------------------------------------------------
+// Aggregates (future-ready; store counts/sums, not only averages)
+// Nullable dimensions use empty-string / -1 sentinels for unique constraints.
+// ---------------------------------------------------------------------------
+
+model ChampionAggregate {
+  id                          String   @id @default(uuid())
+  patch                       String
+  /// Empty string sentinel = unspecified platform grouping.
+  platformRoute               String   @default("")
+  /// Empty string sentinel = unspecified regional grouping.
+  regionalRoute               String   @default("")
+  queueId                     Int
+  rankTier                    String
+  teamPosition                String
+  championId                  Int
+  sampleSize                  Int
+  wins                        Int
+  totalKills                  Int      @default(0)
+  totalDeaths                 Int      @default(0)
+  totalAssists                Int      @default(0)
+  totalCs                     Int      @default(0)
+  totalGameSeconds            Int      @default(0)
+  totalDamageToChampions      Int      @default(0)
+  totalVisionScore            Int      @default(0)
+  totalGoldDifferenceAt10     Int?
+  goldDifferenceAt10Samples   Int      @default(0)
+  totalGoldDifferenceAt15     Int?
+  goldDifferenceAt15Samples   Int      @default(0)
+  calculatedAt                DateTime @db.Timestamptz(3)
+  sourceNormalizationVersion  String
+
+  @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId])
+  @@index([championId, patch, queueId, rankTier, teamPosition])
+  @@index([patch, queueId, rankTier])
+}
+
+model MatchupAggregate {
+  id                          String   @id @default(uuid())
+  patch                       String
+  platformRoute               String   @default("")
+  regionalRoute               String   @default("")
+  queueId                     Int
+  rankTier                    String
+  teamPosition                String
+  championId                  Int
+  opponentChampionId          Int
+  sampleSize                  Int
+  wins                        Int
+  totalGoldDifferenceAt10     Int?
+  goldDifferenceAt10Samples   Int      @default(0)
+  totalGoldDifferenceAt15     Int?
+  goldDifferenceAt15Samples   Int      @default(0)
+  totalCsDifferenceAt10       Int?
+  csDifferenceAt10Samples     Int      @default(0)
+  totalCsDifferenceAt15       Int?
+  csDifferenceAt15Samples     Int      @default(0)
+  soloKills                   Int?
+  firstDeaths                 Int?
+  totalKillDifference         Int?
+  totalDeathDifference        Int?
+  totalAssistDifference       Int?
+  calculatedAt                DateTime @db.Timestamptz(3)
+  sourceNormalizationVersion  String
+
+  @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId, opponentChampionId])
+  @@index([championId, opponentChampionId, patch, queueId, rankTier])
+  @@index([championId, patch, teamPosition])
+}
+
+// ---------------------------------------------------------------------------
+// Coaching / analysis (future)
+// ---------------------------------------------------------------------------
+
+model PlayerMetricSnapshot {
+  id                        String   @id @default(uuid())
+  playerAccountId           String
+  selectedChampionId        Int?
+  selectedOpponentChampionId Int?
+  patch                     String?
+  queueId                   Int?
+  role                      String?
+  matchesAnalyzed           Int
+  sourceDataVersion         String
+  /// Validated JSON metrics blob (Zod-validated at write time).
+  metrics                   Json
+  calculatedAt              DateTime @db.Timestamptz(3)
+  createdAt                 DateTime @default(now()) @db.Timestamptz(3)
+
+  playerAccount PlayerAccount          @relation(fields: [playerAccountId], references: [id], onDelete: Cascade)
+  reports       PlayerAnalysisReport[]
+
+  @@index([playerAccountId, calculatedAt])
+  @@index([playerAccountId, selectedChampionId, calculatedAt])
+}
+
+model PlayerAnalysisReport {
+  id                     String               @id @default(uuid())
+  playerAccountId        String
+  playerMetricSnapshotId String
+  reportType             AnalysisReportType
+  status                 AnalysisReportStatus @default(PENDING)
+  deterministicSummary   String?
+  aiSummary              String?
+  aiProvider             String?
+  aiModel                String?
+  sourceDataVersion      String
+  generatedAt            DateTime?            @db.Timestamptz(3)
+  expiresAt              DateTime?            @db.Timestamptz(3)
+  failureReason          String?
+  createdAt              DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime             @updatedAt @db.Timestamptz(3)
+
+  playerAccount        PlayerAccount        @relation(fields: [playerAccountId], references: [id], onDelete: Cascade)
+  playerMetricSnapshot PlayerMetricSnapshot @relation(fields: [playerMetricSnapshotId], references: [id], onDelete: Cascade)
+  findings             AnalysisFinding[]
+
+  @@index([playerAccountId, createdAt])
+  @@index([playerMetricSnapshotId])
+  @@index([status])
+}
+
+model AnalysisFinding {
+  id                     String   @id @default(uuid())
+  playerAnalysisReportId String
+  category               String
+  title                  String
+  severity               String
+  confidence             String
+  playerValue            Float?
+  peerValue              Float?
+  percentile             Float?
+  evidence               Json
+  recommendations        Json
+  sortOrder              Int
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+
+  report PlayerAnalysisReport @relation(fields: [playerAnalysisReportId], references: [id], onDelete: Cascade)
+
+  @@index([playerAnalysisReportId, sortOrder])
+}
+
+// ---------------------------------------------------------------------------
+// Ingestion audit / idempotency (complements BullMQ; does not replace it)
+// ---------------------------------------------------------------------------
+
+model IngestionJobRecord {
+  id                 String             @id @default(uuid())
+  jobType            String
+  idempotencyKey     String
+  provider           String
+  externalResourceId String?
+  status             IngestionJobStatus @default(QUEUED)
+  priority           Int                @default(0)
+  attemptCount       Int                @default(0)
+  maxAttempts        Int                @default(5)
+  lastErrorCode      String?
+  lastErrorMessage   String?
+  scheduledAt        DateTime?          @db.Timestamptz(3)
+  startedAt          DateTime?          @db.Timestamptz(3)
+  completedAt        DateTime?          @db.Timestamptz(3)
+  deadLetteredAt     DateTime?          @db.Timestamptz(3)
+  metadata           Json?
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@unique([jobType, idempotencyKey])
+  @@index([status, priority, scheduledAt])
+  @@index([provider, externalResourceId])
+}
