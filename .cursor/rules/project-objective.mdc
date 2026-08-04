@@ -1,0 +1,14 @@
+---
+description: League analytics app objective and out-of-scope constraints
+alwaysApply: true
+---
+
+# Project objective
+
+Build a production-quality League of Legends analytics web app using Riot's documented APIs for officially supported Riot regions.
+
+Eventually provide: Riot ID search, ranked info, match history/details/timelines, champion stats and matchups, patch tracking, player-specific champion analysis, deterministic coaching findings, AI coaching summaries, and a controlled champion analytics AI agent.
+
+## Out of scope
+
+Mainland Chinese server support is explicitly out of scope. Do not add Tencent APIs, WeGame APIs, scraping, reverse-engineered endpoints, or Chinese-server placeholders unless requested later.

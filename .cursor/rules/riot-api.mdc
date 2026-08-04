@@ -1,0 +1,15 @@
+---
+description: Riot API security, routing, caching, and error handling
+alwaysApply: true
+---
+
+# Riot API requirements
+
+- Keep `RIOT_API_KEY` exclusively on the backend. Never expose via Nuxt public config, logs, or commits.
+- Resolve players with Riot ID (`gameName` + `tagLine`); use PUUID as primary player identifier.
+- Separate platform routing from regional routing; centralize routing mappings.
+- Handle `400`, `401`, `403`, `404`, `429`, and `5xx` explicitly; respect `Retry-After` on `429`.
+- Apply timeouts, retries, and exponential backoff only where appropriate.
+- Cache immutable completed match responses.
+- Do not call Riot from browser code or use undocumented League Client endpoints.
+- Do not calculate or display unofficial MMR or ELO.

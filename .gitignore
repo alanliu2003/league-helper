@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Builds / outputs
+dist/
+build/
+.output/
+.nuxt/
+.nitro/
+.vercel/
+.netlify/
+*.tsbuildinfo
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and debug
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test / coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+blob-report/
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local tooling / caches
+.turbo/
+.cache/
+*.local
+.eslintcache
+.stylelintcache
+
+# Docker / local data volumes
+docker-data/
+.tmp/
+temp/
+tmp/
+
+# Generated secrets / local databases
+*.pem
+*.key
+*.sqlite
+*.sqlite3
+dump.rdb

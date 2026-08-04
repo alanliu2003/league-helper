@@ -1,0 +1,15 @@
+---
+description: Nuxt UI accessibility, transparency, and Riot legal notice
+globs: "apps/web/**/*"
+alwaysApply: false
+---
+
+# UI requirements
+
+Create an original interface. Do not copy OP.GG branding or exact visual design.
+
+The UI must be responsive, keyboard accessible, usable on mobile, and clear about loading/stale/refresh state, sample sizes, confidence, and selected patch/rank/region/queue/role.
+
+Display this Riot legal notice in a visible footer (use a temporary product-name constant until the final name is chosen):
+
+`[Product Name] is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc.`

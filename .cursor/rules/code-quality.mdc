@@ -1,0 +1,20 @@
+---
+description: TypeScript and NestJS code-quality standards
+globs: "**/*.{ts,tsx,vue}"
+alwaysApply: false
+---
+
+# Code-quality rules
+
+- Do not use `any` unless unavoidable and documented.
+- Validate external API responses with Zod.
+- Keep controllers thin; put business logic in services.
+- Put Riot-specific logic behind a provider interface.
+- Use dependency injection.
+- Add typed error classes and structured logging.
+- Do not swallow exceptions or expose stack traces to users.
+- Use UTC timestamps in storage.
+- Add database indexes for frequently queried fields.
+- Make ingestion jobs idempotent; do not duplicate completed matches.
+- Avoid large components and large service files.
+- Add comments only where behavior is not self-explanatory.

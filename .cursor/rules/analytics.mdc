@@ -1,0 +1,14 @@
+---
+description: Analytics dimensions, sample sizes, and interpretation rules
+alwaysApply: true
+---
+
+# Analytics requirements
+
+Every aggregate statistic must retain applicable dimensions: patch, platform/region, queue, rank tier, role, champion, opponent champion, sample size, last-updated timestamp.
+
+Never present a statistic without its sample size. Do not claim collected matches represent all League matches.
+
+Distinguish: lane advantage, overall matchup win rate, player-specific matchup performance, and global/peer-group matchup performance.
+
+Treat patch comparisons as associations, not causal proof.

@@ -1,0 +1,18 @@
+---
+description: Required monorepo architecture and tech stack
+alwaysApply: true
+---
+
+# Required architecture
+
+pnpm TypeScript monorepo:
+
+- `apps/web`: Nuxt frontend
+- `apps/api`: NestJS backend API
+- `apps/worker`: BullMQ background workers
+- `packages/shared`: shared types, Zod schemas, constants
+- `packages/config`: shared TypeScript, lint, and build config
+
+Stack: TypeScript strict mode, Nuxt/Vue, NestJS, PostgreSQL, Prisma, Redis, BullMQ, Zod, Tailwind CSS, Vitest or Jest, Playwright, Docker Compose for local PostgreSQL and Redis.
+
+Use current stable, mutually compatible dependency versions. Do not silently introduce alternative frameworks.

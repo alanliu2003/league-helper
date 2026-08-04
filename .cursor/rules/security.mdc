@@ -1,0 +1,14 @@
+---
+description: Security, secrets, CORS, and input validation requirements
+alwaysApply: true
+---
+
+# Security requirements
+
+- Validate all input; normalize and encode Riot IDs safely.
+- Add API request limits for public endpoints; restrict CORS; use secure HTTP headers.
+- Avoid logging personal identifiers unnecessarily.
+- Prevent arbitrary SQL or database access by the AI agent.
+- Store secrets only in environment variables; include `.env.example` without real secrets.
+- Add dependency vulnerability checks.
+- Do not commit generated secrets or local databases.

@@ -1,0 +1,24 @@
+---
+description: Before/after change workflow for League Helper milestones
+alwaysApply: true
+---
+
+# Development behavior
+
+Before making changes:
+
+1. Inspect the existing repository.
+2. Summarize the relevant existing architecture.
+3. Preserve working behavior.
+4. Identify conflicts between the requested task and existing code.
+5. Implement only the current requested milestone.
+
+After making changes:
+
+1. Run formatting, linting, type checking, and relevant tests.
+2. Fix failures caused by the change.
+3. Report every created or modified file.
+4. Report commands needed to run and verify the feature.
+5. Report remaining limitations honestly.
+
+Do not implement future milestones unless they are required for the current milestone.
