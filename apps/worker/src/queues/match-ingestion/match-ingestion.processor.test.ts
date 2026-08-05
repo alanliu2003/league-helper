@@ -68,10 +68,44 @@ type Store = {
   teams: Array<Record<string, unknown>>;
   timelines: Map<string, Record<string, unknown>>;
   accounts: Array<{ id: string; playerId: string; provider: string; externalAccountId: string }>;
+  snapshots: Array<{
+    id: string;
+    playerAccountId: string;
+    tier: string;
+    queueType: string;
+    capturedAt: Date;
+  }>;
 };
 
 function createPrismaMock(store: Store) {
   const matchKey = (provider: string, externalMatchId: string) => `${provider}:${externalMatchId}`;
+
+  const rankSnapshotFindMany = vi.fn(
+    async ({
+      where,
+    }: {
+      where: {
+        playerAccountId: { in: string[] };
+        queueType: string;
+        capturedAt: { lte: Date };
+      };
+    }) => {
+      return store.snapshots
+        .filter(
+          (row) =>
+            where.playerAccountId.in.includes(row.playerAccountId) &&
+            row.queueType === where.queueType &&
+            row.capturedAt.getTime() <= where.capturedAt.lte.getTime(),
+        )
+        .sort((a, b) => {
+          const byCaptured = b.capturedAt.getTime() - a.capturedAt.getTime();
+          if (byCaptured !== 0) {
+            return byCaptured;
+          }
+          return b.id.localeCompare(a.id);
+        });
+    },
+  );
 
   return {
     ingestionJobRecord: {
@@ -182,9 +216,31 @@ function createPrismaMock(store: Store) {
         },
       ),
     },
+    rankSnapshot: {
+      findMany: rankSnapshotFindMany,
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         match: {
+          findUnique: vi.fn(
+            async ({
+              where,
+              select,
+            }: {
+              where: { id: string };
+              select?: { ingestedAt?: boolean };
+            }) => {
+              for (const match of store.matches.values()) {
+                if (match.id === where.id) {
+                  if (select?.ingestedAt) {
+                    return { ingestedAt: match.ingestedAt ?? null };
+                  }
+                  return match;
+                }
+              }
+              return null;
+            },
+          ),
           upsert: vi.fn(
             async ({
               where,
@@ -205,7 +261,11 @@ function createPrismaMock(store: Store) {
                 store.matches.set(key, next);
                 return next;
               }
-              const created = { id: `match-${store.matches.size + 1}`, ...create };
+              const created = {
+                id: `match-${store.matches.size + 1}`,
+                createdAt: create.createdAt ?? new Date('2024-01-01T00:00:00.000Z'),
+                ...create,
+              };
               store.matches.set(key, created);
               return created;
             },
@@ -296,6 +356,9 @@ function createPrismaMock(store: Store) {
             },
           ),
         },
+        rankSnapshot: {
+          findMany: rankSnapshotFindMany,
+        },
       };
       return fn(tx);
     }),
@@ -318,6 +381,7 @@ describe('processMatchIngestionJob', () => {
       participants: [],
       teams: [],
       timelines: new Map(),
+      snapshots: [],
       accounts: [
         {
           id: '11111111-1111-1111-1111-111111111111',

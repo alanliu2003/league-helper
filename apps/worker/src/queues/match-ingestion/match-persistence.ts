@@ -7,9 +7,18 @@ import {
 } from '@prisma/client';
 import { MATCH_INGESTION_JOB_NAME } from '@league-helper/shared';
 import type { NormalizedMatch } from './match-normalizer.js';
+import { loadRankTiersAtIngestion } from './rank-at-ingestion.js';
 import type { ParticipantTimelineMetrics } from './timeline-metrics.service.js';
 
 export type AccountLinkMap = Map<string, string>; // externalAccountId (PUUID) -> playerAccountId
+
+type ExistingParticipantRow = {
+  id: string;
+  participantId: number;
+  playerAccountId: string | null;
+  externalAccountId: string | null;
+  rankTierAtIngestion: string | null;
+};
 
 /** Batch-resolve known PlayerAccounts by provider + PUUID. Unknowns stay unlinked. */
 export async function resolvePlayerAccountLinks(
@@ -49,10 +58,36 @@ function isCompleteOrNewer(
   return existing >= incoming;
 }
 
+function participantKey(participantId: number): string {
+  return String(participantId);
+}
+
+/**
+ * Stable rank-assignment cutoff:
+ * - Existing match: `ingestedAt ?? createdAt` (never retry-time `now`)
+ * - New match: one `persistenceNow` shared with `Match.ingestedAt` on create
+ */
+function resolveRankAssignmentCutoff(input: {
+  existing: { ingestedAt: Date | null; createdAt: Date } | null;
+  persistenceNow: Date;
+}): Date {
+  if (input.existing?.ingestedAt) {
+    return input.existing.ingestedAt;
+  }
+  if (input.existing?.createdAt) {
+    return input.existing.createdAt;
+  }
+  return input.persistenceNow;
+}
+
 /**
  * Persist Match + teams + participants in one transaction.
  * Idempotent upsert: does not duplicate matches; does not overwrite COMPLETED
  * with a less-complete / older normalization.
+ *
+ * Rank tier at ingestion is assigned from local RankSnapshot rows at a stable
+ * cutoff (`Match.ingestedAt ?? Match.createdAt` for existing rows; one
+ * `persistenceNow` for new creates). Retries never clear a non-null tier.
  */
 export async function persistNormalizedMatch(
   prisma: PrismaClient,
@@ -68,7 +103,13 @@ export async function persistNormalizedMatch(
     },
     include: {
       participants: {
-        select: { id: true, participantId: true, playerAccountId: true, externalAccountId: true },
+        select: {
+          id: true,
+          participantId: true,
+          playerAccountId: true,
+          externalAccountId: true,
+          rankTierAtIngestion: true,
+        },
       },
     },
   });
@@ -81,9 +122,35 @@ export async function persistNormalizedMatch(
       existing.ingestionStatus,
     )
   ) {
-    await linkMissingParticipants(prisma, existing.id, existing.participants, accountLinks);
+    const cutoff = resolveRankAssignmentCutoff({
+      existing: { ingestedAt: existing.ingestedAt, createdAt: existing.createdAt },
+      persistenceNow: new Date(),
+    });
+    await linkMissingParticipants({
+      prisma,
+      matchId: existing.id,
+      queueId: existing.queueId,
+      cutoff,
+      participants: existing.participants,
+      accountLinks,
+    });
     return { matchId: existing.id, created: false, skippedComplete: true };
   }
+
+  // One timestamp for this persistence op — create.ingestedAt and rank cutoff share it.
+  const persistenceNow = new Date();
+  const cutoff = resolveRankAssignmentCutoff({
+    existing: existing
+      ? { ingestedAt: existing.ingestedAt, createdAt: existing.createdAt }
+      : null,
+    persistenceNow,
+  });
+  const existingRankByParticipantId = new Map(
+    (existing?.participants ?? []).map((participant) => [
+      participant.participantId,
+      participant.rankTierAtIngestion,
+    ]),
+  );
 
   const result = await prisma.$transaction(async (tx) => {
     const upserted = await tx.match.upsert({
@@ -113,7 +180,7 @@ export async function persistNormalizedMatch(
         ingestionStatus: MatchIngestionStatus.IN_PROGRESS,
         normalizationVersion: match.normalizationVersion,
         rawPayload: match.rawPayload ?? undefined,
-        ingestedAt: new Date(),
+        ingestedAt: persistenceNow,
       },
       update: {
         platformRoute: match.platformRoute,
@@ -133,7 +200,7 @@ export async function persistNormalizedMatch(
         ingestionStatus: MatchIngestionStatus.IN_PROGRESS,
         normalizationVersion: match.normalizationVersion,
         ...(match.rawPayload !== null ? { rawPayload: match.rawPayload } : {}),
-        ingestedAt: new Date(),
+        // Preserve stable first-persistence cutoff; do not stamp retry-time now.
       },
     });
 
@@ -159,10 +226,32 @@ export async function persistNormalizedMatch(
       });
     }
 
+    const links = match.participants.map((participant) => {
+      const playerAccountId = participant.externalAccountId
+        ? (accountLinks.get(participant.externalAccountId) ?? null)
+        : null;
+      return {
+        participantKey: participantKey(participant.participantId),
+        playerAccountId,
+      };
+    });
+
+    const rankTiers = await loadRankTiersAtIngestion({
+      prisma: tx,
+      queueId: match.queueId,
+      cutoff,
+      links,
+    });
+
     for (const participant of match.participants) {
       const playerAccountId = participant.externalAccountId
         ? (accountLinks.get(participant.externalAccountId) ?? null)
         : null;
+      const resolvedTier =
+        rankTiers.get(participantKey(participant.participantId)) ?? null;
+      const existingTier = existingRankByParticipantId.get(participant.participantId) ?? null;
+      // Immutable first trustworthy known tier: never clear non-null; never replace known tier.
+      const shouldSetRankOnUpdate = existingTier == null && resolvedTier != null;
 
       await tx.matchParticipant.upsert({
         where: {
@@ -185,6 +274,7 @@ export async function persistNormalizedMatch(
           individualPosition: participant.individualPosition,
           lane: participant.lane,
           role: participant.role,
+          rankTierAtIngestion: resolvedTier,
           win: participant.win,
           kills: participant.kills,
           deaths: participant.deaths,
@@ -214,6 +304,7 @@ export async function persistNormalizedMatch(
         },
         update: {
           ...(playerAccountId ? { playerAccountId } : {}),
+          ...(shouldSetRankOnUpdate ? { rankTierAtIngestion: resolvedTier } : {}),
           externalAccountId: participant.externalAccountId,
           riotIdGameName: participant.riotIdGameName,
           riotIdTagLine: participant.riotIdTagLine,
@@ -264,31 +355,65 @@ export async function persistNormalizedMatch(
   };
 }
 
-async function linkMissingParticipants(
-  prisma: PrismaClient,
-  matchId: string,
-  participants: Array<{
+async function linkMissingParticipants(input: {
+  prisma: PrismaClient;
+  matchId: string;
+  queueId: number;
+  cutoff: Date;
+  participants: ExistingParticipantRow[];
+  accountLinks: AccountLinkMap;
+}): Promise<void> {
+  const newlyLinked: Array<{
     id: string;
     participantId: number;
-    playerAccountId: string | null;
-    externalAccountId: string | null;
-  }>,
-  accountLinks: AccountLinkMap,
-): Promise<void> {
-  for (const participant of participants) {
+    playerAccountId: string;
+    rankTierAtIngestion: string | null;
+  }> = [];
+
+  for (const participant of input.participants) {
     if (participant.playerAccountId || !participant.externalAccountId) {
       continue;
     }
-    const accountId = accountLinks.get(participant.externalAccountId);
+    const accountId = input.accountLinks.get(participant.externalAccountId);
     if (!accountId) {
       continue;
     }
-    await prisma.matchParticipant.update({
-      where: { id: participant.id },
-      data: { playerAccountId: accountId },
+    newlyLinked.push({
+      id: participant.id,
+      participantId: participant.participantId,
+      playerAccountId: accountId,
+      rankTierAtIngestion: participant.rankTierAtIngestion,
     });
   }
-  void matchId;
+
+  if (newlyLinked.length === 0) {
+    return;
+  }
+
+  const rankTiers = await loadRankTiersAtIngestion({
+    prisma: input.prisma,
+    queueId: input.queueId,
+    cutoff: input.cutoff,
+    links: newlyLinked.map((participant) => ({
+      participantKey: participantKey(participant.participantId),
+      playerAccountId: participant.playerAccountId,
+    })),
+  });
+
+  for (const participant of newlyLinked) {
+    const resolvedTier =
+      rankTiers.get(participantKey(participant.participantId)) ?? null;
+    await input.prisma.matchParticipant.update({
+      where: { id: participant.id },
+      data: {
+        playerAccountId: participant.playerAccountId,
+        ...(participant.rankTierAtIngestion == null && resolvedTier != null
+          ? { rankTierAtIngestion: resolvedTier }
+          : {}),
+      },
+    });
+  }
+  void input.matchId;
 }
 
 export async function persistTimelineAndMetrics(input: {
@@ -354,11 +479,17 @@ export async function persistTimelineAndMetrics(input: {
     }
 
     if (input.markMatchCompleted) {
+      // ingestedAt is the stable first-persistence / rank-assignment cutoff.
+      // Never move an existing value forward on COMPLETED or retry.
+      const existing = await tx.match.findUnique({
+        where: { id: input.matchId },
+        select: { ingestedAt: true },
+      });
       await tx.match.update({
         where: { id: input.matchId },
         data: {
           ingestionStatus: MatchIngestionStatus.COMPLETED,
-          ingestedAt: new Date(),
+          ...(existing?.ingestedAt == null ? { ingestedAt: new Date() } : {}),
         },
       });
     }
@@ -455,7 +586,13 @@ export async function ensurePlayerLinkageForCompletedMatch(input: {
     },
     include: {
       participants: {
-        select: { id: true, playerAccountId: true, externalAccountId: true },
+        select: {
+          id: true,
+          participantId: true,
+          playerAccountId: true,
+          externalAccountId: true,
+          rankTierAtIngestion: true,
+        },
       },
     },
   });
@@ -469,6 +606,20 @@ export async function ensurePlayerLinkageForCompletedMatch(input: {
     .filter((id): id is string => Boolean(id));
   const links = await resolvePlayerAccountLinks(input.prisma, input.provider, externalIds);
 
+  const cutoff = resolveRankAssignmentCutoff({
+    existing: { ingestedAt: match.ingestedAt, createdAt: match.createdAt },
+    persistenceNow: new Date(),
+  });
+
+  await linkMissingParticipants({
+    prisma: input.prisma,
+    matchId: match.id,
+    queueId: match.queueId,
+    cutoff,
+    participants: match.participants,
+    accountLinks: links,
+  });
+
   const linkedAccountIds = new Set<string>();
   for (const participant of match.participants) {
     if (participant.playerAccountId) {
@@ -479,14 +630,9 @@ export async function ensurePlayerLinkageForCompletedMatch(input: {
       continue;
     }
     const accountId = links.get(participant.externalAccountId);
-    if (!accountId) {
-      continue;
+    if (accountId) {
+      linkedAccountIds.add(accountId);
     }
-    await input.prisma.matchParticipant.update({
-      where: { id: participant.id },
-      data: { playerAccountId: accountId },
-    });
-    linkedAccountIds.add(accountId);
   }
 
   linkedAccountIds.add(input.requestedByPlayerAccountId);

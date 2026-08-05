@@ -528,7 +528,7 @@ EOF
 - Create: `apps/worker/src/queues/match-ingestion/rank-at-ingestion.ts` (+ tests)
 - Modify: worker tests using ranked fixture
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```ts
 it('assigns solo tier for linked 420 participant using snapshot at or before cutoff', async () => { /* … */ });
@@ -537,7 +537,7 @@ it('does not use snapshot captured after cutoff', async () => { /* … */ });
 it('does not overwrite existing non-null tier with null on retry', async () => { /* … */ });
 ```
 
-- [ ] **Step 2: Implement batch rank assignment**
+- [x] **Step 2: Implement batch rank assignment**
 
 ```ts
 export async function loadRankTiersAtIngestion(input: {
@@ -557,13 +557,13 @@ Wire into `persistNormalizedMatch` participant create/update: set `rankTierAtIng
 
 Cutoff: for new match use `ingestedAt` about to be written (same transaction timestamp); for existing COMPLETED rematerialization use existing `match.ingestedAt ?? match.createdAt`.
 
-- [ ] **Step 3: Worker tests PASS**
+- [x] **Step 3: Worker tests PASS**
 
 ```bash
 pnpm --filter @league-helper/worker test
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/worker/src/queues/match-ingestion
