@@ -58,11 +58,26 @@ describe('RiotModule DI', () => {
 
   it('health checks do not invoke Riot', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    const health = new HealthService({
-      $queryRaw: vi.fn().mockResolvedValue([{ '?column?': 1 }]),
-    } as never);
+    const health = new HealthService(
+      {
+        $queryRaw: vi.fn().mockResolvedValue([{ '?column?': 1 }]),
+      } as never,
+      {
+        providerMode: 'mock',
+        apiKey: undefined,
+        timeoutMs: 10_000,
+        maxRetries: 2,
+        maxRetryDelayMs: 5_000,
+        baseDomain: 'api.riotgames.com',
+      },
+    );
 
-    await expect(health.getHealth()).resolves.toMatchObject({ status: 'ok', service: 'api' });
+    await expect(health.getHealth()).resolves.toMatchObject({
+      status: 'ok',
+      service: 'api',
+      providerMode: 'mock',
+      providerConfigured: true,
+    });
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });

@@ -17,6 +17,14 @@ export function createDefaultQueue(connection: ConnectionOptions): Queue<PingJob
   return new Queue<PingJobData>(QUEUE_NAME, { connection });
 }
 
+/**
+ * Processes only the default smoke-test queue (`league-helper-default`).
+ *
+ * Intentionally does NOT consume `match-ingestion` / INGEST_MATCH jobs.
+ * Those jobs are produced by the API in Milestone 5 and remain waiting
+ * until Milestone 6 implements a dedicated match-ingestion processor.
+ * Do not add a placeholder processor that discards or auto-completes them.
+ */
 export function createDefaultWorker(connection: ConnectionOptions): Worker<PingJobData> {
   return new Worker<PingJobData>(
     QUEUE_NAME,

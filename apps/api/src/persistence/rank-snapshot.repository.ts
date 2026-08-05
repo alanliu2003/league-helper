@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { QueueTypeSchema, RankDivisionSchema, RankTierSchema } from '@league-helper/shared';
 import type { RankSnapshot } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,7 +21,7 @@ export type InsertRankSnapshotInput = {
 
 @Injectable()
 export class RankSnapshotRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async getLatest(playerAccountId: string, queueType: string): Promise<RankSnapshot | null> {
     return this.prisma.rankSnapshot.findFirst({
@@ -66,6 +66,43 @@ export class RankSnapshotRepository {
         ...next,
         capturedAt: input.capturedAt ?? new Date(),
       },
+    });
+  }
+
+  async getLatestForPlayer(playerAccountId: string): Promise<RankSnapshot[]> {
+    const rows = await this.prisma.$queryRaw<RankSnapshot[]>`
+      SELECT DISTINCT ON ("queueType") *
+      FROM "RankSnapshot"
+      WHERE "playerAccountId" = ${playerAccountId}
+      ORDER BY "queueType", "capturedAt" DESC
+    `;
+    return rows;
+  }
+
+  async listHistory(input: {
+    playerAccountId: string;
+    queueType?: string;
+    limit: number;
+    cursorCapturedAt?: Date;
+    cursorId?: string;
+  }): Promise<RankSnapshot[]> {
+    const queueType = input.queueType ? QueueTypeSchema.parse(input.queueType) : undefined;
+
+    return this.prisma.rankSnapshot.findMany({
+      where: {
+        playerAccountId: input.playerAccountId,
+        ...(queueType ? { queueType } : {}),
+        ...(input.cursorCapturedAt && input.cursorId
+          ? {
+              OR: [
+                { capturedAt: { lt: input.cursorCapturedAt } },
+                { capturedAt: input.cursorCapturedAt, id: { lt: input.cursorId } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ capturedAt: 'desc' }, { id: 'desc' }],
+      take: input.limit,
     });
   }
 

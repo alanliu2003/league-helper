@@ -7,12 +7,22 @@ describe('HealthService', () => {
     const prisma = {
       $queryRaw: vi.fn().mockResolvedValue([{ '?column?': 1 }]),
     };
-    const service = new HealthService(prisma as never);
+    const riotConfig = {
+      providerMode: 'mock' as const,
+      apiKey: undefined,
+      timeoutMs: 10_000,
+      maxRetries: 2,
+      maxRetryDelayMs: 5_000,
+      baseDomain: 'api.riotgames.com',
+    };
+    const service = new HealthService(prisma as never, riotConfig);
     const result = await service.getHealth();
 
     expect(prisma.$queryRaw).toHaveBeenCalledOnce();
     expect(HealthResponseSchema.parse(result).status).toBe('ok');
     expect(result.service).toBe('api');
     expect(result.database).toBe('up');
+    expect(result.providerMode).toBe('mock');
+    expect(result.providerConfigured).toBe(true);
   });
 });

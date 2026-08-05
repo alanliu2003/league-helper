@@ -47,6 +47,7 @@ enum AnalysisReportType {
 }
 
 enum IngestionJobStatus {
+  PENDING
   QUEUED
   RUNNING
   COMPLETED
@@ -564,7 +565,7 @@ model IngestionJobRecord {
   idempotencyKey     String
   provider           String
   externalResourceId String?
-  status             IngestionJobStatus @default(QUEUED)
+  status             IngestionJobStatus @default(PENDING)
   priority           Int                @default(0)
   attemptCount       Int                @default(0)
   maxAttempts        Int                @default(5)

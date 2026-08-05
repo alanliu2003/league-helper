@@ -235,16 +235,109 @@ Set `RIOT_PROVIDER_MODE=real` and a valid `RIOT_API_KEY` in `apps/api/.env` befo
 | 429 / `PROVIDER_RATE_LIMITED`          | App/method rate limit — honor `retryAfterSeconds` (workers should reschedule; the HTTP client does not sleep for long Retry-After windows) |
 | 5xx / timeout / `PROVIDER_UNAVAILABLE` | Temporary Riot or network failure after bounded GET retries                                                                                |
 
-### What this milestone does **not** do
+### What Milestone 4 did **not** do (completed in Milestone 5 where noted)
 
-- No automatic Prisma ingestion of Riot responses
-- No public player-search HTTP controller
-- No frontend player pages
-- No BullMQ match-ingestion jobs
+- ~~No automatic Prisma ingestion of Riot responses~~ → Milestone 5 persists identity, ranks, mastery, and durable ingestion jobs
+- ~~No public player-search HTTP controller~~ → Milestone 5
+- ~~No frontend player pages~~ → Milestone 5 minimal search UI
+- ~~No BullMQ match-ingestion jobs~~ → Milestone 5 produces jobs (processing waits for Milestone 6)
 - Automated tests never call Riot’s live API (HTTP is mocked)
+
+## Player search (Milestone 5)
+
+Milestones 1–4 exposed only API health in the Nuxt UI because no player-facing backend endpoints existed yet. Milestone 5 replaces that homepage with a minimal Riot ID search interface and keeps health in a compact development-status section.
+
+### Why search is `POST /api/players/search`
+
+Search resolves external Riot data, upserts durable player records, and enqueues match-ingestion work. That is not a safe idempotent GET.
+
+### Architecture
+
+```mermaid
+sequenceDiagram
+  participant Browser
+  participant Nuxt
+  participant PlayersController
+  participant PlayerSearchService
+  participant GameDataProvider
+  participant PostgreSQL
+  participant BullMQ
+  participant PlayerPage
+
+  Browser->>Nuxt: Submit Riot ID search
+  Nuxt->>PlayersController: POST /api/players/search
+  PlayersController->>PlayerSearchService: search
+  PlayerSearchService->>GameDataProvider: resolvePlayer
+  PlayerSearchService->>PostgreSQL: upsert Player and aliases
+  PlayerSearchService->>GameDataProvider: ranks mastery matchIds
+  PlayerSearchService->>PostgreSQL: snapshots and PENDING jobs
+  PlayerSearchService->>BullMQ: enqueue INGEST_MATCH
+  PlayerSearchService->>PostgreSQL: mark QUEUED
+  PlayersController-->>Nuxt: profile plus refresh state
+  Nuxt->>PlayerPage: navigate /players/:playerId
+```
+
+### Identity, aliases, and snapshots
+
+- PUUID remains the persistent external account identity (`PlayerAccount.externalAccountId`). Public APIs never return it.
+- Riot ID changes update the current alias and preserve history; they do not create a new internal `Player`.
+- Rank snapshots insert only when meaningful ranked state changes.
+- Mastery snapshots skip identical rows inside `PLAYER_MASTERY_SNAPSHOT_MIN_AGE_SECONDS`.
+
+### Match discovery and queues
+
+1. Discover recent match IDs (default queue 420) without fetching match details or timelines.
+2. Create durable `IngestionJobRecord` rows as `PENDING` before Redis publication.
+3. Publish BullMQ `match-ingestion` / `INGEST_MATCH` jobs with deterministic IDs.
+4. Mark durable status `QUEUED` only after BullMQ accepts the job.
+5. If Redis fails, rows stay `PENDING` for reconciliation.
+
+```bash
+pnpm jobs:status-match-ingestion
+pnpm jobs:reconcile-match-ingestion
+pnpm player:search:mock --game-name "Example" --tag-line "NA1" --platform na1
+```
+
+**Current limitation:** the worker does **not** consume `match-ingestion` jobs. They remain waiting until Milestone 6. Do not add a placeholder processor that discards them.
+
+### Refresh, cache, and coalescing
+
+- `POST /api/players/:playerId/refresh` re-resolves the stored Riot ID, refreshes secondary data, and queues only missing matches.
+- Redis lock + `PLAYER_REFRESH_COOLDOWN_SECONDS` prevent duplicate Riot calls.
+- Profile DTOs are cached in Redis (`PLAYER_PROFILE_CACHE_TTL_SECONDS`) and invalidated after writes.
+- Read endpoints (`GET` profile/ranks/mastery/matches/refresh-status) use the database/cache only — they never call Riot.
+
+### Mock browser testing
+
+```bash
+# Ensure RIOT_PROVIDER_MODE=mock in apps/api/.env
+pnpm docker:up
+pnpm db:migrate:deploy
+pnpm dev
+# Open http://127.0.0.1:3000 — search ExamplePlayer#NA1 on NA
+# Or: pnpm test:e2e  (uses system Microsoft Edge; no Playwright Chromium download)
+```
+
+### Optional real Riot browser testing
+
+```bash
+# Set in apps/api/.env only (never Nuxt):
+# RIOT_PROVIDER_MODE=real
+# RIOT_API_KEY=<your key>
+pnpm dev
+# Search a real Riot ID on a supported platform
+```
+
+### What Milestone 5 still does **not** do
+
+- Complete match-ingestion processing / match detail cards
+- Timeline metrics, champion aggregates, Data Dragon sync
+- Patch analysis, counter analysis, AI coaching, authentication
+- Polished OP.GG-style profile pages
 
 ## Notes
 
 - `RIOT_API_KEY` stays in backend/worker env only. Never use a `NUXT_PUBLIC_` prefix. Never log the value.
 - AI coaching generation is **not** implemented yet.
 - Prisma models are persistence internals — do not expose them directly as public API DTOs.
+- Frontend requires only `NUXT_PUBLIC_API_BASE` (default `http://localhost:3001`).

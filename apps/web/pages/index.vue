@@ -1,75 +1,121 @@
 <template>
-  <main class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-16">
-    <header class="space-y-3">
-      <p class="text-sm uppercase tracking-[0.2em] text-[var(--lh-accent)]">Connectivity check</p>
+  <main class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 px-6 py-14">
+    <header class="space-y-4">
+      <p class="text-sm uppercase tracking-[0.22em] text-[var(--lh-accent)]">Player lookup</p>
       <h1 class="text-4xl font-semibold tracking-tight sm:text-5xl">{{ productName }}</h1>
-      <p class="max-w-xl text-[var(--lh-muted)]">
-        Frontend scaffold is live. This page calls the Nest API
-        <code class="text-[var(--lh-text)]">GET /health</code>
-        endpoint to confirm browser → API connectivity.
+      <p class="max-w-2xl text-[var(--lh-muted)]">
+        Search a Riot ID to resolve the account, store ranked and mastery snapshots, and queue
+        recent matches for ingestion. Match detail cards arrive in a later milestone.
       </p>
     </header>
 
-    <section class="rounded-2xl border border-white/10 bg-[var(--lh-surface)]/80 p-6 backdrop-blur">
-      <div class="mb-4 flex items-center justify-between gap-4">
-        <h2 class="text-lg font-medium">API health</h2>
+    <section
+      class="rounded-2xl border border-white/10 bg-[var(--lh-surface)]/80 p-6 backdrop-blur"
+      aria-labelledby="search-heading"
+    >
+      <h2 id="search-heading" class="mb-5 text-lg font-medium">Search by Riot ID</h2>
+
+      <PlayerSearchForm :pending="searching" :submit-error="searchError" @submit="onSearch" />
+    </section>
+
+    <section v-if="recentPlayers.length > 0" class="space-y-3" aria-labelledby="recent-heading">
+      <div class="flex items-center justify-between gap-3">
+        <h2 id="recent-heading" class="text-sm font-medium text-[var(--lh-muted)]">
+          Recent searches
+        </h2>
         <button
           type="button"
-          class="rounded-lg bg-[var(--lh-accent)] px-3 py-1.5 text-sm font-medium text-[#071018] transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lh-accent)] disabled:opacity-60"
-          :disabled="pending"
-          @click="refresh()"
+          class="text-xs text-[var(--lh-muted)] underline-offset-2 hover:text-[var(--lh-text)] hover:underline"
+          @click="clearRecent()"
         >
-          {{ pending ? 'Checking…' : 'Refresh' }}
+          Clear
         </button>
       </div>
-
-      <p v-if="pending" class="text-sm text-[var(--lh-muted)]">Loading health status…</p>
-
-      <div v-else-if="errorMessage" class="space-y-2">
-        <p class="text-sm font-medium text-[var(--lh-bad)]">Unable to reach API</p>
-        <p class="text-sm text-[var(--lh-muted)]">{{ errorMessage }}</p>
-        <p class="text-xs text-[var(--lh-muted)]">
-          Expected API base:
-          <code>{{ apiBase }}</code>
-        </p>
-      </div>
-
-      <dl v-else-if="health" class="grid gap-3 text-sm sm:grid-cols-3">
-        <div>
-          <dt class="text-[var(--lh-muted)]">Status</dt>
-          <dd class="mt-1 font-medium text-[var(--lh-ok)]">{{ health.status }}</dd>
-        </div>
-        <div>
-          <dt class="text-[var(--lh-muted)]">Service</dt>
-          <dd class="mt-1 font-medium">{{ health.service }}</dd>
-        </div>
-        <div>
-          <dt class="text-[var(--lh-muted)]">Timestamp (UTC)</dt>
-          <dd class="mt-1 font-medium">{{ health.timestamp }}</dd>
-        </div>
-      </dl>
+      <ul class="space-y-2">
+        <li v-for="entry in recentPlayers" :key="entry.playerId">
+          <NuxtLink
+            :to="`/players/${entry.playerId}`"
+            class="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-[var(--lh-surface)]/50 px-4 py-3 text-sm transition hover:border-white/20"
+          >
+            <span>
+              <span class="font-medium">{{ entry.riotIdDisplay }}</span>
+              <span class="ml-2 text-[var(--lh-muted)]">{{ entry.platformLabel }}</span>
+            </span>
+            <span class="text-xs text-[var(--lh-muted)]">
+              {{ formatRecent(entry.lastSearchedAt) }}
+            </span>
+          </NuxtLink>
+        </li>
+      </ul>
     </section>
+
+    <DevelopmentApiHealthStatus />
   </main>
 </template>
 
 <script setup lang="ts">
-import { HealthResponseSchema, type HealthResponse } from '@league-helper/shared';
-import { computed } from 'vue';
+import type { PlayerSearchRequest } from '@league-helper/shared';
+import { PlayerApiError, usePlayerApi } from '../composables/usePlayerApi';
+import { useRecentPlayers } from '../composables/useRecentPlayers';
 
 const config = useRuntimeConfig();
 const productName = config.public.productName;
-const apiBase = config.public.apiBase;
+const router = useRouter();
+const { search } = usePlayerApi();
+const { recentPlayers, addRecent, clearRecent } = useRecentPlayers();
 
-const { data, pending, error, refresh } = await useAsyncData('api-health', async () => {
-  const response = await $fetch(`${apiBase}/health`);
-  return HealthResponseSchema.parse(response);
-});
+const searching = ref(false);
+const searchError = ref<string | null>(null);
 
-const health = computed<HealthResponse | null>(() => data.value ?? null);
-const errorMessage = computed(() => {
-  if (!error.value) {
-    return null;
+function formatRecent(iso: string): string {
+  return new Date(iso).toLocaleString();
+}
+
+function mapSearchError(error: unknown): string {
+  if (error instanceof PlayerApiError) {
+    switch (error.code) {
+      case 'RESOURCE_NOT_FOUND':
+        return 'Player not found for that Riot ID and platform.';
+      case 'PROVIDER_FORBIDDEN':
+      case 'PROVIDER_UNAUTHORIZED':
+        return 'Riot rejected the request. Development API keys expire regularly — refresh the key on the backend.';
+      case 'PROVIDER_RATE_LIMITED':
+        return 'Riot rate limit reached. Wait a moment and try again.';
+      case 'PROVIDER_UNAVAILABLE':
+      case 'PROVIDER_NOT_CONFIGURED':
+        return 'The game data provider is temporarily unavailable.';
+      case 'UNSUPPORTED_PLATFORM_ROUTE':
+      case 'INVALID_RIOT_ID':
+      case 'VALIDATION_ERROR':
+        return error.message;
+      default:
+        return 'Search failed. Please try again.';
+    }
   }
-  return error.value.message || 'Request failed';
-});
+  return 'Search failed. Please try again.';
+}
+
+async function onSearch(payload: PlayerSearchRequest): Promise<void> {
+  if (searching.value) {
+    return;
+  }
+
+  searching.value = true;
+  searchError.value = null;
+
+  try {
+    const result = await search(payload);
+    addRecent({
+      playerId: result.player.id,
+      gameName: result.player.riotId.gameName,
+      tagLine: result.player.riotId.tagLine,
+      platform: result.player.platform,
+    });
+    await router.push(`/players/${result.player.id}`);
+  } catch (error) {
+    searchError.value = mapSearchError(error);
+  } finally {
+    searching.value = false;
+  }
+}
 </script>

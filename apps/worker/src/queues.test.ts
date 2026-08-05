@@ -16,4 +16,9 @@ describe('worker config', () => {
   it('exposes a stable default queue name', () => {
     expect(QUEUE_NAME).toBe('league-helper-default');
   });
+
+  it('does not register the match-ingestion queue as the default worker queue', async () => {
+    const { MATCH_INGESTION_QUEUE_NAME } = await import('@league-helper/shared');
+    expect(QUEUE_NAME).not.toBe(MATCH_INGESTION_QUEUE_NAME);
+  });
 });

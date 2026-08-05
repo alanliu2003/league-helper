@@ -1,0 +1,2 @@
+export const MATCH_INGESTION_QUEUE = Symbol('MATCH_INGESTION_QUEUE');
+export const REDIS_CONNECTION = Symbol('REDIS_CONNECTION');

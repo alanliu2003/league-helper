@@ -12,6 +12,12 @@ export const DomainErrorCodeSchema = z.enum([
   'RESOURCE_NOT_FOUND',
   'PROVIDER_RATE_LIMITED',
   'PROVIDER_UNAVAILABLE',
+  'ACCOUNT_IDENTITY_CONFLICT',
+  'REFRESH_IN_PROGRESS',
+  'REFRESH_COOLDOWN',
+  'QUEUE_UNAVAILABLE',
+  'DATABASE_UNAVAILABLE',
+  'INVALID_CURSOR',
 ]);
 
 export type DomainErrorCode = z.infer<typeof DomainErrorCodeSchema>;
@@ -122,6 +128,54 @@ export class ProviderUnavailableError extends DomainError {
   constructor(message = 'Provider is temporarily unavailable.', details?: unknown) {
     super('PROVIDER_UNAVAILABLE', message, details);
     this.name = 'ProviderUnavailableError';
+  }
+}
+
+export class AccountIdentityConflictError extends DomainError {
+  constructor(
+    message = 'Resolved account identity does not match the stored player account.',
+    details?: unknown,
+  ) {
+    super('ACCOUNT_IDENTITY_CONFLICT', message, details);
+    this.name = 'AccountIdentityConflictError';
+  }
+}
+
+export class RefreshInProgressError extends DomainError {
+  constructor(message = 'A refresh is already in progress for this player.', details?: unknown) {
+    super('REFRESH_IN_PROGRESS', message, details);
+    this.name = 'RefreshInProgressError';
+  }
+}
+
+export class RefreshCooldownError extends DomainError {
+  constructor(message = 'Refresh cooldown is active. Try again later.', details?: unknown) {
+    super('REFRESH_COOLDOWN', message, details);
+    this.name = 'RefreshCooldownError';
+  }
+}
+
+export class QueueUnavailableError extends DomainError {
+  constructor(
+    message = 'The match-ingestion queue is temporarily unavailable.',
+    details?: unknown,
+  ) {
+    super('QUEUE_UNAVAILABLE', message, details);
+    this.name = 'QueueUnavailableError';
+  }
+}
+
+export class DatabaseUnavailableError extends DomainError {
+  constructor(message = 'The database is temporarily unavailable.', details?: unknown) {
+    super('DATABASE_UNAVAILABLE', message, details);
+    this.name = 'DatabaseUnavailableError';
+  }
+}
+
+export class InvalidCursorError extends DomainError {
+  constructor(message = 'Pagination cursor is invalid.', details?: unknown) {
+    super('INVALID_CURSOR', message, details);
+    this.name = 'InvalidCursorError';
   }
 }
 

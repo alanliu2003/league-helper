@@ -1,6 +1,12 @@
 export { PRODUCT_NAME, RIOT_LEGAL_NOTICE } from './constants';
 
-export { HealthResponseSchema, createHealthResponse, type HealthResponse } from './health';
+export {
+  HealthResponseSchema,
+  ProviderModeSchema,
+  createHealthResponse,
+  type HealthResponse,
+  type ProviderMode,
+} from './health';
 
 export { ProviderIdSchema, PROVIDER_IDS, type ProviderId } from './provider-id';
 
@@ -18,6 +24,12 @@ export {
   ResourceNotFoundError,
   ProviderRateLimitedError,
   ProviderUnavailableError,
+  AccountIdentityConflictError,
+  RefreshInProgressError,
+  RefreshCooldownError,
+  QueueUnavailableError,
+  DatabaseUnavailableError,
+  InvalidCursorError,
   serializeDomainError,
   ApiErrorResponseSchema,
   type DomainErrorCode,
@@ -92,3 +104,49 @@ export {
 } from './api';
 
 export type { GameDataProvider } from './provider';
+
+export {
+  MATCH_INGESTION_QUEUE_NAME,
+  MATCH_INGESTION_JOB_NAME,
+  MATCH_INGESTION_NORMALIZATION_VERSION,
+  MatchIngestionJobPayloadSchema,
+  MatchIngestionJobTypeSchema,
+  buildMatchIngestionIdempotencyKey,
+  buildMatchIngestionBullMqJobId,
+  type MatchIngestionQueueName,
+  type MatchIngestionJobName,
+  type MatchIngestionJobPayload,
+  type MatchIngestionJobType,
+} from './job-queues';
+
+export {
+  PlayerRefreshStateSchema,
+  PlayerSafeWarningSchema,
+  PublicPlayerSchema,
+  PublicRankSummarySchema,
+  PublicMasterySummarySchema,
+  PublicMatchSummarySchema,
+  PlayerRefreshStatusSchema,
+  PlayerSearchResponseSchema,
+  PlayerProfileResponseSchema,
+  PlayerSearchRequestSchema,
+  PlayerRefreshRequestSchema,
+  PlayerRanksQuerySchema,
+  PlayerMasteryQuerySchema,
+  PlayerMatchesQuerySchema,
+  CursorPageSchema,
+  type PlayerRefreshState,
+  type PlayerSafeWarning,
+  type PublicPlayer,
+  type PublicRankSummary,
+  type PublicMasterySummary,
+  type PublicMatchSummary,
+  type PlayerRefreshStatus,
+  type PlayerSearchResponse,
+  type PlayerProfileResponse,
+  type PlayerSearchRequest,
+  type PlayerRefreshRequest,
+  type PlayerRanksQuery,
+  type PlayerMasteryQuery,
+  type PlayerMatchesQuery,
+} from './player-api';

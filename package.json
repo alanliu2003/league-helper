@@ -27,7 +27,11 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "riot:resolve": "pnpm --filter @league-helper/api riot:resolve",
-    "riot:match-ids": "pnpm --filter @league-helper/api riot:match-ids"
+    "riot:match-ids": "pnpm --filter @league-helper/api riot:match-ids",
+    "jobs:reconcile-match-ingestion": "pnpm --filter @league-helper/api jobs:reconcile-match-ingestion",
+    "jobs:status-match-ingestion": "pnpm --filter @league-helper/api jobs:status-match-ingestion",
+    "player:search:mock": "pnpm --filter @league-helper/api player:search:mock",
+    "test:e2e": "pnpm --filter @league-helper/web test:e2e"
   },
   "devDependencies": {
     "prettier": "^3.5.3",

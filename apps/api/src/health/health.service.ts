@@ -1,10 +1,15 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { createHealthResponse, type HealthResponse } from '@league-helper/shared';
+import { isRiotProviderConfigured, type RiotConfig } from '../integrations/riot/riot.config';
+import { RIOT_CONFIG } from '../integrations/riot/riot.tokens';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class HealthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RIOT_CONFIG) private readonly riotConfig: RiotConfig,
+  ) {}
 
   async getHealth(): Promise<HealthResponse> {
     try {
@@ -19,6 +24,10 @@ export class HealthService {
       });
     }
 
-    return createHealthResponse('api', { database: 'up' });
+    return createHealthResponse('api', {
+      database: 'up',
+      providerMode: this.riotConfig.providerMode,
+      providerConfigured: isRiotProviderConfigured(this.riotConfig),
+    });
   }
 }

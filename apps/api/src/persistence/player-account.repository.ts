@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   PlatformRouteSchema,
   ProviderIdSchema,
@@ -27,7 +27,7 @@ export type UpsertPlayerAccountInput = {
 
 @Injectable()
 export class PlayerAccountRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   findByProviderExternalId(
     provider: string,
@@ -37,6 +37,25 @@ export class PlayerAccountRepository {
       where: {
         provider_externalAccountId: { provider, externalAccountId },
       },
+    });
+  }
+
+  findById(id: string): Promise<PlayerAccount | null> {
+    return this.prisma.playerAccount.findUnique({ where: { id } });
+  }
+
+  /** Returns the primary (first) account for an internal player id. */
+  findAccountByPlayerId(playerId: string): Promise<PlayerAccount | null> {
+    return this.prisma.playerAccount.findFirst({
+      where: { playerId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  findByPlayerId(playerId: string): Promise<PlayerAccount[]> {
+    return this.prisma.playerAccount.findMany({
+      where: { playerId },
+      orderBy: { createdAt: 'asc' },
     });
   }
 

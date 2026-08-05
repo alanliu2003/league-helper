@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   PlatformRouteSchema,
   ProviderIdSchema,
@@ -72,12 +72,96 @@ export type CreateMatchIdempotentInput = {
 
 @Injectable()
 export class MatchRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   findByProviderExternalId(provider: string, externalMatchId: string): Promise<Match | null> {
     return this.prisma.match.findUnique({
       where: {
         provider_externalMatchId: { provider, externalMatchId },
+      },
+    });
+  }
+
+  async findExistingByExternalIds(provider: string, externalMatchIds: string[]): Promise<Match[]> {
+    if (externalMatchIds.length === 0) {
+      return [];
+    }
+
+    const providerId = ProviderIdSchema.parse(provider);
+    return this.prisma.match.findMany({
+      where: {
+        provider: providerId,
+        externalMatchId: { in: externalMatchIds },
+      },
+    });
+  }
+
+  async listForPlayerAccount(input: {
+    playerAccountId: string;
+    limit: number;
+    cursorGameCreation?: Date;
+    cursorId?: string;
+    queueId?: number;
+    championId?: number;
+    result?: 'win' | 'loss';
+    includeRemakes?: boolean;
+  }): Promise<
+    Array<
+      Match & {
+        participants: Array<{
+          championId: number;
+          win: boolean;
+          kills: number;
+          deaths: number;
+          assists: number;
+        }>;
+      }
+    >
+  > {
+    return this.prisma.match.findMany({
+      where: {
+        participants: {
+          some: {
+            playerAccountId: input.playerAccountId,
+            ...(input.championId !== undefined ? { championId: input.championId } : {}),
+            ...(input.result === 'win' ? { win: true } : {}),
+            ...(input.result === 'loss' ? { win: false } : {}),
+          },
+        },
+        ...(input.queueId !== undefined ? { queueId: input.queueId } : {}),
+        ...(input.includeRemakes ? {} : { remake: false }),
+        ...(input.cursorGameCreation && input.cursorId
+          ? {
+              OR: [
+                { gameCreation: { lt: input.cursorGameCreation } },
+                { gameCreation: input.cursorGameCreation, id: { lt: input.cursorId } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        participants: {
+          where: { playerAccountId: input.playerAccountId },
+          select: {
+            championId: true,
+            win: true,
+            kills: true,
+            deaths: true,
+            assists: true,
+          },
+          take: 1,
+        },
+      },
+      orderBy: [{ gameCreation: 'desc' }, { id: 'desc' }],
+      take: input.limit,
+    });
+  }
+
+  countCompletedForPlayerAccount(playerAccountId: string): Promise<number> {
+    return this.prisma.match.count({
+      where: {
+        ingestionStatus: MatchIngestionStatus.COMPLETED,
+        participants: { some: { playerAccountId } },
       },
     });
   }
