@@ -56,6 +56,13 @@ enum IngestionJobStatus {
   CANCELLED
 }
 
+/// Operational reconcile marker for per-match champion aggregation.
+/// COMPLETED | FAILED only — in-progress work is not durably marked here.
+enum ChampionAggregationProcessingStatus {
+  COMPLETED
+  FAILED
+}
+
 // ---------------------------------------------------------------------------
 // Players / accounts
 // ---------------------------------------------------------------------------
@@ -94,13 +101,13 @@ model PlayerAccount {
   createdAt          DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
 
-  player                 Player                    @relation(fields: [playerId], references: [id], onDelete: Restrict)
-  aliases                PlayerAccountAlias[]
-  rankSnapshots          RankSnapshot[]
-  masterySnapshots       ChampionMasterySnapshot[]
-  matchParticipants      MatchParticipant[]
-  playerMetricSnapshots  PlayerMetricSnapshot[]
-  playerAnalysisReports  PlayerAnalysisReport[]
+  player                Player                    @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  aliases               PlayerAccountAlias[]
+  rankSnapshots         RankSnapshot[]
+  masterySnapshots      ChampionMasterySnapshot[]
+  matchParticipants     MatchParticipant[]
+  playerMetricSnapshots PlayerMetricSnapshot[]
+  playerAnalysisReports PlayerAnalysisReport[]
 
   @@unique([provider, externalAccountId])
   @@index([playerId])
@@ -180,9 +187,10 @@ model Match {
   createdAt            DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime             @updatedAt @db.Timestamptz(3)
 
-  participants MatchParticipant[]
-  teams        MatchTeam[]
-  timeline     MatchTimeline?
+  participants                  MatchParticipant[]
+  teams                         MatchTeam[]
+  timeline                      MatchTimeline?
+  championAggregationProcessing ChampionAggregationProcessing[]
 
   @@unique([provider, externalMatchId])
   @@index([normalizedPatch, queueId])
@@ -193,75 +201,75 @@ model Match {
 }
 
 model MatchParticipant {
-  id                         String   @id @default(uuid())
-  matchId                    String
-  participantId              Int
+  id                             String   @id @default(uuid())
+  matchId                        String
+  participantId                  Int
   /// SetNull on account delete so historical matches survive.
-  playerAccountId            String?
-  externalAccountId          String?
-  riotIdGameName             String?
-  riotIdTagLine              String?
-  championId                 Int
-  championName               String?
-  teamId                     Int
+  playerAccountId                String?
+  externalAccountId              String?
+  riotIdGameName                 String?
+  riotIdTagLine                  String?
+  championId                     Int
+  championName                   String?
+  teamId                         Int
   /// Raw Riot teamPosition (TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY/NONE/INVALID).
   /// Public display uses normalizeParticipantPosition() — do not treat `role` as position.
-  teamPosition               String
+  teamPosition                   String
   /// Raw Riot individualPosition (preserved for reprocessing).
-  individualPosition         String
+  individualPosition             String
   /// Raw Riot lane (TOP/MIDDLE/BOTTOM/JUNGLE/NONE) — fallback only when positions missing.
-  lane                       String?
+  lane                           String?
   /// Raw Riot legacy role (SOLO/DUO/DUO_CARRY/DUO_SUPPORT) — not a public position.
-  role                       String?
-  rankTierAtIngestion       String?
-  rankDivisionAtIngestion    String?
-  win                        Boolean
-  kills                      Int
-  deaths                     Int
-  assists                    Int
-  largestKillingSpree        Int?
-  totalMinionsKilled         Int      @default(0)
-  neutralMinionsKilled       Int      @default(0)
-  totalCs                    Int      @default(0)
-  goldEarned                 Int      @default(0)
-  goldSpent                  Int      @default(0)
-  totalDamageDealtToChampions Int     @default(0)
-  physicalDamageDealtToChampions Int  @default(0)
-  magicDamageDealtToChampions Int     @default(0)
-  trueDamageDealtToChampions Int      @default(0)
-  totalDamageTaken           Int      @default(0)
-  visionScore                Int      @default(0)
-  wardsPlaced                Int      @default(0)
-  wardsKilled                Int      @default(0)
-  controlWardsPurchased      Int?
-  timePlayedSeconds          Int      @default(0)
-  itemIds                    Int[]    @default([])
-  perkIds                    Int[]    @default([])
-  statPerkIds                Int[]    @default([])
-  summonerSpell1Id           Int      @default(0)
-  summonerSpell2Id           Int      @default(0)
-  goldAt10                   Int?
-  goldAt15                   Int?
-  csAt10                     Int?
-  csAt15                     Int?
-  xpAt10                     Int?
-  xpAt15                     Int?
-  goldDifferenceAt10         Int?
-  goldDifferenceAt15         Int?
-  csDifferenceAt10           Int?
-  csDifferenceAt15           Int?
-  xpDifferenceAt10           Int?
-  xpDifferenceAt15           Int?
-  deathsBefore10             Int?
-  deathsBetween10And20       Int?
-  deathsBeforeObjectives     Int?
-  firstCompletedItemId       Int?
-  firstCompletedItemAtSeconds Int?
-  killParticipation          Float?
-  skillOrder                 Int[]    @default([])
-  rawPayload                 Json?
-  createdAt                  DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
+  role                           String?
+  rankTierAtIngestion            String?
+  rankDivisionAtIngestion        String?
+  win                            Boolean
+  kills                          Int
+  deaths                         Int
+  assists                        Int
+  largestKillingSpree            Int?
+  totalMinionsKilled             Int      @default(0)
+  neutralMinionsKilled           Int      @default(0)
+  totalCs                        Int      @default(0)
+  goldEarned                     Int      @default(0)
+  goldSpent                      Int      @default(0)
+  totalDamageDealtToChampions    Int      @default(0)
+  physicalDamageDealtToChampions Int      @default(0)
+  magicDamageDealtToChampions    Int      @default(0)
+  trueDamageDealtToChampions     Int      @default(0)
+  totalDamageTaken               Int      @default(0)
+  visionScore                    Int      @default(0)
+  wardsPlaced                    Int      @default(0)
+  wardsKilled                    Int      @default(0)
+  controlWardsPurchased          Int?
+  timePlayedSeconds              Int      @default(0)
+  itemIds                        Int[]    @default([])
+  perkIds                        Int[]    @default([])
+  statPerkIds                    Int[]    @default([])
+  summonerSpell1Id               Int      @default(0)
+  summonerSpell2Id               Int      @default(0)
+  goldAt10                       Int?
+  goldAt15                       Int?
+  csAt10                         Int?
+  csAt15                         Int?
+  xpAt10                         Int?
+  xpAt15                         Int?
+  goldDifferenceAt10             Int?
+  goldDifferenceAt15             Int?
+  csDifferenceAt10               Int?
+  csDifferenceAt15               Int?
+  xpDifferenceAt10               Int?
+  xpDifferenceAt15               Int?
+  deathsBefore10                 Int?
+  deathsBetween10And20           Int?
+  deathsBeforeObjectives         Int?
+  firstCompletedItemId           Int?
+  firstCompletedItemAtSeconds    Int?
+  killParticipation              Float?
+  skillOrder                     Int[]    @default([])
+  rawPayload                     Json?
+  createdAt                      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                      DateTime @updatedAt @db.Timestamptz(3)
 
   match         Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
   playerAccount PlayerAccount? @relation(fields: [playerAccountId], references: [id], onDelete: SetNull)
@@ -294,15 +302,15 @@ model MatchTeam {
 }
 
 model MatchTimeline {
-  id                   String              @id @default(uuid())
-  matchId              String              @unique
-  fetchStatus          TimelineFetchStatus @default(PENDING)
-  rawPayload           Json?
-  timelineSchemaVersion String             @default("1")
-  fetchedAt            DateTime?           @db.Timestamptz(3)
-  failureReason        String?
-  createdAt            DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime            @updatedAt @db.Timestamptz(3)
+  id                    String              @id @default(uuid())
+  matchId               String              @unique
+  fetchStatus           TimelineFetchStatus @default(PENDING)
+  rawPayload            Json?
+  timelineSchemaVersion String              @default("1")
+  fetchedAt             DateTime?           @db.Timestamptz(3)
+  failureReason         String?
+  createdAt             DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime            @updatedAt @db.Timestamptz(3)
 
   match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
@@ -423,64 +431,91 @@ model RuneStaticData {
 // ---------------------------------------------------------------------------
 
 model ChampionAggregate {
-  id                          String   @id @default(uuid())
-  patch                       String
+  id                         String    @id @default(uuid())
+  patch                      String
   /// Empty string sentinel = unspecified platform grouping.
-  platformRoute               String   @default("")
+  platformRoute              String    @default("")
   /// Empty string sentinel = unspecified regional grouping.
-  regionalRoute               String   @default("")
-  queueId                     Int
-  rankTier                    String
-  teamPosition                String
-  championId                  Int
-  sampleSize                  Int
-  wins                        Int
-  totalKills                  Int      @default(0)
-  totalDeaths                 Int      @default(0)
-  totalAssists                Int      @default(0)
-  totalCs                     Int      @default(0)
-  totalGameSeconds            Int      @default(0)
-  totalDamageToChampions      Int      @default(0)
-  totalVisionScore            Int      @default(0)
-  totalGoldDifferenceAt10     Int?
-  goldDifferenceAt10Samples   Int      @default(0)
-  totalGoldDifferenceAt15     Int?
-  goldDifferenceAt15Samples   Int      @default(0)
-  calculatedAt                DateTime @db.Timestamptz(3)
-  sourceNormalizationVersion  String
+  regionalRoute              String    @default("")
+  queueId                    Int
+  rankTier                   String
+  teamPosition               String
+  championId                 Int
+  sampleSize                 Int
+  wins                       Int
+  totalKills                 Int       @default(0)
+  totalDeaths                Int       @default(0)
+  totalAssists               Int       @default(0)
+  totalCs                    Int       @default(0)
+  totalGameSeconds           Int       @default(0)
+  totalDamageToChampions     Int       @default(0)
+  totalVisionScore           Int       @default(0)
+  totalGoldDifferenceAt10    Int?
+  goldDifferenceAt10Samples  Int       @default(0)
+  totalGoldDifferenceAt15    Int?
+  goldDifferenceAt15Samples  Int       @default(0)
+  totalCsDifferenceAt10      Int?
+  csDifferenceAt10Samples    Int       @default(0)
+  totalCsDifferenceAt15      Int?
+  csDifferenceAt15Samples    Int       @default(0)
+  aggregationVersion         String    @default("1")
+  latestEligibleMatchAt      DateTime? @db.Timestamptz(3)
+  calculatedAt               DateTime  @db.Timestamptz(3)
+  sourceNormalizationVersion String
 
-  @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId])
+  @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId, sourceNormalizationVersion, aggregationVersion])
   @@index([championId, patch, queueId, rankTier, teamPosition])
   @@index([patch, queueId, rankTier])
+  @@index([platformRoute, patch, queueId, aggregationVersion])
+  @@index([aggregationVersion, calculatedAt])
+}
+
+/// Per-match operational marker for champion aggregation reconcile.
+/// Internal only — no PUUID, raw payload, or public DTO fields.
+model ChampionAggregationProcessing {
+  id                         String                              @id @default(uuid())
+  matchId                    String
+  sourceNormalizationVersion String
+  aggregationVersion         String
+  status                     ChampionAggregationProcessingStatus
+  processedAt                DateTime                            @db.Timestamptz(3)
+  lastErrorCode              String?
+  createdAt                  DateTime                            @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime                            @updatedAt @db.Timestamptz(3)
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, sourceNormalizationVersion, aggregationVersion])
+  @@index([status, processedAt])
 }
 
 model MatchupAggregate {
-  id                          String   @id @default(uuid())
-  patch                       String
-  platformRoute               String   @default("")
-  regionalRoute               String   @default("")
-  queueId                     Int
-  rankTier                    String
-  teamPosition                String
-  championId                  Int
-  opponentChampionId          Int
-  sampleSize                  Int
-  wins                        Int
-  totalGoldDifferenceAt10     Int?
-  goldDifferenceAt10Samples   Int      @default(0)
-  totalGoldDifferenceAt15     Int?
-  goldDifferenceAt15Samples   Int      @default(0)
-  totalCsDifferenceAt10       Int?
-  csDifferenceAt10Samples     Int      @default(0)
-  totalCsDifferenceAt15       Int?
-  csDifferenceAt15Samples     Int      @default(0)
-  soloKills                   Int?
-  firstDeaths                 Int?
-  totalKillDifference         Int?
-  totalDeathDifference        Int?
-  totalAssistDifference       Int?
-  calculatedAt                DateTime @db.Timestamptz(3)
-  sourceNormalizationVersion  String
+  id                         String   @id @default(uuid())
+  patch                      String
+  platformRoute              String   @default("")
+  regionalRoute              String   @default("")
+  queueId                    Int
+  rankTier                   String
+  teamPosition               String
+  championId                 Int
+  opponentChampionId         Int
+  sampleSize                 Int
+  wins                       Int
+  totalGoldDifferenceAt10    Int?
+  goldDifferenceAt10Samples  Int      @default(0)
+  totalGoldDifferenceAt15    Int?
+  goldDifferenceAt15Samples  Int      @default(0)
+  totalCsDifferenceAt10      Int?
+  csDifferenceAt10Samples    Int      @default(0)
+  totalCsDifferenceAt15      Int?
+  csDifferenceAt15Samples    Int      @default(0)
+  soloKills                  Int?
+  firstDeaths                Int?
+  totalKillDifference        Int?
+  totalDeathDifference       Int?
+  totalAssistDifference      Int?
+  calculatedAt               DateTime @db.Timestamptz(3)
+  sourceNormalizationVersion String
 
   @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId, opponentChampionId])
   @@index([championId, opponentChampionId, patch, queueId, rankTier])
@@ -492,19 +527,19 @@ model MatchupAggregate {
 // ---------------------------------------------------------------------------
 
 model PlayerMetricSnapshot {
-  id                        String   @id @default(uuid())
-  playerAccountId           String
-  selectedChampionId        Int?
+  id                         String   @id @default(uuid())
+  playerAccountId            String
+  selectedChampionId         Int?
   selectedOpponentChampionId Int?
-  patch                     String?
-  queueId                   Int?
-  role                      String?
-  matchesAnalyzed           Int
-  sourceDataVersion         String
+  patch                      String?
+  queueId                    Int?
+  role                       String?
+  matchesAnalyzed            Int
+  sourceDataVersion          String
   /// Validated JSON metrics blob (Zod-validated at write time).
-  metrics                   Json
-  calculatedAt              DateTime @db.Timestamptz(3)
-  createdAt                 DateTime @default(now()) @db.Timestamptz(3)
+  metrics                    Json
+  calculatedAt               DateTime @db.Timestamptz(3)
+  createdAt                  DateTime @default(now()) @db.Timestamptz(3)
 
   playerAccount PlayerAccount          @relation(fields: [playerAccountId], references: [id], onDelete: Cascade)
   reports       PlayerAnalysisReport[]

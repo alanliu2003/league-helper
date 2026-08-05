@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  ChampionAggregationProcessingStatus,
   IngestionJobStatus,
   MatchIngestionStatus,
   PrismaClient,
@@ -31,6 +32,7 @@ async function resetTestData(): Promise<void> {
       "PlayerMetricSnapshot",
       "MatchupAggregate",
       "ChampionAggregate",
+      "ChampionAggregationProcessing",
       "IngestionJobRecord",
       "ChampionMasterySnapshot",
       "MatchTimeline",
@@ -47,6 +49,46 @@ async function resetTestData(): Promise<void> {
       "Patch"
     RESTART IDENTITY CASCADE;
   `);
+}
+
+function baseChampionAggregateData(
+  overrides: Partial<{
+    patch: string;
+    platformRoute: string;
+    regionalRoute: string;
+    queueId: number;
+    rankTier: string;
+    teamPosition: string;
+    championId: number;
+    sampleSize: number;
+    wins: number;
+    sourceNormalizationVersion: string;
+    aggregationVersion: string;
+    totalCsDifferenceAt10: number | null;
+    csDifferenceAt10Samples: number;
+    totalCsDifferenceAt15: number | null;
+    csDifferenceAt15Samples: number;
+    totalGoldDifferenceAt10: number | null;
+    goldDifferenceAt10Samples: number;
+    totalGoldDifferenceAt15: number | null;
+    goldDifferenceAt15Samples: number;
+    latestEligibleMatchAt: Date | null;
+  }> = {},
+) {
+  return {
+    patch: '14.1',
+    platformRoute: 'na1',
+    regionalRoute: 'americas',
+    queueId: 420,
+    rankTier: 'GOLD',
+    teamPosition: 'MIDDLE',
+    championId: 157,
+    sampleSize: 10,
+    wins: 6,
+    calculatedAt: new Date(),
+    sourceNormalizationVersion: '1',
+    ...overrides,
+  };
 }
 
 describe('persistence integration', () => {
@@ -397,36 +439,15 @@ describe('persistence integration', () => {
 
   it('enforces aggregate dimension uniqueness and champion != opponent', async () => {
     await prisma.championAggregate.create({
-      data: {
-        patch: '14.1',
-        platformRoute: 'na1',
-        regionalRoute: 'americas',
-        queueId: 420,
-        rankTier: 'GOLD',
-        teamPosition: 'MIDDLE',
-        championId: 157,
-        sampleSize: 10,
-        wins: 6,
-        calculatedAt: new Date(),
-        sourceNormalizationVersion: '1',
-      },
+      data: baseChampionAggregateData(),
     });
 
     await expect(
       prisma.championAggregate.create({
-        data: {
-          patch: '14.1',
-          platformRoute: 'na1',
-          regionalRoute: 'americas',
-          queueId: 420,
-          rankTier: 'GOLD',
-          teamPosition: 'MIDDLE',
-          championId: 157,
+        data: baseChampionAggregateData({
           sampleSize: 11,
           wins: 7,
-          calculatedAt: new Date(),
-          sourceNormalizationVersion: '1',
-        },
+        }),
       }),
     ).rejects.toThrow();
 
@@ -448,5 +469,191 @@ describe('persistence integration', () => {
         },
       }),
     ).rejects.toThrow();
+  });
+
+  it('allows champion aggregate version coexistence and rejects same-version duplicates', async () => {
+    const v1 = await prisma.championAggregate.create({
+      data: baseChampionAggregateData({
+        aggregationVersion: '1',
+        sourceNormalizationVersion: '1',
+      }),
+    });
+
+    const v2 = await prisma.championAggregate.create({
+      data: baseChampionAggregateData({
+        aggregationVersion: '2',
+        sourceNormalizationVersion: '1',
+        sampleSize: 12,
+        wins: 8,
+      }),
+    });
+
+    expect(v1.aggregationVersion).toBe('1');
+    expect(v2.aggregationVersion).toBe('2');
+    expect(v1.id).not.toBe(v2.id);
+
+    await expect(
+      prisma.championAggregate.create({
+        data: baseChampionAggregateData({
+          aggregationVersion: '1',
+          sourceNormalizationVersion: '1',
+          sampleSize: 99,
+          wins: 50,
+        }),
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('defaults CSD sample counters to 0 and latestEligibleMatchAt to null', async () => {
+    const row = await prisma.championAggregate.create({
+      data: baseChampionAggregateData(),
+    });
+
+    expect(row.csDifferenceAt10Samples).toBe(0);
+    expect(row.csDifferenceAt15Samples).toBe(0);
+    expect(row.totalCsDifferenceAt10).toBeNull();
+    expect(row.totalCsDifferenceAt15).toBeNull();
+    expect(row.goldDifferenceAt10Samples).toBe(0);
+    expect(row.goldDifferenceAt15Samples).toBe(0);
+    expect(row.totalGoldDifferenceAt10).toBeNull();
+    expect(row.totalGoldDifferenceAt15).toBeNull();
+    expect(row.latestEligibleMatchAt).toBeNull();
+    expect(row.aggregationVersion).toBe('1');
+  });
+
+  it('rejects negative GD/CSD sample counters via CHECK', async () => {
+    await expect(
+      prisma.championAggregate.create({
+        data: baseChampionAggregateData({ csDifferenceAt10Samples: -1 }),
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.championAggregate.create({
+        data: baseChampionAggregateData({ goldDifferenceAt15Samples: -1 }),
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('accepts null totals with zero samples and zero totals with positive samples', async () => {
+    const zeroSamples = await prisma.championAggregate.create({
+      data: baseChampionAggregateData({
+        championId: 1,
+        totalCsDifferenceAt10: null,
+        csDifferenceAt10Samples: 0,
+        totalGoldDifferenceAt10: null,
+        goldDifferenceAt10Samples: 0,
+      }),
+    });
+    expect(zeroSamples.totalCsDifferenceAt10).toBeNull();
+    expect(zeroSamples.csDifferenceAt10Samples).toBe(0);
+
+    const zeroTotalPositiveSamples = await prisma.championAggregate.create({
+      data: baseChampionAggregateData({
+        championId: 2,
+        totalCsDifferenceAt10: 0,
+        csDifferenceAt10Samples: 3,
+        totalCsDifferenceAt15: 0,
+        csDifferenceAt15Samples: 2,
+        totalGoldDifferenceAt10: 0,
+        goldDifferenceAt10Samples: 4,
+        totalGoldDifferenceAt15: 0,
+        goldDifferenceAt15Samples: 1,
+      }),
+    });
+    expect(zeroTotalPositiveSamples.totalCsDifferenceAt10).toBe(0);
+    expect(zeroTotalPositiveSamples.csDifferenceAt10Samples).toBe(3);
+
+    const positiveSamples = await prisma.championAggregate.create({
+      data: baseChampionAggregateData({
+        championId: 3,
+        totalCsDifferenceAt10: 12,
+        csDifferenceAt10Samples: 5,
+        totalGoldDifferenceAt15: -40,
+        goldDifferenceAt15Samples: 5,
+      }),
+    });
+    expect(positiveSamples.totalCsDifferenceAt10).toBe(12);
+    expect(positiveSamples.csDifferenceAt10Samples).toBe(5);
+  });
+
+  it('enforces champion aggregation processing unique key and cascades on match delete', async () => {
+    const { match } = await matches.createMatchIdempotent({
+      provider: 'RIOT',
+      externalMatchId: 'NA1_SEED_MATCH_AGG_PROC',
+      platformRoute: 'na1',
+      regionalRoute: 'americas',
+      queueId: 420,
+      gameCreation: new Date('2026-01-01T00:00:00.000Z'),
+      gameDurationSeconds: 1100,
+      gameVersion: '14.1.1.123',
+      ingestionStatus: MatchIngestionStatus.COMPLETED,
+      teams: [
+        { teamId: 100, win: true },
+        { teamId: 200, win: false },
+      ],
+      participants: [
+        {
+          participantId: 0,
+          championId: 157,
+          teamId: 100,
+          teamPosition: 'MIDDLE',
+          individualPosition: 'MIDDLE',
+          win: true,
+        },
+      ],
+    });
+
+    const marker = await prisma.championAggregationProcessing.create({
+      data: {
+        matchId: match.id,
+        sourceNormalizationVersion: '1',
+        aggregationVersion: '1',
+        status: ChampionAggregationProcessingStatus.COMPLETED,
+        processedAt: new Date(),
+      },
+    });
+
+    expect(marker.status).toBe(ChampionAggregationProcessingStatus.COMPLETED);
+
+    await expect(
+      prisma.championAggregationProcessing.create({
+        data: {
+          matchId: match.id,
+          sourceNormalizationVersion: '1',
+          aggregationVersion: '1',
+          status: ChampionAggregationProcessingStatus.FAILED,
+          processedAt: new Date(),
+          lastErrorCode: 'DUPLICATE',
+        },
+      }),
+    ).rejects.toThrow();
+
+    const failedMarker = await prisma.championAggregationProcessing.create({
+      data: {
+        matchId: match.id,
+        sourceNormalizationVersion: '1',
+        aggregationVersion: '2',
+        status: ChampionAggregationProcessingStatus.FAILED,
+        processedAt: new Date(),
+        lastErrorCode: 'AGG_FAILED',
+      },
+    });
+    expect(failedMarker.status).toBe(ChampionAggregationProcessingStatus.FAILED);
+
+    const matchCountBefore = await prisma.match.count({ where: { id: match.id } });
+    const participantCountBefore = await prisma.matchParticipant.count({
+      where: { matchId: match.id },
+    });
+    expect(matchCountBefore).toBe(1);
+    expect(participantCountBefore).toBe(1);
+
+    await prisma.match.delete({ where: { id: match.id } });
+
+    expect(await prisma.championAggregationProcessing.count({ where: { matchId: match.id } })).toBe(
+      0,
+    );
+    expect(await prisma.match.count({ where: { id: match.id } })).toBe(0);
+    expect(await prisma.matchParticipant.count({ where: { matchId: match.id } })).toBe(0);
   });
 });

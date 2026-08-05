@@ -362,7 +362,7 @@ EOF
 - Create: migration `champion_aggregate_csdiff_and_versioning`
 - Modify: `apps/api/src/persistence/persistence.integration.test.ts`
 
-- [ ] **Step 1: Update schema**
+- [x] **Step 1: Update schema**
 
 ```prisma
 model ChampionAggregate {
@@ -404,7 +404,9 @@ model ChampionAggregationProcessing {
 
 Add `championAggregationProcessing ChampionAggregationProcessing[]` on `Match`.
 
-- [ ] **Step 2: Create migration (no reset)**
+Implemented as Prisma enum `ChampionAggregationProcessingStatus { COMPLETED FAILED }` (repo enum convention).
+
+- [x] **Step 2: Create migration (no reset)**
 
 ```bash
 pnpm --filter @league-helper/api prisma:migrate
@@ -413,9 +415,11 @@ pnpm --filter @league-helper/api prisma:migrate
 
 SQL must: ADD columns with defaults; DROP old unique; CREATE new unique; ADD CHECKs for sample counters ≥ 0; CREATE processing table. Must not DELETE from Match/MatchParticipant.
 
-- [ ] **Step 3: Update uniqueness integration test** for versioned unique + CSD defaults; add CHECK/counter invariant test if practical.
+Migration path: `apps/api/prisma/migrations/20260805160846_champion_aggregate_csdiff_and_versioning/`.
 
-- [ ] **Step 4: Run integration tests**
+- [x] **Step 3: Update uniqueness integration test** for versioned unique + CSD defaults; add CHECK/counter invariant test if practical.
+
+- [x] **Step 4: Run integration tests**
 
 ```bash
 pnpm test:api:integration
@@ -423,7 +427,10 @@ pnpm test:api:integration
 
 Expected: PASS (existing tests + new uniqueness)
 
-- [ ] **Step 5: Commit**
+Note: root `test:api:integration` glob still fails on this Windows runner (baseline). Task 3 verified via focused:
+`pnpm --filter @league-helper/api exec vitest run src/persistence/persistence.integration.test.ts` → 16/16 PASS.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/prisma apps/api/src/persistence/persistence.integration.test.ts
