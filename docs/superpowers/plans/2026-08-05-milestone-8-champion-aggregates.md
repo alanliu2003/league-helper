@@ -612,8 +612,6 @@ removeOnFail: { age: 86400, count: 5000 },
 
 Enqueue from processor **after** successful COMPLETED commit (both happy and already-complete paths that still need agg). Catch enqueue errors → warn `champion_aggregation_enqueue_failed`; do not fail ingest.
 
-Durable previous�** successful COMPLETED commit (both happy and already-complete paths that still need agg). Catch enqueue errors → warn `champion_aggregation_enqueue_failed`; do not fail ingest.
-
 Durable previous∪current via `ChampionAggregationRecalcScope` (union upsert + conditional clear + follow-up enqueue on concurrent scope retention).
 
 - [x] **Step 3: Dual-worker bootstrap**
