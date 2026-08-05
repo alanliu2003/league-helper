@@ -5,6 +5,7 @@ import {
   MOCK_DDRAGON_CHAMPION_JSON,
   MOCK_DDRAGON_VERSION,
   MOCK_DDRAGON_VERSIONS,
+  expectedChampionSplashUrl,
   expectedTryndamereIconUrl,
 } from './test-utils/mock-ddragon-fixtures';
 
@@ -91,6 +92,7 @@ describe('DataDragonChampionService', () => {
       name: 'Tryndamere',
       title: 'the Barbarian King',
       iconUrl: expectedTryndamereIconUrl(),
+      splashUrl: expectedChampionSplashUrl('Tryndamere'),
     });
     expect(await service.getChampionByStringId('Tryndamere')).toEqual(champion);
     expect(await service.getCurrentVersion()).toBe(MOCK_DDRAGON_VERSION);
@@ -262,6 +264,39 @@ describe('DataDragonChampionService', () => {
       expect(headers.get('Authorization')).toBeNull();
       expect(JSON.stringify(call.init ?? {})).not.toContain('test-riot-key-should-never-be-sent');
     }
+  });
+
+  it('builds default-skin splash URLs from the string champion asset key', () => {
+    const service = new DataDragonChampionService(baseConfig, createRedisMock());
+
+    expect(service.buildChampionSplashUrl('Tryndamere')).toBe(
+      expectedChampionSplashUrl('Tryndamere'),
+    );
+    expect(service.buildChampionSplashUrl('Tryndamere')).toContain('_0.jpg');
+    expect(service.buildChampionSplashUrl('DrMundo')).toBe(expectedChampionSplashUrl('DrMundo'));
+    expect(service.buildChampionSplashUrl('DrMundo')).not.toContain('Dr.%20Mundo');
+    expect(service.buildChampionSplashUrl('DrMundo')).not.toContain('Dr. Mundo');
+    expect(service.buildChampionSplashUrl('')).toBeNull();
+    expect(service.buildChampionSplashUrl('   ')).toBeNull();
+  });
+
+  it('attaches splash URLs when resolving champions and returns null for unknown', async () => {
+    const { fetchFn } = createMockFetch([
+      { status: 200, body: MOCK_DDRAGON_VERSIONS },
+      { status: 200, body: MOCK_DDRAGON_CHAMPION_JSON },
+    ]);
+    const service = new DataDragonChampionService(baseConfig, createRedisMock(), { fetchFn });
+
+    const tryndamere = await service.getChampionByNumericId(23);
+    expect(tryndamere?.id).toBe('Tryndamere');
+    expect(tryndamere?.splashUrl).toBe(expectedChampionSplashUrl('Tryndamere'));
+    expect(tryndamere?.splashUrl).toMatch(/\/splash\/Tryndamere_0\.jpg$/);
+
+    const mundo = await service.getChampionByNumericId(36);
+    expect(mundo?.id).toBe('DrMundo');
+    expect(mundo?.splashUrl).toBe(expectedChampionSplashUrl('DrMundo'));
+
+    await expect(service.getChampionByNumericId(999_999)).resolves.toBeNull();
   });
 
   it('returns empty/null on network failure without throwing', async () => {

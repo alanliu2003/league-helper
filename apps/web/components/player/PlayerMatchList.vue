@@ -1,35 +1,13 @@
 <template>
-  <section aria-labelledby="matches-heading" class="space-y-3">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h2 id="matches-heading" class="text-lg font-medium">Recent matches</h2>
-      <button
-        v-if="showManualRefresh"
-        type="button"
-        class="text-sm text-[var(--lh-accent)] underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lh-accent)] disabled:cursor-not-allowed disabled:opacity-60"
-        :disabled="refreshing"
-        @click="$emit('refresh')"
-      >
-        {{ refreshing ? 'Refreshing…' : 'Refresh matches' }}
-      </button>
-    </div>
-
-    <div class="flex flex-wrap gap-2" role="group" aria-label="Match queue filter">
-      <button
-        v-for="option in filterOptions"
-        :key="option.value"
-        type="button"
-        class="rounded-md border px-2.5 py-1 text-xs transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lh-accent)]"
-        :class="
-          queueCategory === option.value
-            ? 'border-[var(--lh-accent)] bg-[var(--lh-accent)]/15 text-[var(--lh-accent)]'
-            : 'border-white/15 text-[var(--lh-muted)] hover:border-white/30'
-        "
-        :aria-pressed="queueCategory === option.value"
-        @click="$emit('update:queueCategory', option.value)"
-      >
-        {{ option.label }}
-      </button>
-    </div>
+  <section aria-labelledby="matches-heading" class="space-y-4">
+    <MatchHistoryToolbar
+      :queue-category="queueCategory"
+      :refreshing="refreshing"
+      :show-refresh="showManualRefresh"
+      :last-updated="lastUpdatedLabel"
+      @refresh="$emit('refresh')"
+      @update:queue-category="$emit('update:queueCategory', $event)"
+    />
 
     <PlayerMatchProcessingState
       v-if="showProcessingBanner"
@@ -37,13 +15,14 @@
       :compact="matches.length > 0"
     />
 
-    <p v-if="matchesError" class="text-sm text-[var(--lh-bad)]" role="alert">
+    <p v-if="matchesError" class="text-sm text-[var(--lh-error)]" role="alert">
       {{ matchesError }}
     </p>
 
     <p
       v-if="matches.length === 0 && !showProcessingBanner && !matchesLoading"
-      class="rounded-lg border border-dashed border-white/15 px-4 py-6 text-sm text-[var(--lh-muted)]"
+      class="rounded-lg border border-dashed px-4 py-6 text-sm text-[var(--lh-muted)]"
+      style="border-color: var(--lh-border)"
     >
       {{ emptyFilterMessage }}
     </p>
@@ -63,6 +42,9 @@ import type {
   PublicMatchSummary,
 } from '@league-helper/shared';
 import { computed } from 'vue';
+import MatchHistoryToolbar from '~/components/player/MatchHistoryToolbar.vue';
+import PlayerMatchCard from '~/components/player/PlayerMatchCard.vue';
+import PlayerMatchProcessingState from '~/components/player/PlayerMatchProcessingState.vue';
 import { hasInFlightMatchJobs } from '../../utils/player-match-polling';
 
 const props = defineProps<{
@@ -72,8 +54,8 @@ const props = defineProps<{
   matchesError?: string | null;
   matchesLoading?: boolean;
   queueCategory?: PlayerMatchQueueCategory;
-  /** Show manual refresh when polling stopped with remaining interest. */
   showManualRefresh?: boolean;
+  lastUpdated?: string | null;
 }>();
 
 defineEmits<{
@@ -98,6 +80,13 @@ const emptyFilterMessage = computed(() => {
   }
   const label = filterOptions.find((o) => o.value === queueCategory.value)?.label ?? 'this filter';
   return `No stored matches for ${label}.`;
+});
+
+const lastUpdatedLabel = computed(() => {
+  if (!props.lastUpdated) {
+    return null;
+  }
+  return new Date(props.lastUpdated).toLocaleString();
 });
 
 const showProcessingBanner = computed(() => {

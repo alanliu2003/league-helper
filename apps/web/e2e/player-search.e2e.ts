@@ -3,54 +3,89 @@ import { expect, test } from '@playwright/test';
 /**
  * Happy path with mock Riot provider (API must use RIOT_PROVIDER_MODE=mock).
  * Does not call Riot live APIs.
- *
- * Full worker ingestion (match cards from completed jobs) is not started by Playwright
- * because spinning up API + worker + Redis job processing is heavier than this suite.
- * Prefer: run `pnpm --filter @league-helper/worker start` alongside `pnpm dev`, then
- * search ExamplePlayer#NA1 and wait for cards. Unit/integration tests cover card mapping
- * and polling stop conditions.
  */
 test.describe('player search happy path', () => {
-  test('searches a mock Riot ID and shows processing match UI', async ({ page }) => {
-    test.setTimeout(60_000);
-
+  async function searchFromHomepage(page: import('@playwright/test').Page): Promise<void> {
     await page.goto('/');
-
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.getByLabel('Game name')).toBeVisible();
-    // Wait for client hydration + API health so the Vue submit handler is attached.
-    await expect(page.getByText('Development status')).toBeVisible();
-    await expect(page.getByText('Provider mode')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('mock')).toBeVisible();
 
-    await page.getByLabel('Game name').fill('ExamplePlayer');
-    await page.getByLabel('Tag line').fill('NA1');
-    await page.getByLabel('Platform').selectOption('na1');
+    const home = page.locator('#main-content .lh-container');
+    await home.getByLabel('Game name').fill('ExamplePlayer');
+    await home.getByLabel('Tag line').fill('NA1');
+    await home.getByLabel('Platform').selectOption('na1');
+
+    const searchButton = home.getByRole('button', { name: 'Search player' });
+    await expect(searchButton).toBeEnabled();
 
     await Promise.all([
       page.waitForResponse(
         (response) =>
-          response.url().includes('/api/players/search') && response.request().method() === 'POST',
+          response.url().includes('/api/players/search') &&
+          response.request().method() === 'POST' &&
+          response.ok(),
         { timeout: 30_000 },
       ),
-      page.getByRole('button', { name: 'Search player' }).click(),
+      searchButton.click(),
     ]);
 
     await expect(page).toHaveURL(/\/players\/[0-9a-f-]{36}/i, { timeout: 30_000 });
+  }
 
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('ExamplePlayer');
-    await expect(page.getByText(/North America/i).first()).toBeVisible();
-    await expect(page.getByText('Refresh status')).toBeVisible();
-    await expect(page.getByText('Match ingestion is in progress.')).toBeVisible();
-    await expect(page.getByText(/queued/i).first()).toBeVisible();
+  test('searches a mock Riot ID and shows redesigned player profile', async ({ page }) => {
+    test.setTimeout(60_000);
 
-    const body = await page.locator('main').innerText();
+    await searchFromHomepage(page);
+
+    await expect(page.getByText('Understand your matches')).toBeHidden();
+    const hero = page.getByRole('region', { name: 'Player profile' });
+    await expect(hero.getByRole('heading', { level: 1 })).toContainText('ExamplePlayer');
+    await expect(hero.getByText('North America')).toBeVisible();
+
+    await expect(page.getByRole('heading', { name: 'Ranked' })).toBeVisible();
+    await expect(page.getByText('Solo/Duo').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Champion mastery' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Match history' })).toBeVisible();
+
+    // Named mastery champions with images (icons or splash).
+    await expect(page.getByText('Yasuo').first()).toBeVisible();
+    const masteryImages = page.locator('main img[alt*="Yasuo"], main img[alt*="Lee"]');
+    await expect(masteryImages.first()).toBeVisible({ timeout: 15_000 });
+
+    const processing = page.getByText(/Match ingestion|Updating recent matches/i);
+    const matchCards = page.getByText(/Victory|Defeat|Remake/i);
+    await expect(processing.or(matchCards.first())).toBeVisible({ timeout: 30_000 });
+
+    const body = await page.locator('#main-content').innerText();
     expect(body.toLowerCase()).not.toContain('puuid');
     expect(body).not.toContain('fake-puuid');
-    expect(body).not.toContain('worker is implemented');
 
-    // Jobs wait for the worker; refresh stays PROCESSING while queued/active/delayed remain.
-    await expect(page.getByRole('button', { name: /Refresh profile/i })).toBeDisabled();
-    await expect(page.getByText(/processing|queued/i).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Refresh matches' }).first()).toBeVisible();
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    const overflow = await page.evaluate(() => {
+      return document.documentElement.scrollWidth > document.documentElement.clientWidth;
+    });
+    expect(overflow).toBe(false);
+  });
+
+  test('queue filter syncs with URL and refresh preserves match cards', async ({ page }) => {
+    test.setTimeout(60_000);
+
+    await searchFromHomepage(page);
+
+    const matchCards = page.getByText(/Victory|Defeat|Remake/i);
+    await expect(matchCards.first()).toBeVisible({ timeout: 30_000 });
+    const cardCountBefore = await matchCards.count();
+
+    await page.getByRole('button', { name: 'Solo/Duo', exact: true }).click();
+    await expect(page).toHaveURL(/queue=ranked_solo/);
+
+    await page.getByRole('button', { name: 'All', exact: true }).click();
+    await expect(page).not.toHaveURL(/queue=/);
+
+    const refreshButton = page.getByRole('button', { name: 'Refresh matches' }).first();
+    await refreshButton.click();
+    await expect(matchCards.first()).toBeVisible({ timeout: 10_000 });
+    expect(await matchCards.count()).toBeGreaterThanOrEqual(Math.min(cardCountBefore, 1));
   });
 });

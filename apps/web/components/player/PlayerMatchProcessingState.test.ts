@@ -25,28 +25,32 @@ function refresh(overrides: Partial<PlayerRefreshStatus> = {}): PlayerRefreshSta
 }
 
 describe('PlayerMatchProcessingState', () => {
-  it('shows in-progress copy and all job counts', () => {
+  it('shows in-progress copy and job counts', () => {
     const wrapper = mount(PlayerMatchProcessingState, {
       props: { refresh: refresh() },
     });
-    expect(wrapper.text()).toContain('Match ingestion is in progress.');
-    expect(wrapper.text()).toContain('3 queued');
-    expect(wrapper.text()).toContain('1 active');
-    expect(wrapper.text()).toContain('1 delayed');
-    expect(wrapper.text()).toContain('0 completed');
-    expect(wrapper.text()).toContain('Delayed jobs are waiting on rate limits');
+    expect(wrapper.text()).toContain('Match ingestion in progress');
+    expect(wrapper.text()).toContain('0/5 completed');
+    expect(wrapper.text()).toContain('5 in flight');
     expect(wrapper.text()).not.toContain('worker is implemented');
+  });
+
+  it('shows compact title when matches already render', () => {
+    const wrapper = mount(PlayerMatchProcessingState, {
+      props: { refresh: refresh({ completedMatchCount: 2 }), compact: true },
+    });
+    expect(wrapper.text()).toContain('Still ingesting matches');
   });
 
   it('shows failure warning only when failures exist', () => {
     const withoutFailures = mount(PlayerMatchProcessingState, {
       props: { refresh: refresh() },
     });
-    expect(withoutFailures.text()).not.toContain('Some match jobs failed');
+    expect(withoutFailures.text()).not.toContain('Some jobs failed');
 
     const withFailures = mount(PlayerMatchProcessingState, {
       props: { refresh: refresh({ failedMatchCount: 2 }) },
     });
-    expect(withFailures.text()).toContain('Some match jobs failed');
+    expect(withFailures.text()).toContain('Some jobs failed');
   });
 });

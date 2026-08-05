@@ -435,6 +435,58 @@ Jobs queued before the worker existed remain in Redis/Postgres. Start the worker
 - Mainland Chinese server support
 - Authentication
 
+## Design system + player UI (Milestone 7)
+
+Milestone 7 replaces the temporary development UI with a League-inspired dark design system while preserving the search → profile → ingestion → match-card flow.
+
+### Design tokens
+
+CSS custom properties live in `apps/web/assets/css/main.css` (`--lh-*`):
+
+| Category | Examples                                                                                 |
+| -------- | ---------------------------------------------------------------------------------------- |
+| Surfaces | `--lh-bg`, `--lh-surface`, `--lh-surface-raised`, `--lh-surface-inset`                   |
+| Text     | `--lh-text`, `--lh-text-secondary`, `--lh-muted`                                         |
+| Accents  | `--lh-accent` (blue), `--lh-accent-gold`, `--lh-victory` / `--lh-defeat` / `--lh-remake` |
+| Layout   | `--lh-max-content`, radii, shadows, transition durations                                 |
+
+Default appearance is dark with Cinzel (display) + Source Sans 3 (body). Focus rings and `prefers-reduced-motion` are supported. Do not scatter arbitrary colors in Vue components — use tokens / utility classes.
+
+### Component structure
+
+```text
+apps/web/components/layout/   AppHeader, AppFooter, GlobalPlayerSearch
+apps/web/components/player/   PlayerHero, RankedOverview, MasteryShowcase,
+                              FeaturedMasteryCard, MatchHistoryToolbar,
+                              MatchCard (+ processing banner / skeletons)
+apps/web/layouts/default.vue  Persistent shell
+```
+
+### Champion imagery
+
+- Square icons and default-skin splash URLs are built **on the API** via `DataDragonChampionService` (`buildChampionIconUrl` / `buildChampionSplashUrl`).
+- Public mastery DTOs expose optional `championIconUrl` and `championSplashUrl`.
+- Splash path uses the Data Dragon **asset key** and default skin suffix `_0` (example: `…/splash/Tryndamere_0.jpg`). Never stored in PostgreSQL.
+- Frontend consumes backend URLs only — it must not reconstruct Data Dragon splash paths.
+- Player hero reuses the top mastery splash; featured mastery cards use their own splash. Dark overlays + neutral fallbacks keep text readable when images fail.
+
+### Implemented pages
+
+| Route                | Purpose                                                        |
+| -------------------- | -------------------------------------------------------------- |
+| `/`                  | Product landing + Riot ID search + recent local searches       |
+| `/players/:playerId` | Profile hero, ranked overview, mastery showcase, match history |
+
+Navigation placeholders (e.g. Champions) are disabled as “Coming later”. Deferred: champion aggregates, matchups, patch impact, AI coaching, auth/social.
+
+### Responsive breakpoints
+
+Layouts target roughly **375px**, **768px**, **1280px**, and **1600px**. Match cards stack on narrow viewports; mastery featured cards use a grid / snap carousel. Avoid horizontal page overflow.
+
+### Playwright e2e note
+
+`apps/web` e2e covers mock search → redesigned profile (hero, ranks, mastery, matches), queue filter URL sync, refresh preserving cards, and no horizontal overflow at 375px. API must use `RIOT_PROVIDER_MODE=mock`. Prefer running `pnpm dev` (API + web + worker) before `pnpm test:e2e`.
+
 ## Notes
 
 - `RIOT_API_KEY` stays in backend/worker env only. Never use a `NUXT_PUBLIC_` prefix. Never log the value.

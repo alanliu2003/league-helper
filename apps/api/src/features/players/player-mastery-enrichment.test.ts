@@ -22,12 +22,33 @@ describe('mapPublicMastery enrichment', () => {
       name: 'Tryndamere',
       title: 'the Barbarian King',
       iconUrl: 'https://ddragon.leagueoflegends.com/cdn/14.15.1/img/champion/Tryndamere.png',
+      splashUrl: 'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/Tryndamere_0.jpg',
     });
 
     expect(mapped.championName).toBe('Tryndamere');
     expect(mapped.championKey).toBe('Tryndamere');
     expect(mapped.championIconUrl).toContain('/img/champion/Tryndamere.png');
+    expect(mapped.championSplashUrl).toBe(
+      'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/Tryndamere_0.jpg',
+    );
+    expect(mapped.championSplashUrl).toContain('_0.jpg');
     expect(mapped.championId).toBe(23);
+  });
+
+  it('uses DrMundo asset key for splash URL (not display name)', () => {
+    const mapped = mapPublicMastery(snapshot, {
+      id: 'DrMundo',
+      key: '36',
+      name: 'Dr. Mundo',
+      title: 'the Madman of Zaun',
+      iconUrl: 'https://ddragon.leagueoflegends.com/cdn/14.15.1/img/champion/DrMundo.png',
+      splashUrl: 'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/DrMundo_0.jpg',
+    });
+
+    expect(mapped.championKey).toBe('DrMundo');
+    expect(mapped.championSplashUrl).toContain('/splash/DrMundo_0.jpg');
+    expect(mapped.championSplashUrl).not.toContain('Dr. Mundo');
+    expect(mapped.championSplashUrl).not.toContain('Dr.%20Mundo');
   });
 
   it('falls back to null champion fields when metadata missing', () => {
@@ -35,6 +56,7 @@ describe('mapPublicMastery enrichment', () => {
     expect(mapped.championName).toBeNull();
     expect(mapped.championKey).toBeNull();
     expect(mapped.championIconUrl).toBeNull();
+    expect(mapped.championSplashUrl).toBeNull();
     expect(mapped.championId).toBe(23);
   });
 });

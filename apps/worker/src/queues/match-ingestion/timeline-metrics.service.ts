@@ -176,7 +176,13 @@ function computeKillParticipation(
   if (teamKills <= 0) {
     return null;
   }
-  return (participant.kills + participant.assists) / teamKills;
+  // Incomplete participant samples (or odd Riot payloads) can exceed 1.0; clamp
+  // to the DB / public DTO range [0, 1].
+  const raw = (participant.kills + participant.assists) / teamKills;
+  if (!Number.isFinite(raw) || raw < 0) {
+    return 0;
+  }
+  return Math.min(raw, 1);
 }
 
 export function calculateTimelineMetrics(input: {

@@ -162,3 +162,10 @@ export const MOCK_DDRAGON_CHAMPION_JSON = {
 export function expectedTryndamereIconUrl(baseUrl = 'https://ddragon.leagueoflegends.com'): string {
   return `${baseUrl}/cdn/${MOCK_DDRAGON_VERSION}/img/champion/Tryndamere.png`;
 }
+
+export function expectedChampionSplashUrl(
+  assetKey: string,
+  baseUrl = 'https://ddragon.leagueoflegends.com',
+): string {
+  return `${baseUrl}/cdn/img/champion/splash/${assetKey}_0.jpg`;
+}

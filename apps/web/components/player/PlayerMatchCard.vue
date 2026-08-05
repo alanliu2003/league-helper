@@ -1,76 +1,84 @@
 <template>
   <article
-    class="rounded-xl border border-white/10 bg-[var(--lh-bg)]/40 px-4 py-3"
+    class="overflow-hidden rounded-xl border"
+    :class="resultBorderClass"
+    style="background: var(--lh-surface)"
     :aria-label="`${resultLabel} as ${championDisplayName}`"
   >
-    <div class="flex flex-wrap items-start gap-3">
-      <img
-        v-if="match.championIconUrl && !championImageFailed"
-        :src="match.championIconUrl"
-        :alt="`${championDisplayName} icon`"
-        width="48"
-        height="48"
-        class="h-12 w-12 shrink-0 rounded-md bg-[var(--lh-surface)] object-cover"
-        loading="lazy"
-        @error="championImageFailed = true"
-      />
-      <div
-        v-else
-        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-[var(--lh-surface)] text-xs font-semibold text-[var(--lh-muted)]"
-        aria-hidden="true"
-      >
-        {{ championInitials }}
-      </div>
-
-      <div class="min-w-0 flex-1 space-y-1">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs font-semibold uppercase tracking-wide" :class="resultClass">
-            {{ resultLabel }}
-          </span>
-          <span class="truncate font-medium">{{ championDisplayName }}</span>
-          <span v-if="roleLabel" :class="roleLabelClass">{{ roleLabel }}</span>
+    <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
+      <div class="flex min-w-0 flex-1 items-start gap-3">
+        <img
+          v-if="match.championIconUrl && !championImageFailed"
+          :src="match.championIconUrl"
+          :alt="`${championDisplayName} icon`"
+          width="48"
+          height="48"
+          class="h-12 w-12 shrink-0 rounded-md object-cover"
+          style="background: var(--lh-surface-inset)"
+          loading="lazy"
+          @error="championImageFailed = true"
+        />
+        <div
+          v-else
+          class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-xs font-semibold text-[var(--lh-muted)]"
+          style="background: var(--lh-surface-inset)"
+          aria-hidden="true"
+        >
+          {{ championInitials }}
         </div>
 
-        <p class="text-sm">
-          <span class="font-semibold tabular-nums">{{ kdaLabel }}</span>
-          <span class="text-[var(--lh-muted)]"> KDA</span>
-          <span class="mx-2 text-[var(--lh-muted)]">·</span>
-          <span class="tabular-nums">{{ csLabel }}</span>
-          <span v-if="kpLabel" class="text-[var(--lh-muted)]">
-            <span class="mx-2">·</span>{{ kpLabel }} KP
-          </span>
-        </p>
-
-        <ul v-if="visibleItems.length > 0" class="flex flex-wrap gap-1" aria-label="Items">
-          <li v-for="(item, index) in visibleItems" :key="`${item.id}-${index}`">
-            <img
-              v-if="item.iconUrl"
-              :src="item.iconUrl"
-              :alt="`Item ${item.id}`"
-              width="24"
-              height="24"
-              class="h-6 w-6 rounded-sm bg-[var(--lh-surface)] object-cover"
-              loading="lazy"
-            />
+        <div class="min-w-0 flex-1 space-y-1.5">
+          <div class="flex flex-wrap items-center gap-2">
             <span
-              v-else
-              class="flex h-6 w-6 items-center justify-center rounded-sm bg-[var(--lh-surface)] text-[10px] text-[var(--lh-muted)]"
-              :title="`Item ${item.id}`"
+              class="rounded px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide"
+              :class="resultBadgeClass"
             >
-              {{ item.id }}
+              {{ resultLabel }}
             </span>
-          </li>
-        </ul>
+            <span class="truncate font-medium">{{ championDisplayName }}</span>
+            <span v-if="roleLabel" :class="roleLabelClass">{{ roleLabel }}</span>
+          </div>
+
+          <p class="text-sm">
+            <span class="font-semibold tabular-nums">{{ kdaLabel }}</span>
+            <span class="text-[var(--lh-muted)]"> KDA</span>
+            <span class="mx-2 text-[var(--lh-muted)]">·</span>
+            <span class="tabular-nums">{{ csLabel }}</span>
+            <span v-if="kpLabel" class="text-[var(--lh-muted)]">
+              <span class="mx-2">·</span>{{ kpLabel }} KP
+            </span>
+          </p>
+
+          <ul v-if="visibleItems.length > 0" class="flex flex-wrap gap-1" aria-label="Items">
+            <li v-for="(item, index) in visibleItems" :key="`${item.id}-${index}`">
+              <img
+                v-if="item.iconUrl"
+                :src="item.iconUrl"
+                :alt="`Item ${item.id}`"
+                width="24"
+                height="24"
+                class="h-6 w-6 rounded-sm object-cover"
+                style="background: var(--lh-surface-inset)"
+                loading="lazy"
+              />
+              <span
+                v-else
+                class="flex h-6 w-6 items-center justify-center rounded-sm text-[10px] text-[var(--lh-muted)]"
+                style="background: var(--lh-surface-inset)"
+                :title="`Item ${item.id}`"
+              >
+                {{ item.id }}
+              </span>
+            </li>
+          </ul>
+        </div>
       </div>
 
-      <div class="ml-auto space-y-1 text-right text-xs text-[var(--lh-muted)]">
+      <div class="shrink-0 space-y-0.5 text-right text-xs text-[var(--lh-muted)] sm:min-w-[7rem]">
         <p>{{ queueLabel }}</p>
         <p>{{ durationLabel }}</p>
         <p>{{ relativeTimeLabel }}</p>
         <p v-if="patchLabel">Patch {{ patchLabel }}</p>
-        <p :class="match.timelineMetricsAvailable ? 'text-[var(--lh-ok)]' : ''">
-          {{ match.timelineMetricsAvailable ? 'Timeline metrics' : 'No timeline metrics' }}
-        </p>
       </div>
     </div>
   </article>
@@ -83,6 +91,10 @@ import {
   type PublicMatchSummary,
 } from '@league-helper/shared';
 import { computed, ref } from 'vue';
+import {
+  championDisplayName as getChampionName,
+  championInitials as getChampionInitials,
+} from '~/utils/champion-display';
 
 const props = defineProps<{
   match: PublicMatchSummary;
@@ -90,22 +102,13 @@ const props = defineProps<{
 
 const championImageFailed = ref(false);
 
-const championDisplayName = computed(() => {
-  return props.match.championName?.trim() || `Champion #${props.match.championId ?? '?'}`;
-});
+const championDisplayName = computed(() =>
+  getChampionName(props.match.championName, props.match.championId ?? 0),
+);
 
-const championInitials = computed(() => {
-  const name = championDisplayName.value;
-  if (name.startsWith('Champion #')) {
-    return '?';
-  }
-  return name
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-});
+const championInitials = computed(() =>
+  getChampionInitials(props.match.championName, props.match.championId ?? 0),
+);
 
 const resultLabel = computed(() => {
   switch (props.match.result) {
@@ -120,16 +123,29 @@ const resultLabel = computed(() => {
   }
 });
 
-const resultClass = computed(() => {
+const resultBorderClass = computed(() => {
   switch (props.match.result) {
     case 'victory':
-      return 'text-[var(--lh-ok)]';
+      return 'border-l-4 border-l-[var(--lh-victory)]';
     case 'defeat':
-      return 'text-[var(--lh-bad)]';
+      return 'border-l-4 border-l-[var(--lh-defeat)]';
     case 'remake':
-      return 'text-[var(--lh-muted)]';
+      return 'border-l-4 border-l-[var(--lh-remake)]';
     default:
-      return 'text-[var(--lh-muted)]';
+      return '';
+  }
+});
+
+const resultBadgeClass = computed(() => {
+  switch (props.match.result) {
+    case 'victory':
+      return 'bg-[var(--lh-victory)]/15 text-[var(--lh-victory)]';
+    case 'defeat':
+      return 'bg-[var(--lh-defeat)]/15 text-[var(--lh-defeat)]';
+    case 'remake':
+      return 'bg-[var(--lh-remake)]/15 text-[var(--lh-remake)]';
+    default:
+      return 'bg-white/10 text-[var(--lh-muted)]';
   }
 });
 

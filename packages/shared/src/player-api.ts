@@ -85,6 +85,11 @@ export const PublicMasterySummarySchema = z.object({
   championKey: z.string().min(1).nullable().optional(),
   /** Absolute Data Dragon CDN icon URL; null when unavailable. */
   championIconUrl: z.string().url().nullable().optional(),
+  /**
+   * Absolute Data Dragon default-skin splash URL; null when unavailable.
+   * Built at DTO mapping time — never stored in PostgreSQL.
+   */
+  championSplashUrl: z.string().url().nullable().optional(),
 });
 
 export type PublicMasterySummary = z.infer<typeof PublicMasterySummarySchema>;

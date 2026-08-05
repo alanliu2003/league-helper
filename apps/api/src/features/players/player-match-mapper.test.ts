@@ -71,6 +71,7 @@ describe('mapPublicMatch', () => {
         name: 'Tryndamere',
         title: 'the Barbarian King',
         iconUrl: 'https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/Tryndamere.png',
+        splashUrl: 'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/Tryndamere_0.jpg',
       },
       dataDragonVersion: '14.11.1',
       dataDragonBaseUrl: 'https://ddragon.leagueoflegends.com',
@@ -210,6 +211,7 @@ describe('mapPublicMatch', () => {
           name: 'Dr. Mundo',
           title: 'the Madman of Zaun',
           iconUrl: 'https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/DrMundo.png',
+          splashUrl: 'https://ddragon.leagueoflegends.com/cdn/img/champion/splash/DrMundo_0.jpg',
         },
       },
     );

@@ -100,6 +100,28 @@ describe('timeline-metrics.service', () => {
     expect(metrics[0]?.killParticipation).toBeNull();
   });
 
+  it('clamps kill participation into the 0..1 range for incomplete team samples', () => {
+    const timeline = normalizeTimeline({
+      raw: mockTimelineDto(),
+      storeRawPayloads: false,
+    });
+    const metrics = calculateTimelineMetrics({
+      frames: timeline.frames,
+      events: timeline.events,
+      participants: [
+        {
+          participantId: 1,
+          teamId: 100,
+          teamPosition: 'MIDDLE',
+          kills: 8,
+          assists: 7,
+        },
+      ],
+    });
+
+    expect(metrics[0]?.killParticipation).toBe(1);
+  });
+
   it('handles missing frame 15 without throwing', () => {
     const timeline = normalizeTimeline({
       raw: buildRichTimelineDto({ omitFrame15: true }),

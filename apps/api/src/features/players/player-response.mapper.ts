@@ -68,6 +68,7 @@ export function mapPublicMastery(
     championName: champion?.name ?? null,
     championKey: champion?.id ?? null,
     championIconUrl: champion?.iconUrl ?? null,
+    championSplashUrl: champion?.splashUrl ?? null,
   });
 }
 

@@ -1,20 +1,19 @@
 <template>
-  <main class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 px-6 py-14">
-    <header class="space-y-4">
-      <p class="text-sm uppercase tracking-[0.22em] text-[var(--lh-accent)]">Player lookup</p>
-      <h1 class="text-4xl font-semibold tracking-tight sm:text-5xl">{{ productName }}</h1>
-      <p class="max-w-2xl text-[var(--lh-muted)]">
-        Search a Riot ID to resolve the account, store ranked and mastery snapshots, and queue
-        recent matches for ingestion. Match detail cards arrive in a later milestone.
+  <div class="lh-container flex flex-col gap-12 py-10 md:py-16">
+    <section class="space-y-6 text-center md:text-left">
+      <p class="text-sm uppercase tracking-[0.22em] text-[var(--lh-accent-gold)]">
+        League analytics
       </p>
-    </header>
+      <h1 class="font-display text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
+        {{ productName }}
+      </h1>
+      <p class="mx-auto max-w-2xl text-lg text-[var(--lh-text-secondary)] md:mx-0">
+        Understand your matches, champion pool, and improvement opportunities.
+      </p>
+    </section>
 
-    <section
-      class="rounded-2xl border border-white/10 bg-[var(--lh-surface)]/80 p-6 backdrop-blur"
-      aria-labelledby="search-heading"
-    >
-      <h2 id="search-heading" class="mb-5 text-lg font-medium">Search by Riot ID</h2>
-
+    <section class="lh-surface-raised p-6 md:p-8" aria-labelledby="search-heading">
+      <h2 id="search-heading" class="mb-5 font-display text-xl">Search by Riot ID</h2>
       <PlayerSearchForm :pending="searching" :submit-error="searchError" @submit="onSearch" />
     </section>
 
@@ -32,10 +31,11 @@
         </button>
       </div>
       <ul class="space-y-2">
-        <li v-for="entry in recentPlayers" :key="entry.playerId">
+        <li v-for="entry in recentPlayers.slice(0, 5)" :key="entry.playerId">
           <NuxtLink
             :to="`/players/${entry.playerId}`"
-            class="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-[var(--lh-surface)]/50 px-4 py-3 text-sm transition hover:border-white/20"
+            class="flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm transition hover:border-[var(--lh-border-strong)]"
+            style="border-color: var(--lh-border); background: var(--lh-surface)"
           >
             <span>
               <span class="font-medium">{{ entry.riotIdDisplay }}</span>
@@ -49,8 +49,25 @@
       </ul>
     </section>
 
-    <DevelopmentApiHealthStatus />
-  </main>
+    <section aria-labelledby="capabilities-heading" class="space-y-4">
+      <h2 id="capabilities-heading" class="font-display text-xl">Current capabilities</h2>
+      <ul class="grid gap-3 sm:grid-cols-2">
+        <li
+          v-for="item in capabilities"
+          :key="item"
+          class="flex items-center gap-2 rounded-lg border px-4 py-3 text-sm"
+          style="border-color: var(--lh-border); background: var(--lh-surface)"
+        >
+          <span class="text-[var(--lh-victory)]" aria-hidden="true">✓</span>
+          {{ item }}
+        </li>
+      </ul>
+    </section>
+
+    <aside v-if="isDev" class="opacity-80">
+      <DevelopmentApiHealthStatus />
+    </aside>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -64,8 +81,17 @@ const router = useRouter();
 const { search } = usePlayerApi();
 const { recentPlayers, addRecent, clearRecent } = useRecentPlayers();
 
+const isDev = import.meta.dev;
 const searching = ref(false);
 const searchError = ref<string | null>(null);
+
+const capabilities = [
+  'Player profile',
+  'Rank history',
+  'Champion mastery',
+  'Recent-match ingestion',
+  'Mixed-queue match history',
+];
 
 function formatRecent(iso: string): string {
   return new Date(iso).toLocaleString();

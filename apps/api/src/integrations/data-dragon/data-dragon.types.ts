@@ -2,13 +2,15 @@ import { z } from 'zod';
 
 /** Frontend-safe champion metadata resolved from Data Dragon. */
 export type DataDragonChampion = {
-  /** String champion id, e.g. "Tryndamere". */
+  /** String champion id / asset key, e.g. "Tryndamere" or "DrMundo". */
   id: string;
   /** Numeric champion key as string, e.g. "23". */
   key: string;
   name: string;
   title: string;
   iconUrl: string;
+  /** Default-skin splash CDN URL; null when asset key unavailable. */
+  splashUrl: string | null;
 };
 
 const DataDragonChampionEntrySchema = z.object({
@@ -38,6 +40,7 @@ export const DataDragonRedisCacheSchema = z.object({
       name: z.string().min(1),
       title: z.string().min(1),
       iconUrl: z.string().url(),
+      splashUrl: z.string().url().nullable().optional(),
     }),
   ),
   fetchedAtMs: z.number().int().nonnegative(),

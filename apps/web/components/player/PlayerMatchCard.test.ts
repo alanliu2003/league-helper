@@ -63,7 +63,6 @@ describe('PlayerMatchCard', () => {
     expect(wrapper.text()).toContain('55% KP');
     expect(wrapper.text()).toContain('Ranked Solo/Duo');
     expect(wrapper.text()).toContain('Patch 14.11');
-    expect(wrapper.text()).toContain('Timeline metrics');
     expect(wrapper.findAll('img').length).toBeGreaterThanOrEqual(3);
     expect(wrapper.html().toLowerCase()).not.toContain('puuid');
   });
@@ -123,6 +122,5 @@ describe('PlayerMatchCard', () => {
     });
     expect(wrapper.text()).toContain('Remake');
     expect(wrapper.text()).not.toContain('Victory');
-    expect(wrapper.text()).toContain('No timeline metrics');
   });
 });

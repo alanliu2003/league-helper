@@ -1,20 +1,15 @@
 <template>
-  <div class="rounded-lg border px-4 py-3 text-sm" :class="bannerClass" role="status">
+  <div class="rounded-lg border px-3 py-2 text-sm" :class="bannerClass" role="status">
     <p class="font-medium" :class="titleClass">{{ title }}</p>
-    <p class="mt-1 text-[var(--lh-muted)]">{{ description }}</p>
+    <p v-if="!compact" class="mt-0.5 text-xs text-[var(--lh-muted)]">{{ description }}</p>
 
-    <p v-if="refresh" class="mt-2 text-xs text-[var(--lh-muted)]">
-      {{ refresh.queuedMatchCount }} queued · {{ refresh.activeMatchCount }} active ·
-      {{ refresh.delayedMatchCount }} delayed · {{ refresh.completedMatchCount }} completed ·
-      {{ refresh.failedMatchCount }} failed
+    <p v-if="refresh && !compact" class="mt-1.5 text-xs text-[var(--lh-muted)]">
+      {{ refresh.completedMatchCount }}/{{ refresh.requestedMatchCount }} completed
+      <span v-if="inFlight > 0"> · {{ inFlight }} in flight</span>
     </p>
 
-    <p v-if="showFailureWarning" class="mt-2 text-xs text-[var(--lh-bad)]" role="alert">
-      Some match jobs failed. Completed matches still appear below when available.
-    </p>
-
-    <p v-if="showDelayedNote" class="mt-2 text-xs text-[var(--lh-muted)]">
-      Delayed jobs are waiting on rate limits — this is expected, not stuck.
+    <p v-if="showFailureWarning" class="mt-1 text-xs text-[var(--lh-error)]" role="alert">
+      Some jobs failed — completed matches still appear below.
     </p>
   </div>
 </template>
@@ -25,7 +20,6 @@ import { computed } from 'vue';
 
 const props = defineProps<{
   refresh?: PlayerRefreshStatus | null;
-  /** Compact banner while some matches already render. */
   compact?: boolean;
 }>();
 
@@ -42,10 +36,6 @@ const inFlight = computed(() => {
 
 const showFailureWarning = computed(() => (props.refresh?.failedMatchCount ?? 0) > 0);
 
-const showDelayedNote = computed(
-  () => (props.refresh?.delayedMatchCount ?? 0) > 0 && inFlight.value > 0,
-);
-
 const onlyDelayed = computed(
   () =>
     (props.refresh?.delayedMatchCount ?? 0) > 0 &&
@@ -55,49 +45,49 @@ const onlyDelayed = computed(
 
 const title = computed(() => {
   if (onlyDelayed.value) {
-    return 'Match ingestion is temporarily delayed.';
+    return 'Ingestion delayed (rate limits)';
   }
-  if (props.compact && (props.refresh?.completedMatchCount ?? 0) > 0) {
-    return 'Still ingesting matches';
+  if (props.compact && inFlight.value > 0) {
+    return 'Still ingesting matches…';
   }
   if (inFlight.value > 0) {
-    return 'Match ingestion is in progress.';
+    return 'Match ingestion in progress';
   }
   if (showFailureWarning.value) {
-    return 'Match ingestion finished with failures';
+    return 'Ingestion finished with failures';
   }
   return 'Match ingestion';
 });
 
 const description = computed(() => {
   if (onlyDelayed.value) {
-    return 'Jobs are waiting on Riot rate limits. This is expected — cards appear as delays clear.';
+    return 'Waiting on Riot rate limits — cards appear as delays clear.';
   }
   if (props.compact && inFlight.value > 0) {
-    return 'New match cards appear as jobs complete. You can keep browsing.';
-  }
-  if (inFlight.value > 0 && (props.refresh?.completedMatchCount ?? 0) === 0) {
-    return 'Recent matches are queued for background ingestion. Cards appear as each match completes.';
+    return 'New cards appear as jobs complete.';
   }
   if (inFlight.value > 0) {
-    return 'Remaining jobs are still processing.';
+    return 'Recent matches are queued for background ingestion.';
   }
   if (showFailureWarning.value) {
-    return 'You can refresh the profile later to retry eligible failed matches.';
+    return 'Refresh later to retry eligible failed matches.';
   }
-  return 'No match ingestion jobs are currently queued.';
+  return '';
 });
 
 const bannerClass = computed(() => {
   if (showFailureWarning.value && inFlight.value === 0) {
-    return 'border-[var(--lh-bad)]/30 bg-[var(--lh-bad)]/10';
+    return 'border-[var(--lh-error)]/30 bg-[var(--lh-error)]/10';
+  }
+  if (props.compact) {
+    return 'border-[var(--lh-accent)]/25 bg-[var(--lh-accent)]/8';
   }
   return 'border-[var(--lh-accent)]/30 bg-[var(--lh-accent)]/10';
 });
 
 const titleClass = computed(() => {
   if (showFailureWarning.value && inFlight.value === 0) {
-    return 'text-[var(--lh-bad)]';
+    return 'text-[var(--lh-error)]';
   }
   return 'text-[var(--lh-accent)]';
 });

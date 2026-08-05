@@ -79,6 +79,19 @@ export class DataDragonChampionService {
     return `${this.config.baseUrl}/cdn/${encodeURIComponent(ver)}/img/champion/${encodeURIComponent(key)}.png`;
   }
 
+  /**
+   * Default-skin champion splash URL from the Data Dragon asset key (string id).
+   * Path is versionless: `/cdn/img/champion/splash/{key}_0.jpg`.
+   * Returns null when the asset key is missing.
+   */
+  buildChampionSplashUrl(championAssetKey: string): string | null {
+    const key = championAssetKey.trim();
+    if (!key) {
+      return null;
+    }
+    return `${this.config.baseUrl}/cdn/img/champion/splash/${encodeURIComponent(key)}_0.jpg`;
+  }
+
   /** Profile/summoner icon CDN URL; null when id or version is missing. */
   buildProfileIconUrl(profileIconId: number, version: string): string | null {
     if (!Number.isInteger(profileIconId) || profileIconId < 0) {
@@ -207,6 +220,7 @@ export class DataDragonChampionService {
         name: entry.name,
         title: entry.title,
         iconUrl: this.buildChampionIconUrl(entry.id, file.version),
+        splashUrl: this.buildChampionSplashUrl(entry.id),
       }));
 
       const payload: DataDragonRedisCache = {
@@ -296,12 +310,22 @@ export class DataDragonChampionService {
   private toMemoryCache(payload: DataDragonRedisCache): MemoryCache {
     const byNumericId = new Map<number, DataDragonChampion>();
     const byStringId = new Map<string, DataDragonChampion>();
+    const all: DataDragonChampion[] = [];
     for (const champion of payload.champions) {
-      const numericId = Number(champion.key);
+      const normalized: DataDragonChampion = {
+        id: champion.id,
+        key: champion.key,
+        name: champion.name,
+        title: champion.title,
+        iconUrl: champion.iconUrl,
+        splashUrl: champion.splashUrl ?? this.buildChampionSplashUrl(champion.id),
+      };
+      all.push(normalized);
+      const numericId = Number(normalized.key);
       if (Number.isInteger(numericId)) {
-        byNumericId.set(numericId, champion);
+        byNumericId.set(numericId, normalized);
       }
-      byStringId.set(champion.id, champion);
+      byStringId.set(normalized.id, normalized);
     }
     const remainingMs = payload.fetchedAtMs + this.config.cacheTtlSeconds * 1000 - this.nowFn();
     return {
@@ -310,7 +334,7 @@ export class DataDragonChampionService {
       expiresAtMs: this.nowFn() + Math.max(0, remainingMs),
       byNumericId,
       byStringId,
-      all: payload.champions,
+      all,
     };
   }
 }

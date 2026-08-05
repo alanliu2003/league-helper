@@ -92,29 +92,53 @@ export function mockMatchIdList(): string[] {
   return [...FAKE_MATCH_IDS];
 }
 
-export function mockMatchDto(overrides: { matchId?: string } = {}): RiotMatchDto {
+/** Deterministic mixed-queue fixtures for recent-match discovery tests. */
+const MOCK_MATCH_QUEUE_BY_ID: Readonly<Record<string, number>> = {
+  NA1_FAKE_MATCH_1001: 420, // Ranked Solo/Duo
+  NA1_FAKE_MATCH_1002: 440, // Ranked Flex
+  NA1_FAKE_MATCH_1003: 400, // Normal Draft
+  NA1_FAKE_MATCH_1004: 450, // ARAM
+  NA1_FAKE_MATCH_1005: 900, // URF — outside known display categories ("other")
+};
+
+const MOCK_MATCH_MODE_BY_QUEUE: Readonly<
+  Record<number, { gameMode: string; mapId: number; teamPosition: string }>
+> = {
+  420: { gameMode: 'CLASSIC', mapId: 11, teamPosition: 'MIDDLE' },
+  440: { gameMode: 'CLASSIC', mapId: 11, teamPosition: 'JUNGLE' },
+  400: { gameMode: 'CLASSIC', mapId: 11, teamPosition: 'TOP' },
+  450: { gameMode: 'ARAM', mapId: 12, teamPosition: '' },
+  900: { gameMode: 'URF', mapId: 11, teamPosition: 'BOTTOM' },
+};
+
+const FAKE_TEAMMATE_PUUID = 'fake-puuid-teammate-000000000000000000000000000000000000';
+
+export function mockMatchDto(overrides: { matchId?: string; queueId?: number } = {}): RiotMatchDto {
   const matchId = overrides.matchId ?? FAKE_MATCH_IDS[0];
+  const queueId = overrides.queueId ?? MOCK_MATCH_QUEUE_BY_ID[matchId] ?? 420;
+  const mode = MOCK_MATCH_MODE_BY_QUEUE[queueId] ?? MOCK_MATCH_MODE_BY_QUEUE[420]!;
   return {
     metadata: {
       dataVersion: '2',
       matchId,
-      participants: [FAKE_PUUID, 'fake-puuid-teammate-000000000000000000000000000000000000'],
+      participants: [FAKE_PUUID, FAKE_TEAMMATE_PUUID],
     },
     info: {
       gameCreation: 1_700_000_000_000,
       gameDuration: 1800,
       gameEndTimestamp: 1_700_001_800_000,
-      gameMode: 'CLASSIC',
+      gameMode: mode.gameMode,
       gameType: 'MATCHED_GAME',
       gameVersion: '14.1.1.123',
-      mapId: 11,
-      queueId: 420,
+      mapId: mode.mapId,
+      queueId,
       participants: [
         {
+          participantId: 1,
           puuid: FAKE_PUUID,
           championId: 157,
           teamId: 100,
-          teamPosition: 'MIDDLE',
+          teamPosition: mode.teamPosition || undefined,
           win: true,
           kills: 8,
           deaths: 3,
@@ -128,6 +152,35 @@ export function mockMatchDto(overrides: { matchId?: string } = {}): RiotMatchDto
           item6: 3340,
           summoner1Id: 4,
           summoner2Id: 14,
+          perks: {
+            styles: [
+              {
+                description: 'primaryStyle',
+                style: 8000,
+                selections: [{ perk: 8005, var1: 1, var2: 2, var3: 3 }],
+              },
+            ],
+          },
+        },
+        {
+          participantId: 2,
+          puuid: FAKE_TEAMMATE_PUUID,
+          championId: 64,
+          teamId: 100,
+          teamPosition: mode.teamPosition ? 'UTILITY' : undefined,
+          win: true,
+          kills: 12,
+          deaths: 5,
+          assists: 10,
+          item0: 3111,
+          item1: 0,
+          item2: 0,
+          item3: 0,
+          item4: 0,
+          item5: 0,
+          item6: 3364,
+          summoner1Id: 4,
+          summoner2Id: 3,
           perks: {
             styles: [
               {
