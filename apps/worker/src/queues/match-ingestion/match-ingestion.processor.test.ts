@@ -9,7 +9,10 @@ import {
   type MatchIngestionJobPayload,
 } from '@league-helper/shared';
 import { FAKE_PUUID, mockMatchDto, mockTimelineDto } from '@league-helper/server-riot';
-import type { MatchIngestionWorkerConfig } from '../../config.js';
+import type {
+  ChampionAggregationWorkerConfig,
+  MatchIngestionWorkerConfig,
+} from '../../config.js';
 import { processMatchIngestionJob } from './match-ingestion.processor.js';
 import {
   buildPuuid,
@@ -31,6 +34,45 @@ function baseConfig(
     timelineRequiredForComplete: false,
     normalizationVersion: 1,
     ...overrides,
+  };
+}
+
+function aggregationConfig(
+  overrides: Partial<ChampionAggregationWorkerConfig> = {},
+): ChampionAggregationWorkerConfig {
+  return {
+    queueName: 'champion-aggregation',
+    concurrency: 2,
+    jobAttempts: 5,
+    sourceNormalizationVersion: '1',
+    aggregationVersion: '1',
+    confidenceLevel: 0.95,
+    ...overrides,
+  };
+}
+
+function createChampionAggregationQueueMock() {
+  return {
+    getJob: vi.fn().mockResolvedValue(null),
+    add: vi.fn().mockResolvedValue({ id: 'agg-job-1' }),
+  };
+}
+
+function makeDeps(input: {
+  prisma: unknown;
+  provider: unknown;
+  redis: unknown;
+  config?: MatchIngestionWorkerConfig;
+  championAggregationQueue?: ReturnType<typeof createChampionAggregationQueueMock>;
+}) {
+  return {
+    prisma: input.prisma as never,
+    provider: input.provider as never,
+    redis: input.redis as never,
+    config: input.config ?? baseConfig(),
+    championAggregationQueue: (input.championAggregationQueue ??
+      createChampionAggregationQueueMock()) as never,
+    championAggregationConfig: aggregationConfig(),
   };
 }
 
@@ -219,8 +261,24 @@ function createPrismaMock(store: Store) {
     rankSnapshot: {
       findMany: rankSnapshotFindMany,
     },
+    championAggregationProcessing: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({}),
+    },
+    championAggregationRecalcScope: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({}),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      // Recalc-scope upsert uses an interactive transaction (findUnique + upsert).
+      const championAggregationRecalcScope = {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue({}),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      };
       const tx = {
+        championAggregationRecalcScope,
         match: {
           findUnique: vi.fn(
             async ({
@@ -262,7 +320,8 @@ function createPrismaMock(store: Store) {
                 return next;
               }
               const created = {
-                id: `match-${store.matches.size + 1}`,
+                // UUID required by champion-aggregation job payload schema.
+                id: `11111111-1111-4111-8111-${String(store.matches.size + 1).padStart(12, '0')}`,
                 createdAt: create.createdAt ?? new Date('2024-01-01T00:00:00.000Z'),
                 ...create,
               };
@@ -373,6 +432,7 @@ describe('processMatchIngestionJob', () => {
     getMatch: ReturnType<typeof vi.fn>;
     getTimeline: ReturnType<typeof vi.fn>;
   };
+  let championAggregationQueue: ReturnType<typeof createChampionAggregationQueueMock>;
 
   beforeEach(() => {
     store = {
@@ -403,37 +463,40 @@ describe('processMatchIngestionJob', () => {
       getMatch: vi.fn().mockResolvedValue(buildRankedMatchDto()),
       getTimeline: vi.fn().mockResolvedValue(buildRichTimelineDto()),
     };
+    championAggregationQueue = createChampionAggregationQueueMock();
   });
 
   it('rejects invalid payload before provider call', async () => {
     const job = makeJob({ bad: true });
     await expect(
-      processMatchIngestionJob(job, 'token', {
-        prisma: prisma as never,
-        provider: provider as never,
-        redis: redis as never,
-        config: baseConfig(),
-      }),
+      processMatchIngestionJob(
+        job,
+        'token',
+        makeDeps({ prisma, provider, redis, championAggregationQueue }),
+      ),
     ).rejects.toBeInstanceOf(UnrecoverableError);
     expect(provider.getMatch).not.toHaveBeenCalled();
+    expect(championAggregationQueue.add).not.toHaveBeenCalled();
   });
 
   it('consumes a valid job through running → completed', async () => {
     const payload = validPayload();
     const job = makeJob(payload);
 
-    const result = await processMatchIngestionJob(job, 'token', {
-      prisma: prisma as never,
-      provider: provider as never,
-      redis: redis as never,
-      config: baseConfig(),
-    });
+    const result = await processMatchIngestionJob(
+      job,
+      'token',
+      makeDeps({ prisma, provider, redis, championAggregationQueue }),
+    );
 
     expect(result.status).toBe('completed');
     expect(provider.getMatch).toHaveBeenCalledWith(payload.externalMatchId, 'americas');
     expect(provider.getTimeline).toHaveBeenCalled();
     expect(store.participants).toHaveLength(10);
     expect(store.teams).toHaveLength(2);
+    expect(championAggregationQueue.add).toHaveBeenCalledTimes(1);
+    // Scope upsert runs inside $transaction (merge-on-upsert).
+    expect(prisma.$transaction).toHaveBeenCalled();
 
     const durable = [...store.jobs.values()][0];
     expect(durable?.status).toBe(IngestionJobStatus.COMPLETED);
@@ -451,10 +514,22 @@ describe('processMatchIngestionJob', () => {
     expect(unknown).toHaveLength(1);
   });
 
+  it('does not fail ingestion when champion aggregation enqueue fails', async () => {
+    championAggregationQueue.add.mockRejectedValue(new Error('redis down'));
+    await expect(
+      processMatchIngestionJob(
+        makeJob(validPayload()),
+        'token',
+        makeDeps({ prisma, provider, redis, championAggregationQueue }),
+      ),
+    ).resolves.toMatchObject({ status: 'completed' });
+  });
+
   it('does not refetch when match already completed at same normalization version', async () => {
     const payload = validPayload();
+    const existingMatchId = '22222222-2222-4222-8222-222222222222';
     store.matches.set(`RIOT:${payload.externalMatchId}`, {
-      id: 'match-existing',
+      id: existingMatchId,
       provider: 'RIOT',
       externalMatchId: payload.externalMatchId,
       ingestionStatus: MatchIngestionStatus.COMPLETED,
@@ -462,32 +537,28 @@ describe('processMatchIngestionJob', () => {
     });
     store.participants.push({
       id: 'part-existing',
-      matchId: 'match-existing',
+      matchId: existingMatchId,
       participantId: 1,
       playerAccountId: null,
       externalAccountId: FAKE_PUUID,
     });
 
-    const result = await processMatchIngestionJob(makeJob(payload), 'token', {
-      prisma: prisma as never,
-      provider: provider as never,
-      redis: redis as never,
-      config: baseConfig(),
-    });
+    const result = await processMatchIngestionJob(
+      makeJob(payload),
+      'token',
+      makeDeps({ prisma, provider, redis, championAggregationQueue }),
+    );
 
     expect(result.status).toBe('already_complete');
     expect(provider.getMatch).not.toHaveBeenCalled();
     expect(store.participants[0]?.playerAccountId).toBe('11111111-1111-1111-1111-111111111111');
+    // Marker absent → enqueue aggregation for lost-enqueue repair.
+    expect(championAggregationQueue.add).toHaveBeenCalledTimes(1);
   });
 
   it('dedupes participants on duplicate retry', async () => {
     const payload = validPayload();
-    const deps = {
-      prisma: prisma as never,
-      provider: provider as never,
-      redis: redis as never,
-      config: baseConfig(),
-    };
+    const deps = makeDeps({ prisma, provider, redis, championAggregationQueue });
 
     await processMatchIngestionJob(makeJob(payload), 'token', deps);
     await processMatchIngestionJob(makeJob(payload, { attemptsMade: 1 }), 'token', deps);
@@ -500,12 +571,11 @@ describe('processMatchIngestionJob', () => {
   it('does not fail ingestion when cache invalidation fails', async () => {
     redis.del.mockRejectedValue(new Error('redis unavailable'));
     await expect(
-      processMatchIngestionJob(makeJob(validPayload()), 'token', {
-        prisma: prisma as never,
-        provider: provider as never,
-        redis: redis as never,
-        config: baseConfig(),
-      }),
+      processMatchIngestionJob(
+        makeJob(validPayload()),
+        'token',
+        makeDeps({ prisma, provider, redis, championAggregationQueue }),
+      ),
     ).resolves.toMatchObject({ status: 'completed' });
   });
 
@@ -516,41 +586,40 @@ describe('processMatchIngestionJob', () => {
     const job = makeJob(validPayload());
 
     await expect(
-      processMatchIngestionJob(job, 'token-1', {
-        prisma: prisma as never,
-        provider: provider as never,
-        redis: redis as never,
-        config: baseConfig(),
-      }),
+      processMatchIngestionJob(
+        job,
+        'token-1',
+        makeDeps({ prisma, provider, redis, championAggregationQueue }),
+      ),
     ).rejects.toBeInstanceOf(DelayedError);
 
     expect(job.moveToDelayed).toHaveBeenCalled();
+    expect(championAggregationQueue.add).not.toHaveBeenCalled();
   });
 
   it('retries on provider unavailable', async () => {
     provider.getMatch.mockRejectedValue(new ProviderUnavailableError());
     await expect(
-      processMatchIngestionJob(makeJob(validPayload()), 'token', {
-        prisma: prisma as never,
-        provider: provider as never,
-        redis: redis as never,
-        config: baseConfig(),
-      }),
+      processMatchIngestionJob(
+        makeJob(validPayload()),
+        'token',
+        makeDeps({ prisma, provider, redis, championAggregationQueue }),
+      ),
     ).rejects.toBeInstanceOf(ProviderUnavailableError);
 
     const durable = [...store.jobs.values()][0];
     expect(durable?.status).toBe(IngestionJobStatus.FAILED);
+    expect(championAggregationQueue.add).not.toHaveBeenCalled();
   });
 
   it('marks 404 as permanent / dead-lettered', async () => {
     provider.getMatch.mockRejectedValue(new ResourceNotFoundError('missing match'));
     await expect(
-      processMatchIngestionJob(makeJob(validPayload()), 'token', {
-        prisma: prisma as never,
-        provider: provider as never,
-        redis: redis as never,
-        config: baseConfig(),
-      }),
+      processMatchIngestionJob(
+        makeJob(validPayload()),
+        'token',
+        makeDeps({ prisma, provider, redis, championAggregationQueue }),
+      ),
     ).rejects.toBeInstanceOf(UnrecoverableError);
 
     const durable = [...store.jobs.values()][0];
@@ -560,12 +629,11 @@ describe('processMatchIngestionJob', () => {
   it('dead-letters after exhausted retryable attempts', async () => {
     provider.getMatch.mockRejectedValue(new ProviderUnavailableError());
     await expect(
-      processMatchIngestionJob(makeJob(validPayload(), { attemptsMade: 4, attempts: 5 }), 'token', {
-        prisma: prisma as never,
-        provider: provider as never,
-        redis: redis as never,
-        config: baseConfig(),
-      }),
+      processMatchIngestionJob(
+        makeJob(validPayload(), { attemptsMade: 4, attempts: 5 }),
+        'token',
+        makeDeps({ prisma, provider, redis, championAggregationQueue }),
+      ),
     ).rejects.toBeInstanceOf(UnrecoverableError);
 
     const durable = [...store.jobs.values()][0];
@@ -579,12 +647,13 @@ describe('processMatchIngestionJob', () => {
     const result = await processMatchIngestionJob(
       makeJob(validPayload({ externalMatchId: 'NA1_FAKE_MATCH_1001' })),
       'token',
-      {
-        prisma: prisma as never,
-        provider: provider as never,
-        redis: redis as never,
+      makeDeps({
+        prisma,
+        provider,
+        redis,
+        championAggregationQueue,
         config: baseConfig({ timelineRequiredForComplete: false }),
-      },
+      }),
     );
 
     expect(result.status).toBe('completed');
@@ -602,12 +671,7 @@ describe('processMatchIngestionJob', () => {
       processMatchIngestionJob(
         makeJob(validPayload({ externalMatchId: 'NA1_FAKE_MATCH_1001' })),
         'token',
-        {
-          prisma: prisma as never,
-          provider: provider as never,
-          redis: redis as never,
-          config: baseConfig(),
-        },
+        makeDeps({ prisma, provider, redis, championAggregationQueue }),
       ),
     ).resolves.toMatchObject({ status: 'completed' });
   });

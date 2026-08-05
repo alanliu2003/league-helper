@@ -191,6 +191,7 @@ model Match {
   teams                         MatchTeam[]
   timeline                      MatchTimeline?
   championAggregationProcessing ChampionAggregationProcessing[]
+  championAggregationRecalcScopes ChampionAggregationRecalcScope[]
 
   @@unique([provider, externalMatchId])
   @@index([normalizedPatch, queueId])
@@ -487,6 +488,24 @@ model ChampionAggregationProcessing {
 
   @@unique([matchId, sourceNormalizationVersion, aggregationVersion])
   @@index([status, processedAt])
+}
+
+/// Durable previous∪current key scope written at post-commit enqueue.
+/// previousDimensionKeys is a JSON string[] of materialized dimension keys.
+/// Explicit empty array means create / no overwrite — never treat a missing row as [].
+model ChampionAggregationRecalcScope {
+  id                         String   @id @default(uuid())
+  matchId                    String
+  sourceNormalizationVersion String
+  aggregationVersion         String
+  previousDimensionKeys      Json
+  createdAt                  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime @updatedAt @db.Timestamptz(3)
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, sourceNormalizationVersion, aggregationVersion])
+  @@index([createdAt])
 }
 
 model MatchupAggregate {

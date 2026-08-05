@@ -1,4 +1,8 @@
-import { MATCH_INGESTION_QUEUE_NAME, ValidationFailureError } from '@league-helper/shared';
+import {
+  CHAMPION_AGGREGATION_QUEUE_NAME,
+  MATCH_INGESTION_QUEUE_NAME,
+  ValidationFailureError,
+} from '@league-helper/shared';
 
 export function getRedisUrl(): string {
   return process.env.REDIS_URL ?? 'redis://localhost:6379';
@@ -26,6 +30,15 @@ export type MatchIngestionWorkerConfig = {
   storeRawPayloads: boolean;
   timelineRequiredForComplete: boolean;
   normalizationVersion: number;
+};
+
+export type ChampionAggregationWorkerConfig = {
+  queueName: string;
+  concurrency: number;
+  jobAttempts: number;
+  sourceNormalizationVersion: string;
+  aggregationVersion: string;
+  confidenceLevel: number;
 };
 
 function parseBoundedInt(
@@ -102,5 +115,60 @@ export function loadMatchIngestionWorkerConfig(
       max: 100,
       name: 'MATCH_NORMALIZATION_VERSION',
     }),
+  };
+}
+
+function parseConfidenceLevel(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0 || value >= 1) {
+    throw new ValidationFailureError(
+      'CHAMPION_AGGREGATION_CONFIDENCE_LEVEL must be a number in (0, 1).',
+      { received: raw },
+    );
+  }
+  return value;
+}
+
+function parseNonEmptyVersion(raw: string | undefined, fallback: string, name: string): string {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+  const value = raw.trim();
+  if (value.length === 0) {
+    throw new ValidationFailureError(`${name} must be a non-empty string.`, { received: raw });
+  }
+  return value;
+}
+
+/** Load champion-aggregation worker settings from environment. */
+export function loadChampionAggregationWorkerConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): ChampionAggregationWorkerConfig {
+  return {
+    queueName: env.CHAMPION_AGGREGATION_QUEUE_NAME?.trim() || CHAMPION_AGGREGATION_QUEUE_NAME,
+    concurrency: parseBoundedInt(env.CHAMPION_AGGREGATION_WORKER_CONCURRENCY, 2, {
+      min: 1,
+      max: 32,
+      name: 'CHAMPION_AGGREGATION_WORKER_CONCURRENCY',
+    }),
+    jobAttempts: parseBoundedInt(env.CHAMPION_AGGREGATION_JOB_ATTEMPTS, 5, {
+      min: 1,
+      max: 20,
+      name: 'CHAMPION_AGGREGATION_JOB_ATTEMPTS',
+    }),
+    sourceNormalizationVersion: parseNonEmptyVersion(
+      env.CHAMPION_AGGREGATION_SOURCE_NORMALIZATION_VERSION,
+      '1',
+      'CHAMPION_AGGREGATION_SOURCE_NORMALIZATION_VERSION',
+    ),
+    aggregationVersion: parseNonEmptyVersion(
+      env.CHAMPION_AGGREGATION_VERSION,
+      '1',
+      'CHAMPION_AGGREGATION_VERSION',
+    ),
+    confidenceLevel: parseConfidenceLevel(env.CHAMPION_AGGREGATION_CONFIDENCE_LEVEL, 0.95),
   };
 }

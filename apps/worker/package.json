@@ -16,6 +16,7 @@
     "jobs:retry-match-ingestion": "tsx src/cli/retry-match-ingestion.ts"
   },
   "dependencies": {
+    "@league-helper/match-analytics": "workspace:*",
     "@league-helper/server-riot": "workspace:*",
     "@league-helper/shared": "workspace:*",
     "@prisma/client": "^6.5.0",

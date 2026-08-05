@@ -6,18 +6,39 @@ import {
   type PrismaClient,
 } from '@prisma/client';
 import { MATCH_INGESTION_JOB_NAME } from '@league-helper/shared';
+import type { PreviousParticipantDimensionSnapshot } from '../champion-aggregation/previous-keys.js';
 import type { NormalizedMatch } from './match-normalizer.js';
 import { loadRankTiersAtIngestion } from './rank-at-ingestion.js';
 import type { ParticipantTimelineMetrics } from './timeline-metrics.service.js';
 
 export type AccountLinkMap = Map<string, string>; // externalAccountId (PUUID) -> playerAccountId
 
-type ExistingParticipantRow = {
+export type PersistNormalizedMatchResult = {
+  matchId: string;
+  created: boolean;
+  skippedComplete: boolean;
+  /**
+   * Aggregate-defining participant snapshots captured BEFORE overwrite.
+   * Empty array when create or skipped-complete (no overwrite).
+   * Expand at post-commit enqueue with configured aggregation versions.
+   */
+  previousParticipantSnapshots: PreviousParticipantDimensionSnapshot[];
+};
+
+type LinkParticipantRow = {
   id: string;
   participantId: number;
   playerAccountId: string | null;
   externalAccountId: string | null;
   rankTierAtIngestion: string | null;
+};
+
+type ExistingParticipantSnapshotRow = LinkParticipantRow & {
+  championId: number;
+  teamPosition: string;
+  individualPosition: string;
+  lane: string | null;
+  role: string | null;
 };
 
 /** Batch-resolve known PlayerAccounts by provider + PUUID. Unknowns stay unlinked. */
@@ -80,6 +101,40 @@ function resolveRankAssignmentCutoff(input: {
   return input.persistenceNow;
 }
 
+function capturePreviousParticipantSnapshots(existing: {
+  normalizedPatch: string | null;
+  platformRoute: string | null;
+  regionalRoute: string;
+  queueId: number;
+  mapId: number | null;
+  gameMode: string | null;
+  remake: boolean;
+  participants: ExistingParticipantSnapshotRow[];
+}): PreviousParticipantDimensionSnapshot[] {
+  if (!existing.normalizedPatch || existing.normalizedPatch.trim() === '') {
+    return [];
+  }
+  if (!existing.platformRoute || existing.platformRoute.trim() === '') {
+    return [];
+  }
+
+  return existing.participants.map((participant) => ({
+    patch: existing.normalizedPatch as string,
+    platformRoute: existing.platformRoute as string,
+    regionalRoute: existing.regionalRoute,
+    queueId: existing.queueId,
+    mapId: existing.mapId,
+    gameMode: existing.gameMode,
+    remake: existing.remake,
+    championId: participant.championId,
+    teamPosition: participant.teamPosition,
+    individualPosition: participant.individualPosition,
+    lane: participant.lane,
+    role: participant.role,
+    rankTierAtIngestion: participant.rankTierAtIngestion,
+  }));
+}
+
 /**
  * Persist Match + teams + participants in one transaction.
  * Idempotent upsert: does not duplicate matches; does not overwrite COMPLETED
@@ -88,12 +143,15 @@ function resolveRankAssignmentCutoff(input: {
  * Rank tier at ingestion is assigned from local RankSnapshot rows at a stable
  * cutoff (`Match.ingestedAt ?? Match.createdAt` for existing rows; one
  * `persistenceNow` for new creates). Retries never clear a non-null tier.
+ *
+ * Before overwriting aggregate-defining participant fields, captures previous
+ * participant snapshots for previous∪current champion aggregation keys.
  */
 export async function persistNormalizedMatch(
   prisma: PrismaClient,
   match: NormalizedMatch,
   accountLinks: AccountLinkMap,
-): Promise<{ matchId: string; created: boolean; skippedComplete: boolean }> {
+): Promise<PersistNormalizedMatchResult> {
   const existing = await prisma.match.findUnique({
     where: {
       provider_externalMatchId: {
@@ -109,6 +167,11 @@ export async function persistNormalizedMatch(
           playerAccountId: true,
           externalAccountId: true,
           rankTierAtIngestion: true,
+          championId: true,
+          teamPosition: true,
+          individualPosition: true,
+          lane: true,
+          role: true,
         },
       },
     },
@@ -134,8 +197,19 @@ export async function persistNormalizedMatch(
       participants: existing.participants,
       accountLinks,
     });
-    return { matchId: existing.id, created: false, skippedComplete: true };
+    // No overwrite — previous scope is empty; enqueue uses current-only union.
+    return {
+      matchId: existing.id,
+      created: false,
+      skippedComplete: true,
+      previousParticipantSnapshots: [],
+    };
   }
+
+  // Capture BEFORE overwrite so previous∪current keys remain available after replace.
+  const previousParticipantSnapshots = existing
+    ? capturePreviousParticipantSnapshots(existing)
+    : [];
 
   // One timestamp for this persistence op — create.ingestedAt and rank cutoff share it.
   const persistenceNow = new Date();
@@ -352,6 +426,7 @@ export async function persistNormalizedMatch(
     matchId: result.id,
     created: !existing,
     skippedComplete: false,
+    previousParticipantSnapshots,
   };
 }
 
@@ -360,7 +435,7 @@ async function linkMissingParticipants(input: {
   matchId: string;
   queueId: number;
   cutoff: Date;
-  participants: ExistingParticipantRow[];
+  participants: LinkParticipantRow[];
   accountLinks: AccountLinkMap;
 }): Promise<void> {
   const newlyLinked: Array<{

@@ -537,9 +537,64 @@ describe('persistNormalizedMatch rankTierAtIngestion', () => {
     const result = await persistNormalizedMatch(prisma as never, match, links);
 
     expect(result.skippedComplete).toBe(true);
+    expect(result.previousParticipantSnapshots).toEqual([]);
     const participant = store.participants.find((row) => row.id === 'part-1');
     expect(participant?.playerAccountId).toBe(accountId);
     expect(participant?.rankTierAtIngestion).toBe('SILVER');
+  });
+
+  it('captures previous participant snapshots before overwrite for aggregation keys', async () => {
+    const externalMatchId = 'NA1_RANK_PERSIST_420';
+    store.matches.set(`RIOT:${externalMatchId}`, {
+      id: 'match-old',
+      provider: 'RIOT',
+      externalMatchId,
+      queueId: RANKED_SOLO_QUEUE_ID,
+      ingestionStatus: MatchIngestionStatus.IN_PROGRESS,
+      normalizationVersion: '1',
+      normalizedPatch: '14.1',
+      platformRoute: 'na1',
+      regionalRoute: 'americas',
+      mapId: 11,
+      gameMode: 'CLASSIC',
+      remake: false,
+      ingestedAt: new Date('2024-06-15T12:00:00.000Z'),
+      createdAt: new Date('2024-06-15T11:00:00.000Z'),
+    });
+    store.participants.push({
+      id: 'part-old',
+      matchId: 'match-old',
+      participantId: 1,
+      playerAccountId: accountId,
+      externalAccountId: FAKE_PUUID,
+      rankTierAtIngestion: 'GOLD',
+      championId: 103,
+      teamPosition: 'UTILITY',
+      individualPosition: 'UTILITY',
+      lane: 'BOTTOM',
+      role: 'DUO_SUPPORT',
+    });
+
+    const match = buildNormalized(RANKED_SOLO_QUEUE_ID);
+    const links = new Map([[FAKE_PUUID, accountId]]);
+    const result = await persistNormalizedMatch(prisma as never, match, links);
+
+    expect(result.skippedComplete).toBe(false);
+    expect(result.previousParticipantSnapshots).toHaveLength(1);
+    expect(result.previousParticipantSnapshots[0]).toMatchObject({
+      patch: '14.1',
+      platformRoute: 'na1',
+      championId: 103,
+      teamPosition: 'UTILITY',
+      rankTierAtIngestion: 'GOLD',
+    });
+  });
+
+  it('returns empty previous snapshots on create', async () => {
+    const match = buildNormalized(RANKED_SOLO_QUEUE_ID);
+    const result = await persistNormalizedMatch(prisma as never, match, new Map());
+    expect(result.created).toBe(true);
+    expect(result.previousParticipantSnapshots).toEqual([]);
   });
 
   it('leaves unlinked participants with null rankTierAtIngestion', async () => {

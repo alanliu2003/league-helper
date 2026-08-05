@@ -585,11 +585,11 @@ EOF
 - Modify: `apps/worker/package.json` (add `@league-helper/match-analytics`)
 - Modify: `apps/worker/.env.example`
 
-- [ ] **Step 1: Failing processor/service tests**
+- [x] **Step 1: Failing processor/service tests**
 
 Cover: remake excluded; incomplete excluded; default 3 keys; retry idempotent; zero-contributor deletes row; processing marker written; version mismatch skips; cache generation INCR mocked; previous∪current keys when participant position changes.
 
-- [ ] **Step 2: Implement service flow**
+- [x] **Step 2: Implement service flow**
 
 ```ts
 async function recalculateForMatch(matchId: string, versions: Versions): Promise<Result> {
@@ -612,17 +612,21 @@ removeOnFail: { age: 86400, count: 5000 },
 
 Enqueue from processor **after** successful COMPLETED commit (both happy and already-complete paths that still need agg). Catch enqueue errors → warn `champion_aggregation_enqueue_failed`; do not fail ingest.
 
-- [ ] **Step 3: Dual-worker bootstrap**
+Durable previous�** successful COMPLETED commit (both happy and already-complete paths that still need agg). Catch enqueue errors → warn `champion_aggregation_enqueue_failed`; do not fail ingest.
+
+Durable previous∪current via `ChampionAggregationRecalcScope` (union upsert + conditional clear + follow-up enqueue on concurrent scope retention).
+
+- [x] **Step 3: Dual-worker bootstrap**
 
 `main.ts` starts match-ingestion + champion-aggregation only; log both; shutdown closes both; bootstrap test asserts queue names.
 
-- [ ] **Step 4: Tests PASS**
+- [x] **Step 4: Tests PASS**
 
 ```bash
 pnpm --filter @league-helper/worker test
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/worker packages/match-analytics pnpm-lock.yaml

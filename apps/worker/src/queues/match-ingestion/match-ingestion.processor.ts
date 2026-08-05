@@ -1,12 +1,13 @@
-import { DelayedError, UnrecoverableError, type Job } from 'bullmq';
+import { DelayedError, UnrecoverableError, type Job, type Queue } from 'bullmq';
 import {
+  ChampionAggregationProcessingStatus,
   IngestionJobStatus,
   MatchIngestionStatus,
   TimelineFetchStatus,
   type PrismaClient,
 } from '@prisma/client';
 import type { Redis } from 'ioredis';
-import type { GameDataProvider } from '@league-helper/shared';
+import type { ChampionAggregationJobPayload, GameDataProvider } from '@league-helper/shared';
 import {
   MATCH_INGESTION_JOB_NAME,
   MatchIngestionJobPayloadSchema,
@@ -14,8 +15,14 @@ import {
   type MatchIngestionJobPayload,
   ValidationFailureError,
 } from '@league-helper/shared';
-import type { MatchIngestionWorkerConfig } from '../../config.js';
+import type {
+  ChampionAggregationWorkerConfig,
+  MatchIngestionWorkerConfig,
+} from '../../config.js';
 import { logger } from '../../logger.js';
+import { createChampionAggregationRepository } from '../champion-aggregation/champion-aggregation.repository.js';
+import { enqueueChampionAggregationAfterCommit } from '../champion-aggregation/enqueue.js';
+import type { PreviousParticipantDimensionSnapshot } from '../champion-aggregation/previous-keys.js';
 import { classifyIngestionError } from './ingestion-error-classifier.js';
 import { invalidatePlayerProfileCaches } from './ingestion-cache-invalidator.js';
 import { safeJobId, truncateMatchId } from './log-safe.js';
@@ -36,7 +43,48 @@ export type MatchIngestionProcessorDeps = {
   provider: GameDataProvider;
   redis: Redis;
   config: MatchIngestionWorkerConfig;
+  championAggregationQueue: Queue<ChampionAggregationJobPayload>;
+  championAggregationConfig: ChampionAggregationWorkerConfig;
 };
+
+async function shouldEnqueueChampionAggregation(input: {
+  prisma: PrismaClient;
+  matchId: string;
+  config: ChampionAggregationWorkerConfig;
+}): Promise<boolean> {
+  const marker = await input.prisma.championAggregationProcessing.findUnique({
+    where: {
+      matchId_sourceNormalizationVersion_aggregationVersion: {
+        matchId: input.matchId,
+        sourceNormalizationVersion: input.config.sourceNormalizationVersion,
+        aggregationVersion: input.config.aggregationVersion,
+      },
+    },
+    select: { status: true },
+  });
+  if (!marker) {
+    return true;
+  }
+  // Re-enqueue when prior attempt failed or scope is pending (absent COMPLETED).
+  return marker.status !== ChampionAggregationProcessingStatus.COMPLETED;
+}
+
+async function enqueueAggregationSafe(input: {
+  deps: MatchIngestionProcessorDeps;
+  matchId: string;
+  previousSnapshots: PreviousParticipantDimensionSnapshot[];
+  correlationId?: string;
+}): Promise<void> {
+  const repository = createChampionAggregationRepository(input.deps.prisma);
+  await enqueueChampionAggregationAfterCommit({
+    queue: input.deps.championAggregationQueue,
+    repository,
+    config: input.deps.championAggregationConfig,
+    matchId: input.matchId,
+    previousSnapshots: input.previousSnapshots,
+    correlationId: input.correlationId,
+  });
+}
 
 function boundDelayMs(retryAfterSeconds: number, config: MatchIngestionWorkerConfig): number {
   const requested = Math.max(0, retryAfterSeconds) * 1000;
@@ -239,6 +287,22 @@ export async function processMatchIngestionJob(
         status: IngestionJobStatus.COMPLETED,
       });
 
+      // Post-commit only: enqueue agg when marker absent/stale (lost enqueue repair).
+      if (
+        await shouldEnqueueChampionAggregation({
+          prisma: deps.prisma,
+          matchId: existing.id,
+          config: deps.championAggregationConfig,
+        })
+      ) {
+        await enqueueAggregationSafe({
+          deps,
+          matchId: existing.id,
+          previousSnapshots: [],
+          correlationId,
+        });
+      }
+
       await invalidatePlayerProfileCaches({
         prisma: deps.prisma,
         redis: deps.redis,
@@ -433,6 +497,14 @@ export async function processMatchIngestionJob(
       prisma: deps.prisma,
       durableJobId,
       status: IngestionJobStatus.COMPLETED,
+    });
+
+    // AFTER COMPLETED commit only — durable previous keys + enqueue; never fail ingest.
+    await enqueueAggregationSafe({
+      deps,
+      matchId: persisted.matchId,
+      previousSnapshots: persisted.previousParticipantSnapshots,
+      correlationId,
     });
 
     const linkedAccountIds = [payload.requestedByPlayerAccountId, ...[...accountLinks.values()]];
