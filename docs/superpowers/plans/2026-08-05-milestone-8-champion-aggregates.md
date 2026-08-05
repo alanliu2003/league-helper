@@ -266,7 +266,7 @@ EOF
 - Create: `packages/match-analytics/README.md`
 - Modify: `packages/match-analytics/src/index.ts`
 
-- [ ] **Step 1: Write failing rollup / key / accumulation tests**
+- [x] **Step 1: Write failing rollup / key / accumulation tests**
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -318,13 +318,13 @@ it('KDA matches player UI perfect-game convention', () => {
 
 Also cover: missing timeline does not increment samples; `resolveMatchEndedAt` rejects duration ≤ 0; dimension key changes when patch changes; ALL vs UNKNOWN do not collide; combineAccumulators order-independence.
 
-- [ ] **Step 2: Run — expect FAIL**
+- [x] **Step 2: Run — expect FAIL**
 
 ```bash
 pnpm --filter @league-helper/match-analytics test
 ```
 
-- [ ] **Step 3: Implement types and functions**
+- [x] **Step 3: Implement types and functions**
 
 ```ts
 // ExactChampionDimensions: rankTier RankTier|'UNKNOWN'; position NormalizedPosition|'UNKNOWN'
@@ -338,11 +338,11 @@ pnpm --filter @league-helper/match-analytics test
 // derive: KDA rules from locked table; per-minute via safeDivide(total, seconds/60)
 ```
 
-- [ ] **Step 4: Tests PASS + README**
+- [x] **Step 4: Tests PASS + README**
 
 Document formulas, Wilson, thresholds, sentinels, rollup policy, KDA, no env/Prisma rule.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/match-analytics
