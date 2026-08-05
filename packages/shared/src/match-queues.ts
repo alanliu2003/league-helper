@@ -58,6 +58,24 @@ export function getMatchQueueLabel(queueId: number): string {
 }
 
 /**
+ * Summoner's Rift queues where standard five-role positions are meaningful.
+ * Same set as NormalizedPosition STANDARD_SR_QUEUE_IDS (420, 440, 400, 430, 490, 480).
+ * ARAM / Arena / Custom and unknown queues return false.
+ */
+const STANDARD_POSITION_QUEUE_IDS = new Set<number>([
+  RANKED_SOLO_QUEUE_ID,
+  RANKED_FLEX_QUEUE_ID,
+  NORMAL_DRAFT_QUEUE_ID,
+  NORMAL_BLIND_QUEUE_ID,
+  QUICKPLAY_QUEUE_ID,
+  SWIFTPLAY_QUEUE_ID,
+]);
+
+export function supportsStandardPositions(queueId: number): boolean {
+  return STANDARD_POSITION_QUEUE_IDS.has(queueId);
+}
+
+/**
  * Resolve a display filter category into repository constraints.
  * - `queueIds`: include only these IDs
  * - `excludeQueueIds`: include any ID not in this set (for "other")
