@@ -219,6 +219,37 @@ importers:
         specifier: ^8.26.1
         version: 8.66.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
 
+  packages/match-analytics:
+    dependencies:
+      '@league-helper/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.22.0
+        version: 9.39.5
+      '@league-helper/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: ^22.13.10
+        version: 22.20.1
+      eslint:
+        specifier: ^9.22.0
+        version: 9.39.5(jiti@2.7.0)
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@swc/core@1.15.47)(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.26.1
+        version: 8.66.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+      vitest:
+        specifier: ^3.0.8
+        version: 3.2.7(@types/node@22.20.1)(happy-dom@20.11.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.5)(yaml@2.9.0)
+
   packages/server-riot:
     dependencies:
       '@league-helper/shared':
