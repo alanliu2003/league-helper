@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Queue, type JobsOptions } from 'bullmq';
 import {
+  BULLMQ_DEFAULT_PREFIX,
   MATCH_INGESTION_JOB_NAME,
   MATCH_INGESTION_NORMALIZATION_VERSION,
   MatchIngestionJobPayloadSchema,
@@ -18,6 +19,8 @@ export type EnqueueMatchResult = {
   alreadyExists: boolean;
   warning?: PlayerSafeWarning;
 };
+
+const LIVE_STATES = new Set(['waiting', 'active', 'delayed', 'prioritized', 'waiting-children']);
 
 @Injectable()
 export class MatchIngestionProducer {
@@ -37,12 +40,16 @@ export class MatchIngestionProducer {
         type: 'exponential',
         delay: 2000,
       },
-      // Keep waiting jobs indefinitely until Milestone 6 implements a processor.
       removeOnComplete: 1000,
       removeOnFail: 1000,
     };
   }
 
+  /**
+   * Publish an INGEST_MATCH job.
+   * Completed/failed BullMQ records with the same deterministic ID are removed and
+   * re-queued so durable QUEUED work is not stranded after prior completions.
+   */
   async enqueueMatch(payload: MatchIngestionJobPayload, priority = 0): Promise<EnqueueMatchResult> {
     const parsed = MatchIngestionJobPayloadSchema.parse({
       ...payload,
@@ -58,12 +65,25 @@ export class MatchIngestionProducer {
     try {
       const existing = await this.queue.getJob(jobId);
       if (existing) {
-        return {
-          externalMatchId: parsed.externalMatchId,
+        const state = await existing.getState();
+        if (LIVE_STATES.has(state)) {
+          return {
+            externalMatchId: parsed.externalMatchId,
+            jobId,
+            published: true,
+            alreadyExists: true,
+          };
+        }
+
+        // completed / failed / unknown — clear so a fresh waiting job can be added.
+        await existing.remove();
+        this.logger.log({
+          message: 'Removed stale BullMQ job before republish',
+          correlationId: parsed.correlationId,
           jobId,
-          published: true,
-          alreadyExists: true,
-        };
+          previousState: state,
+          externalMatchId: parsed.externalMatchId,
+        });
       }
 
       await this.queue.add(MATCH_INGESTION_JOB_NAME, parsed, this.jobOptions(jobId, priority));
@@ -73,6 +93,7 @@ export class MatchIngestionProducer {
         jobId,
         externalMatchId: parsed.externalMatchId,
         regionalRoute: parsed.regionalRoute,
+        prefix: BULLMQ_DEFAULT_PREFIX,
       });
       return {
         externalMatchId: parsed.externalMatchId,
@@ -157,5 +178,26 @@ export class MatchIngestionProducer {
       failed: counts.failed ?? 0,
       completed: counts.completed ?? 0,
     };
+  }
+
+  async isPaused(): Promise<boolean> {
+    try {
+      return await this.queue.isPaused();
+    } catch {
+      return false;
+    }
+  }
+
+  async getWorkerCount(): Promise<number> {
+    try {
+      const workers = await this.queue.getWorkers();
+      return workers.length;
+    } catch {
+      return 0;
+    }
+  }
+
+  getQueueName(): string {
+    return this.queue.name;
   }
 }

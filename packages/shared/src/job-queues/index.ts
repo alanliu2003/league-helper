@@ -14,3 +14,11 @@ export {
   type MatchIngestionJobPayload,
   type MatchIngestionJobType,
 } from './match-ingestion-job';
+
+export {
+  BULLMQ_DEFAULT_PREFIX,
+  parseBullMqRedisConnectionInfo,
+  createBullMqConnectionOptions,
+  resolveBullMqPrefix,
+  type BullMqRedisConnectionInfo,
+} from './bullmq-connection';

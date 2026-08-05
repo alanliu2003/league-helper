@@ -17,7 +17,7 @@
       Profile data may be stale. Consider refreshing for the latest ranks and matches.
     </p>
 
-    <dl class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+    <dl class="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       <div>
         <dt class="text-[var(--lh-muted)]">Requested</dt>
         <dd class="font-medium">{{ refresh.requestedMatchCount }}</dd>
@@ -25,6 +25,14 @@
       <div>
         <dt class="text-[var(--lh-muted)]">Queued</dt>
         <dd class="font-medium">{{ refresh.queuedMatchCount }}</dd>
+      </div>
+      <div>
+        <dt class="text-[var(--lh-muted)]">Active</dt>
+        <dd class="font-medium">{{ refresh.activeMatchCount }}</dd>
+      </div>
+      <div>
+        <dt class="text-[var(--lh-muted)]">Delayed</dt>
+        <dd class="font-medium">{{ refresh.delayedMatchCount }}</dd>
       </div>
       <div>
         <dt class="text-[var(--lh-muted)]">Completed</dt>

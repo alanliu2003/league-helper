@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ProviderResponseInvalidError, ValidationFailureError } from '@league-helper/shared';
+import {
+  ProviderResponseInvalidError,
+  ValidationFailureError,
+  type PlayerAccount,
+} from '@league-helper/shared';
 import { RiotApiClient } from './riot-api.client';
 import { RiotGameDataProvider } from './riot-game-data.provider';
 import { MockRiotGameDataProvider } from './mock-riot-game-data.provider';
@@ -186,6 +190,31 @@ describe('RiotGameDataProvider', () => {
     await expect(provider.getRecentMatchIds(player, { start: -1 })).rejects.toBeInstanceOf(
       ValidationFailureError,
     );
+  });
+
+  it('omits queue query param when queue filter is undefined', async () => {
+    const player: PlayerAccount = {
+      provider: 'RIOT',
+      externalAccountId: FAKE_PUUID,
+      riotId: { gameName: 'ExamplePlayer', tagLine: 'NA1' },
+      platform: 'na1',
+      regionalRoute: 'americas',
+    };
+    const ids = mockMatchIdList();
+    const { fetchFn, calls } = createMockFetch([{ status: 200, body: ids }]);
+    const provider = new RiotGameDataProvider(
+      RiotApiClient.create(realConfigOverrides(), {
+        fetchFn,
+        sleepFn: async () => undefined,
+        randomFn: () => 0,
+      }),
+    );
+
+    await expect(provider.getRecentMatchIds(player, { count: 20, start: 0 })).resolves.toEqual(ids);
+    expect(calls[0]?.url).toContain('count=20');
+    expect(calls[0]?.url).not.toContain('queue=');
+    expect(calls[0]?.url).not.toContain('queue=null');
+    expect(calls[0]?.url).not.toContain('queue=undefined');
   });
 
   it('validates match and timeline responses', async () => {

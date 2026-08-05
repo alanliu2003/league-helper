@@ -1,6 +1,6 @@
 import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { createHealthResponse, type HealthResponse } from '@league-helper/shared';
-import { isRiotProviderConfigured, type RiotConfig } from '../integrations/riot/riot.config';
+import { isRiotProviderConfigured, type RiotConfig } from '@league-helper/server-riot';
 import { RIOT_CONFIG } from '../integrations/riot/riot.tokens';
 import { PrismaService } from '../prisma/prisma.service';
 

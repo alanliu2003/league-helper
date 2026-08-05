@@ -1,4 +1,4 @@
-import { ValidationFailureError } from '@league-helper/shared';
+import { RANKED_SOLO_QUEUE_ID, ValidationFailureError } from '@league-helper/shared';
 
 export type PlayerRefreshConfig = {
   cooldownSeconds: number;
@@ -7,7 +7,13 @@ export type PlayerRefreshConfig = {
   masterySnapshotMinAgeSeconds: number;
   defaultMatchCount: number;
   maxMatchCount: number;
-  defaultQueueId: number;
+  /**
+   * Default Riot queue filter for general search/refresh discovery.
+   * `null` means omit the queue parameter (all recent queues).
+   */
+  defaultMatchQueueId: number | null;
+  /** Ranked Solo/Duo queue ID for ranked-only analytics (not general history). */
+  rankedSoloQueueId: number;
   matchIngestionQueueName: string;
   matchIngestionJobAttempts: number;
   matchIngestionReconcileBatchSize: number;
@@ -33,6 +39,20 @@ function parsePositiveInt(raw: string | undefined, fallback: number, name: strin
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 1) {
     throw new ValidationFailureError(`${name} must be a positive integer.`, { received: raw });
+  }
+  return value;
+}
+
+/** Empty/undefined → null (no queue filter). Otherwise a non-negative integer. */
+function parseOptionalQueueId(raw: string | undefined, name: string): number | null {
+  if (raw === undefined || raw.trim() === '') {
+    return null;
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new ValidationFailureError(`${name} must be a non-negative integer or empty.`, {
+      received: raw,
+    });
   }
   return value;
 }
@@ -68,6 +88,13 @@ export function loadPlayerRefreshConfig(env: NodeJS.ProcessEnv = process.env): P
     'REFRESH_LOCK_TTL_SECONDS',
   );
 
+  // Prefer PLAYER_DEFAULT_MATCH_QUEUE_ID; empty = all queues.
+  // Legacy PLAYER_DEFAULT_QUEUE_ID is ignored for general discovery defaults.
+  const defaultMatchQueueId = parseOptionalQueueId(
+    env.PLAYER_DEFAULT_MATCH_QUEUE_ID,
+    'PLAYER_DEFAULT_MATCH_QUEUE_ID',
+  );
+
   return {
     cooldownSeconds: parseNonNegativeInt(
       env.PLAYER_REFRESH_COOLDOWN_SECONDS,
@@ -87,7 +114,12 @@ export function loadPlayerRefreshConfig(env: NodeJS.ProcessEnv = process.env): P
     ),
     defaultMatchCount,
     maxMatchCount,
-    defaultQueueId: parsePositiveInt(env.PLAYER_DEFAULT_QUEUE_ID, 420, 'PLAYER_DEFAULT_QUEUE_ID'),
+    defaultMatchQueueId,
+    rankedSoloQueueId: parseNonNegativeInt(
+      env.RANKED_SOLO_QUEUE_ID,
+      RANKED_SOLO_QUEUE_ID,
+      'RANKED_SOLO_QUEUE_ID',
+    ),
     matchIngestionQueueName:
       (env.MATCH_INGESTION_QUEUE_NAME ?? 'match-ingestion').trim() || 'match-ingestion',
     matchIngestionJobAttempts,

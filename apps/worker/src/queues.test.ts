@@ -17,8 +17,23 @@ describe('worker config', () => {
     expect(QUEUE_NAME).toBe('league-helper-default');
   });
 
-  it('does not register the match-ingestion queue as the default worker queue', async () => {
+  it('keeps the smoke queue separate from match-ingestion', async () => {
     const { MATCH_INGESTION_QUEUE_NAME } = await import('@league-helper/shared');
     expect(QUEUE_NAME).not.toBe(MATCH_INGESTION_QUEUE_NAME);
+  });
+});
+
+describe('match-ingestion worker config', () => {
+  it('loads defaults for concurrency, attempts, and timeline flags', async () => {
+    const { loadMatchIngestionWorkerConfig } = await import('./config.js');
+    const config = loadMatchIngestionWorkerConfig({});
+    expect(config.concurrency).toBe(2);
+    expect(config.jobAttempts).toBe(5);
+    expect(config.backoffBaseMs).toBe(2000);
+    expect(config.backoffMaxMs).toBe(60_000);
+    expect(config.timelineFetchEnabled).toBe(true);
+    expect(config.storeRawPayloads).toBe(false);
+    expect(config.timelineRequiredForComplete).toBe(false);
+    expect(config.normalizationVersion).toBe(1);
   });
 });

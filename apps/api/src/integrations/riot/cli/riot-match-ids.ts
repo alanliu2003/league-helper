@@ -11,10 +11,12 @@ import {
   getRegionalRouteForPlatform,
   parsePlatformRoute,
 } from '@league-helper/shared';
-import { loadRiotConfig } from '../riot.config';
-import { RiotApiClient } from '../riot-api.client';
-import { RiotGameDataProvider } from '../riot-game-data.provider';
-import { MockRiotGameDataProvider } from '../mock-riot-game-data.provider';
+import {
+  loadRiotConfig,
+  MockRiotGameDataProvider,
+  RiotApiClient,
+  RiotGameDataProvider,
+} from '@league-helper/server-riot';
 
 function readArg(flag: string): string | undefined {
   const index = process.argv.indexOf(flag);

@@ -1,5 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { IngestionJobStatus, type Match, type PlayerAccount } from '@prisma/client';
+import {
+  IngestionJobStatus,
+  type ChampionMasterySnapshot,
+  type PlayerAccount,
+} from '@prisma/client';
 import {
   MATCH_INGESTION_JOB_NAME,
   MATCH_INGESTION_NORMALIZATION_VERSION,
@@ -10,16 +14,21 @@ import {
   type PlayerSafeWarning,
   type PlayerSearchRequest,
   type PlayerSearchResponse,
+  type PublicMasterySummary,
+  type PublicMatchSummary,
+  type PublicPlayer,
+  buildMatchIngestionBullMqJobId,
   buildMatchIngestionIdempotencyKey,
 } from '@league-helper/shared';
 import {
   PLAYER_REFRESH_CONFIG,
   type PlayerRefreshConfig,
 } from '../../config/player-refresh.config';
+import { DataDragonChampionService } from '../../integrations/data-dragon/data-dragon-champion.service';
 import { GAME_DATA_PROVIDER } from '../../integrations/riot/riot.tokens';
 import { IngestionJobRepository } from '../../persistence/ingestion-job.repository';
 import { MasterySnapshotRepository } from '../../persistence/mastery-snapshot.repository';
-import { MatchRepository } from '../../persistence/match.repository';
+import { MatchRepository, type PlayerMatchListRow } from '../../persistence/match.repository';
 import { PlayerAccountRepository } from '../../persistence/player-account.repository';
 import { RankSnapshotRepository } from '../../persistence/rank-snapshot.repository';
 import { MatchIngestionProducer } from '../../queues/match-ingestion.producer';
@@ -38,7 +47,8 @@ export type SyncPlayerDataInput = {
   account: PlayerAccount;
   providerAccount: ProviderPlayerAccount;
   matchCount: number;
-  queueId: number;
+  /** Riot queue filter; null/undefined omits queue (all recent queues). */
+  queueId?: number | null;
   correlationId: string;
 };
 
@@ -59,6 +69,7 @@ export class PlayerSearchService {
     @Inject(PlayerRefreshStatusService)
     private readonly refreshStatus: PlayerRefreshStatusService,
     @Inject(PlayerCacheService) private readonly cache: PlayerCacheService,
+    @Inject(DataDragonChampionService) private readonly dataDragon: DataDragonChampionService,
   ) {}
 
   async search(request: PlayerSearchRequest, correlationId: string): Promise<PlayerSearchResponse> {
@@ -96,7 +107,7 @@ export class PlayerSearchService {
       account,
       providerAccount: resolved,
       matchCount,
-      queueId: this.config.defaultQueueId,
+      queueId: parsed.queueId !== undefined ? parsed.queueId : this.config.defaultMatchQueueId,
       correlationId,
     });
 
@@ -109,10 +120,15 @@ export class PlayerSearchService {
     const warnings: PlayerSafeWarning[] = [];
     const { account, providerAccount, matchCount, queueId, correlationId } = input;
 
+    const matchIdOptions: { count: number; queue?: number } = { count: matchCount };
+    if (queueId != null) {
+      matchIdOptions.queue = queueId;
+    }
+
     const [ranksSettled, masterySettled, matchIdsSettled] = await Promise.allSettled([
       this.gameData.getRankedEntries(providerAccount),
       this.gameData.getChampionMastery(providerAccount),
-      this.gameData.getRecentMatchIds(providerAccount, { queue: queueId, count: matchCount }),
+      this.gameData.getRecentMatchIds(providerAccount, matchIdOptions),
     ]);
 
     if (ranksSettled.status === 'rejected') {
@@ -174,7 +190,9 @@ export class PlayerSearchService {
     const [rankRows, masteryRows, matchRows, refresh] = await Promise.all([
       this.rankSnapshots.getLatestForPlayer(account.id),
       this.masterySnapshots.getTopCurrentMasteryForPlayer(account.id, this.config.masteryLimit),
-      this.listStoredMatches(account.id, discoveredMatchIds),
+      // Always return authoritative stored matches — never erase history because
+      // discovery is empty or newly queued IDs are not ingested yet.
+      this.listStoredMatches(account.id, matchCount),
       this.refreshStatus.compute({
         account,
         discoveredMatchIds,
@@ -184,10 +202,10 @@ export class PlayerSearchService {
     ]);
 
     const response: PlayerSearchResponse = {
-      player: mapPublicPlayer(account),
+      player: await this.mapPlayerWithProfileIcon(account),
       ranks: rankRows.map(mapPublicRank),
-      mastery: masteryRows.map(mapPublicMastery),
-      matches: matchRows.map(mapPublicMatch),
+      mastery: await this.mapMasteryWithChampions(masteryRows),
+      matches: await this.mapMatchesWithChampions(matchRows),
       refresh,
     };
 
@@ -208,6 +226,67 @@ export class PlayerSearchService {
     return Math.min(Math.max(1, raw), this.config.maxMatchCount);
   }
 
+  /** Enrich player with Data Dragon profile icon URL; never throws. */
+  private async mapPlayerWithProfileIcon(account: PlayerAccount): Promise<PublicPlayer> {
+    try {
+      const version = await this.dataDragon.getCurrentVersion();
+      const profileIconUrl =
+        account.profileIconId != null && version
+          ? this.dataDragon.buildProfileIconUrl(account.profileIconId, version)
+          : null;
+      return mapPublicPlayer(account, { profileIconUrl });
+    } catch (error: unknown) {
+      this.logger.warn({
+        message: 'Data Dragon profile icon enrichment failed',
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      return mapPublicPlayer(account, { profileIconUrl: null });
+    }
+  }
+
+  /** Enrich mastery rows with Data Dragon metadata; never throws. */
+  private async mapMasteryWithChampions(
+    rows: ChampionMasterySnapshot[],
+  ): Promise<PublicMasterySummary[]> {
+    try {
+      const champions = await this.dataDragon.getAllChampions();
+      const byNumericId = new Map(champions.map((c) => [Number(c.key), c]));
+      return rows.map((row) => mapPublicMastery(row, byNumericId.get(row.championId) ?? null));
+    } catch (error: unknown) {
+      this.logger.warn({
+        message: 'Data Dragon mastery enrichment failed; using numeric fallback',
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      return rows.map((row) => mapPublicMastery(row, null));
+    }
+  }
+
+  /** Enrich match rows with champion/item icons; never throws. */
+  private async mapMatchesWithChampions(rows: PlayerMatchListRow[]): Promise<PublicMatchSummary[]> {
+    try {
+      const [champions, version] = await Promise.all([
+        this.dataDragon.getAllChampions(),
+        this.dataDragon.getCurrentVersion(),
+      ]);
+      const byNumericId = new Map(champions.map((c) => [Number(c.key), c]));
+      const baseUrl = this.dataDragon.getBaseUrl();
+      return rows.map((row) => {
+        const championId = row.participants[0]?.championId;
+        return mapPublicMatch(row, {
+          champion: championId !== undefined ? (byNumericId.get(championId) ?? null) : null,
+          dataDragonVersion: version,
+          dataDragonBaseUrl: baseUrl,
+        });
+      });
+    } catch (error: unknown) {
+      this.logger.warn({
+        message: 'Data Dragon match enrichment failed; using numeric fallback',
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      return rows.map((row) => mapPublicMatch(row));
+    }
+  }
+
   private async enqueueDiscoveredMatches(input: {
     account: PlayerAccount;
     discoveredMatchIds: string[];
@@ -219,24 +298,99 @@ export class PlayerSearchService {
       return warnings;
     }
 
-    const existingMatches = await this.matches.findExistingByExternalIds(
+    // Repair participant links for this account's PUUID before classifying work.
+    const linkedRows = await this.matches.linkParticipantsByExternalAccountId(
       account.provider,
-      discoveredMatchIds,
+      account.externalAccountId,
+      account.id,
     );
+    if (linkedRows > 0) {
+      this.logger.log({
+        message: 'Linked existing match participants by account identity',
+        correlationId,
+        playerId: account.playerId,
+        linkedParticipantRows: linkedRows,
+      });
+      await this.cache.invalidate(account.playerId);
+    }
+
+    const [existingMatches, linkedCompletedIds, missingLinkIds, durableJobs] = await Promise.all([
+      this.matches.findExistingByExternalIds(account.provider, discoveredMatchIds),
+      this.matches.findLinkedCompletedExternalIds(account.id, discoveredMatchIds),
+      this.matches.findExistingExternalIdsMissingLink(
+        account.provider,
+        account.id,
+        discoveredMatchIds,
+      ),
+      this.ingestionJobs.findByExternalResourceIds(
+        MATCH_INGESTION_JOB_NAME,
+        account.provider,
+        discoveredMatchIds,
+      ),
+    ]);
+
     const knownIds = new Set(existingMatches.map((match) => match.externalMatchId));
-    const candidateIds = discoveredMatchIds.filter((id) => !knownIds.has(id));
-
-    const durableJobs = await this.ingestionJobs.findByExternalResourceIds(
-      MATCH_INGESTION_JOB_NAME,
-      account.provider,
-      candidateIds,
+    const linkedCompleted = new Set(linkedCompletedIds);
+    const jobByMatchId = new Map(
+      durableJobs.map((job) => [job.externalResourceId ?? '', job] as const),
     );
-    const jobByMatchId = new Map(durableJobs.map((job) => [job.externalResourceId ?? '', job]));
 
-    const missingIds = candidateIds.filter((id) => !jobByMatchId.has(id));
+    const jobIds = discoveredMatchIds.map((externalMatchId) =>
+      buildMatchIngestionBullMqJobId({
+        provider: account.provider,
+        regionalRoute: account.regionalRoute,
+        externalMatchId,
+        normalizationVersion: MATCH_INGESTION_NORMALIZATION_VERSION,
+      }),
+    );
+    const bullStates = await this.producer.getJobStates(jobIds);
+    const bullStateByExternal = new Map<string, string | null>();
+    discoveredMatchIds.forEach((externalMatchId, index) => {
+      const jobId = jobIds[index];
+      bullStateByExternal.set(externalMatchId, jobId ? (bullStates.get(jobId) ?? null) : null);
+    });
+
+    const idsNeedingPublication = new Set<string>();
+
+    for (const externalMatchId of discoveredMatchIds) {
+      if (linkedCompleted.has(externalMatchId)) {
+        continue;
+      }
+
+      const bullState = bullStateByExternal.get(externalMatchId);
+      const durable = jobByMatchId.get(externalMatchId);
+      const matchExists = knownIds.has(externalMatchId);
+      const needsLinkRepair = missingLinkIds.includes(externalMatchId);
+
+      // Active/waiting/delayed BullMQ work — leave alone.
+      if (bullState === 'waiting' || bullState === 'active' || bullState === 'delayed') {
+        continue;
+      }
+
+      // Durable pending/queued without a live Redis job → repair publish.
+      // Includes completed/failed BullMQ records that stranded durable QUEUED rows.
+      if (
+        durable &&
+        (durable.status === IngestionJobStatus.PENDING ||
+          durable.status === IngestionJobStatus.QUEUED) &&
+        (bullState === null ||
+          bullState === undefined ||
+          bullState === 'completed' ||
+          bullState === 'failed')
+      ) {
+        idsNeedingPublication.add(externalMatchId);
+        continue;
+      }
+
+      // No Match yet, or Match exists but this player is not linked → ensure a job.
+      if (!matchExists || needsLinkRepair) {
+        idsNeedingPublication.add(externalMatchId);
+      }
+    }
+
     const discoveredAt = new Date().toISOString();
 
-    for (const externalMatchId of missingIds) {
+    for (const externalMatchId of idsNeedingPublication) {
       const payload: MatchIngestionJobPayload = {
         provider: 'RIOT',
         externalMatchId,
@@ -254,20 +408,24 @@ export class PlayerSearchService {
         normalizationVersion: payload.normalizationVersion,
       });
 
-      const { job } = await this.ingestionJobs.createIdempotent({
-        jobType: MATCH_INGESTION_JOB_NAME,
-        idempotencyKey,
-        provider: account.provider,
-        externalResourceId: externalMatchId,
-        status: IngestionJobStatus.PENDING,
-        metadata: payload,
-        maxAttempts: this.config.matchIngestionJobAttempts,
-      });
+      const existingDurable = jobByMatchId.get(externalMatchId);
+      const { job } = existingDurable
+        ? { job: existingDurable }
+        : await this.ingestionJobs.createIdempotent({
+            jobType: MATCH_INGESTION_JOB_NAME,
+            idempotencyKey,
+            provider: account.provider,
+            externalResourceId: externalMatchId,
+            status: IngestionJobStatus.PENDING,
+            metadata: payload,
+            maxAttempts: this.config.matchIngestionJobAttempts,
+          });
 
       const result = await this.producer.enqueueMatch(payload);
       if (result.published) {
         await this.ingestionJobs.updateStatus(job.id, IngestionJobStatus.QUEUED, {
           scheduledAt: new Date(),
+          metadata: payload,
         });
       }
       if (result.warning) {
@@ -280,36 +438,12 @@ export class PlayerSearchService {
 
   private async listStoredMatches(
     playerAccountId: string,
-    discoveredMatchIds: string[],
-  ): Promise<
-    Array<
-      Match & {
-        participants: Array<{
-          championId: number;
-          win: boolean;
-          kills: number;
-          deaths: number;
-          assists: number;
-        }>;
-      }
-    >
-  > {
-    if (discoveredMatchIds.length === 0) {
-      return [];
-    }
-
-    const rows = await this.matches.listForPlayerAccount({
+    limit: number,
+  ): Promise<PlayerMatchListRow[]> {
+    return this.matches.listForPlayerAccount({
       playerAccountId,
-      limit: discoveredMatchIds.length,
+      limit,
+      includeRemakes: true,
     });
-
-    const order = new Map(discoveredMatchIds.map((id, index) => [id, index]));
-    return rows
-      .filter((row) => order.has(row.externalMatchId))
-      .sort(
-        (a, b) =>
-          (order.get(a.externalMatchId) ?? Number.MAX_SAFE_INTEGER) -
-          (order.get(b.externalMatchId) ?? Number.MAX_SAFE_INTEGER),
-      );
   }
 }

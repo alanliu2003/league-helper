@@ -204,10 +204,14 @@ model MatchParticipant {
   championId                 Int
   championName               String?
   teamId                     Int
-  /// Shared-domain TeamPosition (use NONE/INVALID when unknown — do not guess).
+  /// Raw Riot teamPosition (TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY/NONE/INVALID).
+  /// Public display uses normalizeParticipantPosition() — do not treat `role` as position.
   teamPosition               String
+  /// Raw Riot individualPosition (preserved for reprocessing).
   individualPosition         String
+  /// Raw Riot lane (TOP/MIDDLE/BOTTOM/JUNGLE/NONE) — fallback only when positions missing.
   lane                       String?
+  /// Raw Riot legacy role (SOLO/DUO/DUO_CARRY/DUO_SUPPORT) — not a public position.
   role                       String?
   rankTierAtIngestion       String?
   rankDivisionAtIngestion    String?

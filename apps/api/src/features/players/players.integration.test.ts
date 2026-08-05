@@ -7,20 +7,27 @@ import {
   ResourceNotFoundError,
 } from '@league-helper/shared';
 import { loadPlayerRefreshConfig, PLAYER_REFRESH_CONFIG } from '../../config/player-refresh.config';
+import { MockRiotGameDataProvider } from '@league-helper/server-riot';
+import { DataDragonChampionService } from '../../integrations/data-dragon/data-dragon-champion.service';
 import { GAME_DATA_PROVIDER } from '../../integrations/riot/riot.tokens';
-import { MockRiotGameDataProvider } from '../../integrations/riot/mock-riot-game-data.provider';
 import { IngestionJobRepository } from '../../persistence/ingestion-job.repository';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MatchIngestionProducer } from '../../queues/match-ingestion.producer';
 import { MATCH_INGESTION_QUEUE, REDIS_CONNECTION } from '../../queues/queue.tokens';
 import { PlayerProfileService } from './player-profile.service';
+import { PlayerRefreshService } from './player-refresh.service';
 import { PlayerSearchService } from './player-search.service';
 import { PlayersModule } from './players.module';
+
+const testDatabaseUrl =
+  process.env.TEST_DATABASE_URL ??
+  'postgresql://league:league@localhost:5432/league_helper?schema=league_helper_test';
 
 describe('players search integration', () => {
   let prisma: PrismaService;
   let search: PlayerSearchService;
   let profile: PlayerProfileService;
+  let refreshService: PlayerRefreshService;
   let jobs: IngestionJobRepository;
   let mockProvider: MockRiotGameDataProvider;
 
@@ -66,6 +73,8 @@ describe('players search integration', () => {
 
   beforeAll(async () => {
     process.env.RIOT_PROVIDER_MODE = 'mock';
+    // Never truncate the public/dev schema used by local `pnpm dev`.
+    process.env.DATABASE_URL = testDatabaseUrl;
 
     const moduleRef = await Test.createTestingModule({
       imports: [PlayersModule],
@@ -91,12 +100,30 @@ describe('players search integration', () => {
       .overrideProvider(MatchIngestionProducer)
       .useValue(producerMock)
       .overrideProvider(GAME_DATA_PROVIDER)
-      .useClass(MockRiotGameDataProvider)
+      .useFactory({
+        factory: (): MockRiotGameDataProvider => new MockRiotGameDataProvider(),
+      })
+      .overrideProvider(DataDragonChampionService)
+      .useValue({
+        getAllChampions: vi.fn(async () => []),
+        getChampionByNumericId: vi.fn(async () => null),
+        getChampionByStringId: vi.fn(async () => null),
+        getCurrentVersion: vi.fn(async () => '14.15.1'),
+        getBaseUrl: vi.fn(() => 'https://ddragon.leagueoflegends.com'),
+        buildChampionIconUrl: vi.fn(() => ''),
+        buildProfileIconUrl: vi.fn(
+          (profileIconId: number, version: string) =>
+            `https://ddragon.leagueoflegends.com/cdn/${version}/img/profileicon/${profileIconId}.png`,
+        ),
+        buildItemIconUrl: vi.fn(() => null),
+        refreshCache: vi.fn(async () => []),
+      })
       .compile();
 
     prisma = moduleRef.get(PrismaService);
     search = moduleRef.get(PlayerSearchService);
     profile = moduleRef.get(PlayerProfileService);
+    refreshService = moduleRef.get(PlayerRefreshService);
     jobs = moduleRef.get(IngestionJobRepository);
     mockProvider = moduleRef.get(GAME_DATA_PROVIDER) as MockRiotGameDataProvider;
   });
@@ -211,6 +238,8 @@ describe('players search integration', () => {
     expect(result.ranks.length).toBeGreaterThan(0);
     expect(result.mastery.length).toBeGreaterThan(0);
     expect(result.refresh.queuedMatchCount).toBeGreaterThan(0);
+    expect(result.refresh.state).toBe('PROCESSING');
+    expect(result.refresh.state).not.toBe('COMPLETE');
     expect(producerMock.enqueueMatch).toHaveBeenCalled();
 
     const jobCount = await prisma.ingestionJobRecord.count({
@@ -227,6 +256,63 @@ describe('players search integration', () => {
     expect(after).toBe(before);
   });
 
+  it('links existing participants by PUUID so matches become visible without COMPLETE-from-discovery', async () => {
+    const created = await search.search(
+      { gameName: 'LinkMe', tagLine: 'NA1', platform: 'na1', matchCount: 1 },
+      'corr-link-1',
+    );
+    const account = await prisma.playerAccount.findFirstOrThrow({
+      where: { playerId: created.player.id },
+    });
+
+    // Simulate a Match that was ingested but never linked to this account.
+    const match = await prisma.match.create({
+      data: {
+        provider: 'RIOT',
+        externalMatchId: 'NA1_FAKE_MATCH_1001',
+        regionalRoute: 'americas',
+        queueId: 420,
+        gameCreation: new Date(),
+        gameDurationSeconds: 1800,
+        gameVersion: '14.1.1',
+        ingestionStatus: 'COMPLETED',
+        normalizationVersion: '1',
+        participants: {
+          create: {
+            participantId: 1,
+            externalAccountId: account.externalAccountId,
+            championId: 1,
+            teamId: 100,
+            teamPosition: 'TOP',
+            individualPosition: 'TOP',
+            win: true,
+            kills: 1,
+            deaths: 0,
+            assists: 2,
+          },
+        },
+        teams: {
+          create: { teamId: 100, win: true },
+        },
+      },
+    });
+
+    expect(match.id).toBeTruthy();
+    expect(await prisma.matchParticipant.count({ where: { playerAccountId: account.id } })).toBe(0);
+
+    const refreshed = await search.search(
+      { gameName: 'LinkMe', tagLine: 'NA1', platform: 'na1', matchCount: 5 },
+      'corr-link-2',
+    );
+
+    expect(
+      await prisma.matchParticipant.count({ where: { playerAccountId: account.id } }),
+    ).toBeGreaterThan(0);
+    expect(refreshed.matches.some((m) => m.externalMatchId === 'NA1_FAKE_MATCH_1001')).toBe(true);
+    // Discovery alone must not mark COMPLETE while other IDs remain uningested.
+    expect(refreshed.refresh.state).not.toBe('COMPLETE');
+  });
+
   it('keeps profile reads offline from Riot', async () => {
     const created = await search.search(
       { gameName: 'ReadOnly', tagLine: 'NA1', platform: 'na1', matchCount: 2 },
@@ -239,6 +325,22 @@ describe('players search integration', () => {
     expect(spy).not.toHaveBeenCalled();
     expect(JSON.stringify(loaded)).not.toMatch(/puuid/i);
     spy.mockRestore();
+  });
+
+  it('does not fail profile when Data Dragon is unavailable', async () => {
+    const created = await search.search(
+      { gameName: 'DdDown', tagLine: 'NA1', platform: 'na1', matchCount: 2 },
+      'corr-dd',
+    );
+
+    expect(created.mastery.length).toBeGreaterThan(0);
+    expect(created.mastery.every((m) => m.championName == null)).toBe(true);
+
+    redisMock.get.mockResolvedValue(null);
+    const loaded = await profile.getProfile(created.player.id);
+    expect(loaded.player.id).toBe(created.player.id);
+    expect(loaded.mastery.every((m) => m.championId > 0)).toBe(true);
+    expect(loaded.mastery.every((m) => m.championName == null)).toBe(true);
   });
 
   it('continues when mastery fails', async () => {
@@ -256,6 +358,146 @@ describe('players search integration', () => {
     masterySpy.mockRestore();
   });
 
+  it('keeps stored matches after refresh discovers additional uningested IDs', async () => {
+    const created = await search.search(
+      { gameName: 'KeepMatches', tagLine: 'NA1', platform: 'na1', matchCount: 1 },
+      'corr-keep-1',
+    );
+    const account = await prisma.playerAccount.findFirstOrThrow({
+      where: { playerId: created.player.id },
+    });
+
+    const storedExternalId = 'NA1_STORED_KEEP_1';
+    await prisma.match.create({
+      data: {
+        provider: 'RIOT',
+        externalMatchId: storedExternalId,
+        regionalRoute: 'americas',
+        queueId: 450,
+        gameCreation: new Date('2024-06-01T12:00:00.000Z'),
+        gameDurationSeconds: 1200,
+        gameVersion: '14.1.1',
+        ingestionStatus: 'COMPLETED',
+        normalizationVersion: '1',
+        participants: {
+          create: {
+            participantId: 1,
+            externalAccountId: account.externalAccountId,
+            playerAccountId: account.id,
+            championId: 23,
+            championName: 'Tryndamere',
+            teamId: 100,
+            teamPosition: 'TOP',
+            individualPosition: 'TOP',
+            win: true,
+            kills: 3,
+            deaths: 1,
+            assists: 4,
+          },
+        },
+        teams: { create: { teamId: 100, win: true } },
+      },
+    });
+
+    const before = await profile.getMatches(created.player.id, {
+      limit: 20,
+      includeRemakes: true,
+    });
+    expect(before.items.some((m) => m.externalMatchId === storedExternalId)).toBe(true);
+    expect(before.items.some((m) => m.queueId === 450)).toBe(true);
+
+    const matchIdsSpy = vi.spyOn(mockProvider, 'getRecentMatchIds');
+    matchIdsSpy.mockResolvedValueOnce(['NA1_NEW_A', 'NA1_NEW_B', storedExternalId]);
+
+    const status = await refreshService.refresh(
+      created.player.id,
+      { matchCount: 5 },
+      'corr-keep-refresh',
+    );
+
+    expect(status.state).toBeTruthy();
+    expect(Object.prototype.hasOwnProperty.call(status, 'matches')).toBe(false);
+
+    const immediately = await profile.getMatches(created.player.id, {
+      limit: 20,
+      includeRemakes: true,
+    });
+    expect(immediately.items.some((m) => m.externalMatchId === storedExternalId)).toBe(true);
+
+    const cachedProfile = await profile.getProfile(created.player.id);
+    expect(cachedProfile.matches.some((m) => m.externalMatchId === storedExternalId)).toBe(true);
+
+    // Simulate worker completing one newly discovered match.
+    await prisma.match.create({
+      data: {
+        provider: 'RIOT',
+        externalMatchId: 'NA1_NEW_A',
+        regionalRoute: 'americas',
+        queueId: 420,
+        gameCreation: new Date('2024-06-02T12:00:00.000Z'),
+        gameDurationSeconds: 1500,
+        gameVersion: '14.1.1',
+        ingestionStatus: 'COMPLETED',
+        normalizationVersion: '1',
+        participants: {
+          create: {
+            participantId: 1,
+            externalAccountId: account.externalAccountId,
+            playerAccountId: account.id,
+            championId: 61,
+            championName: 'Orianna',
+            teamId: 100,
+            teamPosition: 'MIDDLE',
+            individualPosition: 'MIDDLE',
+            win: false,
+            kills: 2,
+            deaths: 3,
+            assists: 8,
+          },
+        },
+        teams: { create: { teamId: 100, win: false } },
+      },
+    });
+
+    const afterIngest = await profile.getMatches(created.player.id, {
+      limit: 20,
+      includeRemakes: true,
+    });
+    expect(afterIngest.items.some((m) => m.externalMatchId === storedExternalId)).toBe(true);
+    expect(afterIngest.items.some((m) => m.externalMatchId === 'NA1_NEW_A')).toBe(true);
+    expect(afterIngest.items.map((m) => m.queueId)).toEqual(expect.arrayContaining([420, 450]));
+
+    matchIdsSpy.mockRestore();
+  });
+
+  it('omits Riot queue filter for general search and refresh by default', async () => {
+    const matchIdsSpy = vi.spyOn(mockProvider, 'getRecentMatchIds');
+
+    const created = await search.search(
+      { gameName: 'AllQueues', tagLine: 'NA1', platform: 'na1', matchCount: 3 },
+      'corr-all-q',
+    );
+    expect(matchIdsSpy).toHaveBeenCalled();
+    const searchOptions = matchIdsSpy.mock.calls.at(-1)?.[1] as { queue?: number; count?: number };
+    expect(searchOptions.queue).toBeUndefined();
+    expect(searchOptions.count).toBe(3);
+
+    matchIdsSpy.mockClear();
+    await refreshService.refresh(created.player.id, { matchCount: 3 }, 'corr-all-refresh');
+    const refreshOptions = matchIdsSpy.mock.calls.at(-1)?.[1] as { queue?: number };
+    expect(refreshOptions.queue).toBeUndefined();
+
+    matchIdsSpy.mockClear();
+    await refreshService.refresh(
+      created.player.id,
+      { matchCount: 3, queueId: 420 },
+      'corr-ranked-refresh',
+    );
+    const rankedOptions = matchIdsSpy.mock.calls.at(-1)?.[1] as { queue?: number };
+    expect(rankedOptions.queue).toBe(420);
+
+    matchIdsSpy.mockRestore();
+  });
   it('leaves durable PENDING when queue publication fails', async () => {
     producerMock.enqueueMatch.mockImplementationOnce(
       async (payload: { externalMatchId: string }) => ({

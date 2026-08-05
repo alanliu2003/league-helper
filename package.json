@@ -6,12 +6,14 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "postinstall": "pnpm --filter @league-helper/shared build",
+    "postinstall": "pnpm --filter @league-helper/shared build && pnpm --filter @league-helper/server-riot build",
     "dev": "pnpm -r --parallel --filter @league-helper/web --filter @league-helper/api --filter @league-helper/worker run dev",
     "dev:web": "pnpm --filter @league-helper/web dev",
     "dev:api": "pnpm --filter @league-helper/api dev",
     "dev:worker": "pnpm --filter @league-helper/worker dev",
-    "build": "pnpm --filter @league-helper/shared build && pnpm --filter @league-helper/api build && pnpm --filter @league-helper/worker build && pnpm --filter @league-helper/web build",
+    "worker:dev": "pnpm dev:worker",
+    "worker:smoke": "pnpm --filter @league-helper/worker smoke",
+    "build": "pnpm --filter @league-helper/shared build && pnpm --filter @league-helper/server-riot build && pnpm --filter @league-helper/api build && pnpm --filter @league-helper/worker build && pnpm --filter @league-helper/web build",
     "lint": "pnpm -r --filter \"@league-helper/*\" run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -28,9 +30,12 @@
     "docker:down": "docker compose down",
     "riot:resolve": "pnpm --filter @league-helper/api riot:resolve",
     "riot:match-ids": "pnpm --filter @league-helper/api riot:match-ids",
+    "ddragon:champion": "pnpm --filter @league-helper/api ddragon:champion",
     "jobs:reconcile-match-ingestion": "pnpm --filter @league-helper/api jobs:reconcile-match-ingestion",
     "jobs:status-match-ingestion": "pnpm --filter @league-helper/api jobs:status-match-ingestion",
+    "jobs:retry-match-ingestion": "pnpm --filter @league-helper/worker jobs:retry-match-ingestion",
     "player:search:mock": "pnpm --filter @league-helper/api player:search:mock",
+    "matches:recompute-positions": "pnpm --filter @league-helper/api matches:recompute-positions",
     "test:e2e": "pnpm --filter @league-helper/web test:e2e"
   },
   "devDependencies": {

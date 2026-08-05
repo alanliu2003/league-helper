@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { PlayerMatchQueueCategorySchema } from './match-queues';
+import { NormalizedPositionSchema } from './normalized-position';
 import { ProviderIdSchema } from './provider-id';
 import { RankDivisionSchema, RankTierSchema } from './ranks';
 import { QueueTypeSchema } from './queues';
@@ -9,6 +11,9 @@ import {
   parsePlatformRoute,
   type PlatformRoute,
 } from './routing';
+
+/** Optional queue filter: omit/null = all queues; otherwise a Riot queue ID. */
+const OptionalQueueIdSchema = z.number().int().nonnegative().nullable().optional();
 
 /** Public refresh lifecycle states for search/refresh responses. */
 export const PlayerRefreshStateSchema = z.enum([
@@ -40,6 +45,8 @@ export const PublicPlayerSchema = z.object({
   regionalRoute: RegionalRouteSchema,
   riotId: RiotIdSchema,
   profileIconId: z.number().int().nullable(),
+  /** Absolute Data Dragon CDN profile icon URL; null when unavailable. */
+  profileIconUrl: z.string().url().nullable().optional(),
   summonerLevel: z.number().int().nonnegative().nullable(),
   lastResolvedAt: z.string().datetime().nullable(),
 });
@@ -72,11 +79,33 @@ export const PublicMasterySummarySchema = z.object({
   chestGranted: z.boolean().nullable(),
   tokensEarned: z.number().int().nonnegative().nullable(),
   capturedAt: z.string().datetime(),
+  /** Resolved via Data Dragon; null when metadata unavailable. */
+  championName: z.string().min(1).nullable().optional(),
+  /** Data Dragon string id (e.g. "Tryndamere"); null when unavailable. */
+  championKey: z.string().min(1).nullable().optional(),
+  /** Absolute Data Dragon CDN icon URL; null when unavailable. */
+  championIconUrl: z.string().url().nullable().optional(),
 });
 
 export type PublicMasterySummary = z.infer<typeof PublicMasterySummarySchema>;
 
-/** Stored match summary for list endpoints — never raw provider JSON. */
+/** Public match ingestion completeness — never includes raw provider payloads. */
+export const PublicMatchIngestionStatusSchema = z.enum([
+  'PENDING',
+  'IN_PROGRESS',
+  'COMPLETED',
+  'FAILED',
+  'SKIPPED',
+]);
+
+export type PublicMatchIngestionStatus = z.infer<typeof PublicMatchIngestionStatusSchema>;
+
+/**
+ * Stored match summary for list endpoints — never raw provider JSON / PUUID.
+ *
+ * `kda` is (kills + assists) / deaths when deaths > 0; when deaths === 0 it is
+ * kills + assists (perfect-game convention). Null when K/D/A are unavailable.
+ */
 export const PublicMatchSummarySchema = z.object({
   id: z.string().uuid(),
   externalMatchId: z.string().min(1),
@@ -84,12 +113,50 @@ export const PublicMatchSummarySchema = z.object({
   gameCreation: z.string().datetime(),
   gameDurationSeconds: z.number().int().nonnegative(),
   gameVersion: z.string().min(1),
+  normalizedPatch: z.string().nullable(),
   remake: z.boolean(),
+  earlySurrender: z.boolean(),
+  /** Derived display result: remake wins over win/loss. */
+  result: z.enum(['victory', 'defeat', 'remake', 'unknown']),
   championId: z.number().int().nullable(),
+  /** Data Dragon string id (e.g. "Tryndamere"); null when unavailable. */
+  championKey: z.string().min(1).nullable(),
+  championName: z.string().min(1).nullable(),
+  championIconUrl: z.string().url().nullable(),
+  /**
+   * Normalized display position (TOP/JUNGLE/MIDDLE/BOTTOM/SUPPORT/UNKNOWN).
+   * Computed at the API boundary from stored Riot fields — never raw SOLO/DUO_*.
+   */
+  teamPosition: NormalizedPositionSchema.nullable(),
+  /** Alias of teamPosition for UI copy; same normalized value. */
+  role: NormalizedPositionSchema.nullable(),
   win: z.boolean().nullable(),
   kills: z.number().int().nonnegative().nullable(),
   deaths: z.number().int().nonnegative().nullable(),
   assists: z.number().int().nonnegative().nullable(),
+  kda: z.number().nonnegative().nullable(),
+  totalCs: z.number().int().nonnegative().nullable(),
+  csPerMinute: z.number().nonnegative().nullable(),
+  /** Fraction 0–1 when timeline/match metrics available; otherwise null. */
+  killParticipation: z.number().min(0).max(1).nullable(),
+  itemIds: z.array(z.number().int().nonnegative()),
+  /** Parallel to itemIds; null entries when icon URL cannot be built. */
+  itemIconUrls: z.array(z.string().url().nullable()),
+  summonerSpell1Id: z.number().int().nonnegative().nullable(),
+  summonerSpell2Id: z.number().int().nonnegative().nullable(),
+  goldAt10: z.number().int().nullable(),
+  goldAt15: z.number().int().nullable(),
+  csAt10: z.number().int().nullable(),
+  csAt15: z.number().int().nullable(),
+  xpAt10: z.number().int().nullable(),
+  xpAt15: z.number().int().nullable(),
+  goldDifferenceAt10: z.number().int().nullable(),
+  goldDifferenceAt15: z.number().int().nullable(),
+  csDifferenceAt10: z.number().int().nullable(),
+  csDifferenceAt15: z.number().int().nullable(),
+  /** True when any timeline-derived metric is present. */
+  timelineMetricsAvailable: z.boolean(),
+  ingestionStatus: PublicMatchIngestionStatusSchema,
 });
 
 export type PublicMatchSummary = z.infer<typeof PublicMatchSummarySchema>;
@@ -136,13 +203,16 @@ export const PlayerSearchRequestSchema = z.object({
     .min(1)
     .transform((value): PlatformRoute => parsePlatformRoute(value)),
   matchCount: z.number().int().positive().max(100).optional(),
+  /** Omit or null to discover recent matches across all queues. */
+  queueId: OptionalQueueIdSchema,
 });
 
 export type PlayerSearchRequest = z.infer<typeof PlayerSearchRequestSchema>;
 
 export const PlayerRefreshRequestSchema = z.object({
   matchCount: z.number().int().positive().max(100).optional(),
-  queueId: z.number().int().positive().optional(),
+  /** Omit or null to discover recent matches across all queues. */
+  queueId: OptionalQueueIdSchema,
   force: z.boolean().optional().default(false),
 });
 
@@ -179,7 +249,9 @@ export type PlayerMasteryQuery = z.infer<typeof PlayerMasteryQuerySchema>;
 export const PlayerMatchesQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
   cursor: z.string().min(1).optional(),
-  queueId: z.coerce.number().int().optional(),
+  queueId: z.coerce.number().int().nonnegative().optional(),
+  /** Grouped display filter; ignored when queueId is provided. */
+  queueCategory: PlayerMatchQueueCategorySchema.optional(),
   championId: z.coerce.number().int().optional(),
   result: z.enum(['win', 'loss']).optional(),
   includeRemakes: z

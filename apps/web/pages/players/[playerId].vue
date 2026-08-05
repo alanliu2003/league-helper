@@ -18,29 +18,40 @@
       </NuxtLink>
     </div>
 
-    <template v-else-if="profile">
+    <template v-else-if="profileMeta && refreshStatus">
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div class="space-y-2">
           <p class="text-sm uppercase tracking-[0.18em] text-[var(--lh-accent)]">
             {{ platformLabel }}
           </p>
           <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">
-            {{ profile.player.riotId.gameName }}
-            <span class="text-[var(--lh-muted)]">#{{ profile.player.riotId.tagLine }}</span>
+            {{ profileMeta.player.riotId.gameName }}
+            <span class="text-[var(--lh-muted)]">#{{ profileMeta.player.riotId.tagLine }}</span>
           </h1>
           <p class="text-sm text-[var(--lh-muted)]">
-            Level {{ profile.player.summonerLevel ?? '—' }}
-            <span v-if="profile.player.lastResolvedAt">
-              · Resolved {{ formatTimestamp(profile.player.lastResolvedAt) }}
+            Level {{ profileMeta.player.summonerLevel ?? '—' }}
+            <span v-if="profileMeta.player.lastResolvedAt">
+              · Resolved {{ formatTimestamp(profileMeta.player.lastResolvedAt) }}
             </span>
           </p>
         </div>
 
+        <img
+          v-if="profileMeta.player.profileIconUrl && !profileIconFailed"
+          :src="profileMeta.player.profileIconUrl"
+          :alt="`${profileMeta.player.riotId.gameName} profile icon`"
+          width="64"
+          height="64"
+          class="h-16 w-16 rounded-2xl border border-white/10 bg-[var(--lh-surface)] object-cover"
+          loading="lazy"
+          @error="profileIconFailed = true"
+        />
         <div
+          v-else
           class="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-[var(--lh-surface)] text-xs text-[var(--lh-muted)]"
           aria-hidden="true"
         >
-          Icon {{ profile.player.profileIconId ?? '—' }}
+          {{ profileMeta.player.profileIconId ?? '—' }}
         </div>
       </header>
 
@@ -48,174 +59,102 @@
         <button
           type="button"
           class="rounded-lg bg-[var(--lh-accent)] px-4 py-2 text-sm font-semibold text-[#071018] transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lh-accent)] disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="refreshing || profile.refresh.state === 'PROCESSING'"
+          :disabled="refreshing || refreshStatus.state === 'PROCESSING'"
           @click="onRefresh"
         >
-          {{ refreshing ? 'Refreshing…' : 'Refresh profile' }}
+          {{ refreshing ? 'Refreshing…' : 'Refresh matches' }}
         </button>
         <p v-if="refreshMessage" class="text-sm" :class="refreshMessageClass" role="status">
           {{ refreshMessage }}
         </p>
+        <p v-if="pollTimedOut" class="text-sm text-[var(--lh-muted)]" role="status">
+          Auto-refresh paused after 5 minutes. Use refresh to check again.
+        </p>
       </div>
 
-      <PlayerRefreshStatus :refresh="profile.refresh" />
+      <PlayerRefreshStatus :refresh="refreshStatus" />
 
       <section aria-labelledby="ranks-heading" class="space-y-3">
         <h2 id="ranks-heading" class="text-lg font-medium">Ranked</h2>
         <p
-          v-if="profile.ranks.length === 0"
+          v-if="profileMeta.ranks.length === 0"
           class="rounded-lg border border-dashed border-white/15 px-4 py-6 text-sm text-[var(--lh-muted)]"
         >
           No ranked data stored for this player yet.
         </p>
         <div v-else class="grid gap-3 sm:grid-cols-2">
-          <PlayerRankCard v-for="rank in profile.ranks" :key="rank.id" :rank="rank" />
+          <PlayerRankCard v-for="rank in profileMeta.ranks" :key="rank.id" :rank="rank" />
         </div>
       </section>
 
-      <PlayerMasteryList :mastery="profile.mastery" />
+      <PlayerMasteryList :mastery="profileMeta.mastery" />
 
-      <section aria-labelledby="matches-heading" class="space-y-3">
-        <h2 id="matches-heading" class="text-lg font-medium">Recent matches</h2>
-        <PlayerMatchProcessingState
-          v-if="profile.refresh.completedMatchCount === 0"
-          :refresh="profile.refresh"
-        />
-        <p v-else class="text-sm text-[var(--lh-muted)]">
-          {{ profile.refresh.completedMatchCount }} stored match(es). Detailed cards arrive after
-          Milestone 6 ingestion.
-        </p>
-      </section>
+      <PlayerMatchList
+        :matches="matches"
+        :refresh="refreshStatus"
+        :refreshing="refreshing"
+        :matches-error="matchesError"
+        :matches-loading="matchesLoading"
+        :queue-category="queueCategory"
+        :show-manual-refresh="pollTimedOut || !isPolling"
+        @refresh="onRefresh"
+        @update:queue-category="onQueueCategory"
+      />
     </template>
   </main>
 </template>
 
 <script setup lang="ts">
-import { getPlatformDisplayName, type PlayerProfileResponse } from '@league-helper/shared';
-import { PlayerApiError, usePlayerApi } from '../../composables/usePlayerApi';
+import { getPlatformDisplayName, type PlayerMatchQueueCategory } from '@league-helper/shared';
+import { usePlayerApi } from '../../composables/usePlayerApi';
+import { createPlayerProfilePageController } from '../../composables/usePlayerProfilePage';
 
 const route = useRoute();
 const playerId = computed(() => String(route.params.playerId));
-const { getProfile, refresh, getRefreshStatus } = usePlayerApi();
+const api = usePlayerApi();
 
-const profile = ref<PlayerProfileResponse | null>(null);
-const pending = ref(true);
-const loadError = ref<string | null>(null);
-const refreshing = ref(false);
-const refreshMessage = ref<string | null>(null);
-const refreshMessageClass = ref('text-[var(--lh-muted)]');
+const {
+  profileMeta,
+  matches,
+  refreshStatus,
+  pending,
+  loadError,
+  matchesError,
+  refreshing,
+  refreshMessage,
+  refreshMessageClass,
+  isPolling,
+  pollTimedOut,
+  queueCategory,
+  matchesLoading,
+  loadProfile,
+  onRefresh,
+  setQueueCategory,
+  stopPolling,
+} = createPlayerProfilePageController(() => playerId.value, api);
 
-let pollTimer: ReturnType<typeof setInterval> | null = null;
-let pollStartedAt = 0;
-const POLL_INTERVAL_MS = 5000;
-const POLL_MAX_MS = 120_000;
+const profileIconFailed = ref(false);
+
+watch(
+  () => profileMeta.value?.player.profileIconUrl,
+  () => {
+    profileIconFailed.value = false;
+  },
+);
 
 const platformLabel = computed(() => {
-  if (!profile.value) {
+  if (!profileMeta.value) {
     return '';
   }
-  return getPlatformDisplayName(profile.value.player.platform);
+  return getPlatformDisplayName(profileMeta.value.player.platform);
 });
 
 function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-function stopPolling(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
-}
-
-function startPollingIfNeeded(): void {
-  stopPolling();
-  if (!profile.value || profile.value.refresh.state !== 'PROCESSING') {
-    return;
-  }
-
-  pollStartedAt = Date.now();
-  pollTimer = setInterval(async () => {
-    if (Date.now() - pollStartedAt > POLL_MAX_MS) {
-      stopPolling();
-      return;
-    }
-
-    try {
-      const status = await getRefreshStatus(playerId.value);
-      if (profile.value) {
-        profile.value = { ...profile.value, refresh: status };
-      }
-      if (status.state !== 'PROCESSING') {
-        stopPolling();
-        const updated = await getProfile(playerId.value);
-        profile.value = updated;
-      }
-    } catch {
-      stopPolling();
-    }
-  }, POLL_INTERVAL_MS);
-}
-
-async function loadProfile(): Promise<void> {
-  pending.value = true;
-  loadError.value = null;
-  try {
-    profile.value = await getProfile(playerId.value);
-    startPollingIfNeeded();
-  } catch (error) {
-    if (error instanceof PlayerApiError && error.code === 'RESOURCE_NOT_FOUND') {
-      loadError.value = 'Player not found.';
-    } else {
-      loadError.value = 'Unable to load player profile.';
-    }
-  } finally {
-    pending.value = false;
-  }
-}
-
-async function onRefresh(): Promise<void> {
-  if (refreshing.value || !profile.value) {
-    return;
-  }
-
-  refreshing.value = true;
-  refreshMessage.value = null;
-
-  try {
-    const status = await refresh(playerId.value);
-    if (profile.value) {
-      profile.value = { ...profile.value, refresh: status };
-    }
-    refreshMessage.value = 'Refresh started.';
-    refreshMessageClass.value = 'text-[var(--lh-ok)]';
-    startPollingIfNeeded();
-    if (status.state !== 'PROCESSING') {
-      profile.value = await getProfile(playerId.value);
-    }
-  } catch (error) {
-    if (error instanceof PlayerApiError) {
-      if (error.code === 'REFRESH_COOLDOWN') {
-        refreshMessage.value = 'Refresh cooldown active. Try again shortly.';
-        refreshMessageClass.value = 'text-[var(--lh-muted)]';
-      } else if (error.code === 'REFRESH_IN_PROGRESS') {
-        refreshMessage.value = 'A refresh is already in progress.';
-        refreshMessageClass.value = 'text-[var(--lh-muted)]';
-        startPollingIfNeeded();
-      } else if (error.code === 'ACCOUNT_IDENTITY_CONFLICT') {
-        refreshMessage.value = 'Account identity conflict — refresh aborted.';
-        refreshMessageClass.value = 'text-[var(--lh-bad)]';
-      } else {
-        refreshMessage.value = 'Refresh failed.';
-        refreshMessageClass.value = 'text-[var(--lh-bad)]';
-      }
-    } else {
-      refreshMessage.value = 'Refresh failed.';
-      refreshMessageClass.value = 'text-[var(--lh-bad)]';
-    }
-  } finally {
-    refreshing.value = false;
-  }
+async function onQueueCategory(category: PlayerMatchQueueCategory): Promise<void> {
+  await setQueueCategory(category);
 }
 
 watch(playerId, () => {

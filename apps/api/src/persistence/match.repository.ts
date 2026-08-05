@@ -10,6 +10,67 @@ import type { Match, MatchParticipant, Prisma } from '@prisma/client';
 import { MatchIngestionStatus, TimelineFetchStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
+/** Participant fields needed for public match cards (no PUUID / rawPayload). */
+export const playerMatchParticipantSelect = {
+  championId: true,
+  championName: true,
+  teamPosition: true,
+  individualPosition: true,
+  lane: true,
+  role: true,
+  win: true,
+  kills: true,
+  deaths: true,
+  assists: true,
+  totalCs: true,
+  itemIds: true,
+  summonerSpell1Id: true,
+  summonerSpell2Id: true,
+  goldAt10: true,
+  goldAt15: true,
+  csAt10: true,
+  csAt15: true,
+  xpAt10: true,
+  xpAt15: true,
+  goldDifferenceAt10: true,
+  goldDifferenceAt15: true,
+  csDifferenceAt10: true,
+  csDifferenceAt15: true,
+  killParticipation: true,
+} as const;
+
+export type PlayerMatchParticipantSummary = {
+  championId: number;
+  championName: string | null;
+  teamPosition: string;
+  individualPosition: string;
+  lane: string | null;
+  role: string | null;
+  win: boolean;
+  kills: number;
+  deaths: number;
+  assists: number;
+  totalCs: number;
+  itemIds: number[];
+  summonerSpell1Id: number;
+  summonerSpell2Id: number;
+  goldAt10: number | null;
+  goldAt15: number | null;
+  csAt10: number | null;
+  csAt15: number | null;
+  xpAt10: number | null;
+  xpAt15: number | null;
+  goldDifferenceAt10: number | null;
+  goldDifferenceAt15: number | null;
+  csDifferenceAt10: number | null;
+  csDifferenceAt15: number | null;
+  killParticipation: number | null;
+};
+
+export type PlayerMatchListRow = Match & {
+  participants: PlayerMatchParticipantSummary[];
+};
+
 export type CreateMatchIdempotentInput = {
   provider: string;
   externalMatchId: string;
@@ -102,22 +163,21 @@ export class MatchRepository {
     cursorGameCreation?: Date;
     cursorId?: string;
     queueId?: number;
+    queueIds?: number[];
+    excludeQueueIds?: number[];
     championId?: number;
     result?: 'win' | 'loss';
     includeRemakes?: boolean;
-  }): Promise<
-    Array<
-      Match & {
-        participants: Array<{
-          championId: number;
-          win: boolean;
-          kills: number;
-          deaths: number;
-          assists: number;
-        }>;
-      }
-    >
-  > {
+  }): Promise<PlayerMatchListRow[]> {
+    const queueFilter =
+      input.queueId !== undefined
+        ? { queueId: input.queueId }
+        : input.queueIds !== undefined
+          ? { queueId: { in: input.queueIds } }
+          : input.excludeQueueIds !== undefined
+            ? { queueId: { notIn: input.excludeQueueIds } }
+            : {};
+
     return this.prisma.match.findMany({
       where: {
         participants: {
@@ -128,7 +188,7 @@ export class MatchRepository {
             ...(input.result === 'loss' ? { win: false } : {}),
           },
         },
-        ...(input.queueId !== undefined ? { queueId: input.queueId } : {}),
+        ...queueFilter,
         ...(input.includeRemakes ? {} : { remake: false }),
         ...(input.cursorGameCreation && input.cursorId
           ? {
@@ -142,13 +202,7 @@ export class MatchRepository {
       include: {
         participants: {
           where: { playerAccountId: input.playerAccountId },
-          select: {
-            championId: true,
-            win: true,
-            kills: true,
-            deaths: true,
-            assists: true,
-          },
+          select: playerMatchParticipantSelect,
           take: 1,
         },
       },
@@ -164,6 +218,78 @@ export class MatchRepository {
         participants: { some: { playerAccountId } },
       },
     });
+  }
+
+  /**
+   * Link unlinked participants whose PUUID matches a known PlayerAccount.
+   * Returns the number of participant rows updated.
+   */
+  async linkParticipantsByExternalAccountId(
+    provider: string,
+    externalAccountId: string,
+    playerAccountId: string,
+  ): Promise<number> {
+    const providerId = ProviderIdSchema.parse(provider);
+    const result = await this.prisma.matchParticipant.updateMany({
+      where: {
+        externalAccountId,
+        playerAccountId: null,
+        match: { provider: providerId },
+      },
+      data: { playerAccountId },
+    });
+    return result.count;
+  }
+
+  /** Completed matches linked to this account among the given external IDs. */
+  async findLinkedCompletedExternalIds(
+    playerAccountId: string,
+    externalMatchIds: string[],
+  ): Promise<string[]> {
+    if (externalMatchIds.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.match.findMany({
+      where: {
+        externalMatchId: { in: externalMatchIds },
+        ingestionStatus: MatchIngestionStatus.COMPLETED,
+        participants: { some: { playerAccountId } },
+      },
+      select: { externalMatchId: true },
+    });
+    return rows.map((row) => row.externalMatchId);
+  }
+
+  /**
+   * External match IDs that already have a Match row but are not linked to this
+   * player account (even when the participant PUUID matches).
+   */
+  async findExistingExternalIdsMissingLink(
+    provider: string,
+    playerAccountId: string,
+    externalMatchIds: string[],
+  ): Promise<string[]> {
+    if (externalMatchIds.length === 0) {
+      return [];
+    }
+    const providerId = ProviderIdSchema.parse(provider);
+    const existing = await this.prisma.match.findMany({
+      where: {
+        provider: providerId,
+        externalMatchId: { in: externalMatchIds },
+      },
+      select: {
+        externalMatchId: true,
+        participants: {
+          where: { playerAccountId },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+    return existing
+      .filter((match) => match.participants.length === 0)
+      .map((match) => match.externalMatchId);
   }
 
   /**

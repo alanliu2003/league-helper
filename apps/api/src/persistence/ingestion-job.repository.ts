@@ -92,6 +92,14 @@ export class IngestionJobRepository {
     });
   }
 
+  findQueued(jobType: string, batchSize: number): Promise<IngestionJobRecord[]> {
+    return this.prisma.ingestionJobRecord.findMany({
+      where: { jobType, status: IngestionJobStatus.QUEUED },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+      take: batchSize,
+    });
+  }
+
   findByExternalResourceIds(
     jobType: string,
     provider: string,

@@ -56,13 +56,7 @@ describe('RiotApiClient', () => {
     const logger = {
       log: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn(),
-      fatal: vi.fn(),
-      debug: vi.fn(),
-      verbose: vi.fn(),
-      setContext: vi.fn(),
-      localInstance: undefined,
-    } as unknown as import('@nestjs/common').Logger;
+    };
 
     const { fetchFn, calls } = createMockFetch([
       { status: 403, body: mockHttpErrorBodies()['403'] },

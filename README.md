@@ -240,7 +240,7 @@ Set `RIOT_PROVIDER_MODE=real` and a valid `RIOT_API_KEY` in `apps/api/.env` befo
 - ~~No automatic Prisma ingestion of Riot responses~~ → Milestone 5 persists identity, ranks, mastery, and durable ingestion jobs
 - ~~No public player-search HTTP controller~~ → Milestone 5
 - ~~No frontend player pages~~ → Milestone 5 minimal search UI
-- ~~No BullMQ match-ingestion jobs~~ → Milestone 5 produces jobs (processing waits for Milestone 6)
+- ~~No BullMQ match-ingestion jobs~~ → Milestone 5 produces jobs; Milestone 6 consumes them
 - Automated tests never call Riot’s live API (HTTP is mocked)
 
 ## Player search (Milestone 5)
@@ -298,7 +298,7 @@ pnpm jobs:reconcile-match-ingestion
 pnpm player:search:mock --game-name "Example" --tag-line "NA1" --platform na1
 ```
 
-**Current limitation:** the worker does **not** consume `match-ingestion` jobs. They remain waiting until Milestone 6. Do not add a placeholder processor that discards them.
+Match IDs are queued for the worker (Milestone 6). Search/refresh responses return any already-stored match summaries immediately.
 
 ### Refresh, cache, and coalescing
 
@@ -328,12 +328,112 @@ pnpm dev
 # Search a real Riot ID on a supported platform
 ```
 
-### What Milestone 5 still does **not** do
+## Match ingestion + Data Dragon (Milestone 6)
 
-- Complete match-ingestion processing / match detail cards
-- Timeline metrics, champion aggregates, Data Dragon sync
-- Patch analysis, counter analysis, AI coaching, authentication
-- Polished OP.GG-style profile pages
+Milestone 6 finishes the search → queue → worker → match-card loop and enriches mastery/match champions via public Data Dragon (no API key).
+
+### Why mastery used to show only numbers
+
+Mastery snapshots store Riot’s numeric `championId`. Names and icons come from Data Dragon (`versions.json` + `champion.json`), cached in Redis + memory by `DataDragonChampionService` in the API. Failures degrade to `Champion #<id>` without breaking the profile.
+
+### Why matches are queued
+
+Search/refresh discovers match IDs only. Match-v5 details and timelines are fetched by the worker so the HTTP request stays fast and rate limits stay off the request path. The UI polls refresh status + profile while jobs remain queued/active/delayed (5s interval, max 5 minutes), then offers manual refresh.
+
+**Refresh state is ingestion-aware:** discovering match IDs (or syncing ranks/mastery) is not `COMPLETE`. `COMPLETE` means every discovered match is persisted **and linked** to the player, with no queued/active/delayed/pending work left. While jobs run you should see `PROCESSING` or `PARTIAL`.
+
+### You must run the worker
+
+`pnpm dev` starts web, API, **and** worker. If you run API/web alone, jobs stay queued and match cards never appear.
+
+Primary worker command: **`pnpm dev:worker`** (alias: `pnpm worker:dev`).  
+Optional smoke-only queue (`league-helper-default`): `pnpm worker:smoke` — not started by normal worker startup.
+
+```bash
+pnpm docker:up
+pnpm db:migrate:deploy
+pnpm --filter @league-helper/shared build
+pnpm --filter @league-helper/server-riot build
+pnpm dev
+# or separately:
+# pnpm dev:api
+# pnpm dev:worker
+# pnpm dev:web
+```
+
+### Architecture
+
+```mermaid
+sequenceDiagram
+  participant Browser
+  participant Nuxt
+  participant API
+  participant DataDragon
+  participant PostgreSQL
+  participant BullMQ
+  participant Worker
+  participant Riot
+
+  Browser->>Nuxt: Search Riot ID
+  Nuxt->>API: POST /api/players/search
+  API->>Riot: resolve + ranks + mastery + matchIds
+  API->>PostgreSQL: upsert player snapshots PENDING jobs
+  API->>BullMQ: enqueue INGEST_MATCH
+  API->>DataDragon: enrich mastery champion metadata
+  API-->>Nuxt: profile + refresh counts
+  Nuxt->>Browser: player page + processing banner
+  loop while queued or active or delayed
+    Nuxt->>API: GET refresh-status + profile
+    Note over API: GET never calls Riot
+  end
+  Worker->>BullMQ: claim INGEST_MATCH
+  Worker->>PostgreSQL: mark RUNNING
+  Worker->>Riot: match-v5 (+ timeline optional)
+  Worker->>PostgreSQL: persist match participants metrics COMPLETE
+  Worker->>BullMQ: complete job
+  Nuxt->>API: poll sees completed matches
+  API->>DataDragon: enrich match champion or item icons
+  API-->>Nuxt: PublicMatchSummary cards
+```
+
+### Ingestion lifecycle and retries
+
+1. Validate job payload → durable `RUNNING`.
+2. Skip if match already `COMPLETED`.
+3. Fetch/normalize/persist match + teams + participants.
+4. Fetch timeline when practical (match can still complete if timeline fails).
+5. Compute timeline metrics (gold/CS/XP at 10/15, KP, etc.) → durable `COMPLETED`.
+6. Best-effort profile cache invalidation → BullMQ complete.
+
+Retries: typed provider errors; `429` → delayed BullMQ job (not “stuck”); permanent failures → durable `FAILED` / `DEAD_LETTERED`.
+
+### Timeline is optional
+
+Match cards render without timeline metrics. `timelineMetricsAvailable` indicates whether early-game fields are present. Objective-proximity death metrics remain deferred.
+
+### Queue status commands
+
+```bash
+pnpm jobs:status-match-ingestion
+pnpm jobs:reconcile-match-ingestion
+pnpm jobs:retry-match-ingestion
+pnpm player:search:mock --game-name "ExamplePlayer" --tag-line "NA1" --platform na1
+```
+
+### Existing jobs
+
+Jobs queued before the worker existed remain in Redis/Postgres. Start the worker (and run reconcile if durable rows are stuck `PENDING`) to drain them — no need to re-search unless you want fresh discovery.
+
+### Playwright e2e note
+
+`apps/web` e2e covers mock search → processing banner + no PUUID leak. It does **not** start a full worker drain (too heavy for the default suite). For cards end-to-end, run `pnpm dev` (includes worker) and search `ExamplePlayer#NA1` manually, or rely on API/worker unit tests for mapping and ingestion.
+
+### What Milestone 6 still does **not** do
+
+- Champion aggregates, patch analysis, matchups, or AI coaching
+- Polished OP.GG-style profile pages / live game coaching
+- Mainland Chinese server support
+- Authentication
 
 ## Notes
 

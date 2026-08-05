@@ -15,11 +15,12 @@ async function main(): Promise<void> {
     console.log(
       JSON.stringify({
         ok: true,
-        scanned: summary.scanned,
+        examined: summary.examined,
+        alreadyPresent: summary.alreadyPresent,
         published: summary.published,
-        alreadyQueued: summary.alreadyQueued,
-        invalidMetadata: summary.invalidMetadata,
-        publicationFailed: summary.publicationFailed,
+        repairedQueuedWithoutRedisJob: summary.repairedQueuedWithoutRedisJob,
+        invalid: summary.invalid,
+        failed: summary.failed,
       }),
     );
   } finally {

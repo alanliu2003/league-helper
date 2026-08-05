@@ -108,7 +108,7 @@ export class PlayerRefreshStatusService {
   }
 
   async compute(input: ComputeRefreshStatusInput): Promise<PlayerRefreshStatus> {
-    const warnings = input.warnings ?? [];
+    const warnings = [...(input.warnings ?? [])];
     const meta = await this.readMeta(input.account.id);
     const discoveredMatchIds =
       input.discoveredMatchIds.length > 0 ? input.discoveredMatchIds : meta.lastDiscoveredMatchIds;
@@ -116,30 +116,28 @@ export class PlayerRefreshStatusService {
       input.requestedMatchCount > 0 ? input.requestedMatchCount : meta.lastRequestedMatchCount;
     const provider = input.account.provider;
 
-    const [existingMatches, statusCounts, completedCount] = await Promise.all([
+    const [existingMatches, linkedCompletedIds, durableJobs] = await Promise.all([
       this.matchRepository.findExistingByExternalIds(provider, discoveredMatchIds),
-      this.ingestionJobs.countByStatuses(MATCH_INGESTION_JOB_NAME, provider, discoveredMatchIds),
-      this.matchRepository.countCompletedForPlayerAccount(input.account.id),
+      this.matchRepository.findLinkedCompletedExternalIds(input.account.id, discoveredMatchIds),
+      this.ingestionJobs.findByExternalResourceIds(
+        MATCH_INGESTION_JOB_NAME,
+        provider,
+        discoveredMatchIds,
+      ),
     ]);
 
     const knownFromDiscovery = existingMatches.length;
-    const countByStatus = new Map(statusCounts.map((row) => [row.status, row.count]));
+    const linkedCompletedSet = new Set(linkedCompletedIds);
+    const completedMatchCount = linkedCompletedIds.length;
 
-    const durablePending = countByStatus.get(IngestionJobStatus.PENDING) ?? 0;
-    const durableQueued = countByStatus.get(IngestionJobStatus.QUEUED) ?? 0;
-    const durableRunning = countByStatus.get(IngestionJobStatus.RUNNING) ?? 0;
-    const durableCompleted = countByStatus.get(IngestionJobStatus.COMPLETED) ?? 0;
-    const durableFailed =
-      (countByStatus.get(IngestionJobStatus.FAILED) ?? 0) +
-      (countByStatus.get(IngestionJobStatus.DEAD_LETTERED) ?? 0);
+    const durableByExternal = new Map(
+      durableJobs.map((job) => [job.externalResourceId ?? '', job] as const),
+    );
 
-    let bullWaiting = 0;
-    let bullActive = 0;
-    let bullDelayed = 0;
-    let bullFailed = 0;
-
-    if (discoveredMatchIds.length > 0) {
-      const jobIds = discoveredMatchIds.map((externalMatchId) =>
+    const jobIdsByExternal = new Map<string, string>();
+    for (const externalMatchId of discoveredMatchIds) {
+      jobIdsByExternal.set(
+        externalMatchId,
         buildMatchIngestionBullMqJobId({
           provider,
           regionalRoute: input.account.regionalRoute,
@@ -147,28 +145,88 @@ export class PlayerRefreshStatusService {
           normalizationVersion: MATCH_INGESTION_NORMALIZATION_VERSION,
         }),
       );
-      const states = await this.producer.getJobStates(jobIds);
-      for (const state of states.values()) {
-        if (state === 'waiting') {
-          bullWaiting += 1;
-        } else if (state === 'active') {
-          bullActive += 1;
-        } else if (state === 'delayed') {
-          bullDelayed += 1;
-        } else if (state === 'failed') {
-          bullFailed += 1;
-        }
+    }
+    const states =
+      discoveredMatchIds.length > 0
+        ? await this.producer.getJobStates([...jobIdsByExternal.values()])
+        : new Map<string, string | null>();
+
+    let queuedMatchCount = 0;
+    let activeMatchCount = 0;
+    let delayedMatchCount = 0;
+    let failedMatchCount = 0;
+    let durableMissingRedis = 0;
+    let unresolvedMissing = 0;
+
+    for (const externalMatchId of discoveredMatchIds) {
+      if (linkedCompletedSet.has(externalMatchId)) {
+        continue;
       }
+
+      const bullJobId = jobIdsByExternal.get(externalMatchId);
+      const bullState = bullJobId ? (states.get(bullJobId) ?? null) : null;
+      const durable = durableByExternal.get(externalMatchId);
+
+      if (bullState === 'active' || durable?.status === IngestionJobStatus.RUNNING) {
+        activeMatchCount += 1;
+        continue;
+      }
+      if (bullState === 'delayed') {
+        delayedMatchCount += 1;
+        continue;
+      }
+      if (bullState === 'waiting') {
+        queuedMatchCount += 1;
+        continue;
+      }
+      if (
+        durable?.status === IngestionJobStatus.FAILED ||
+        durable?.status === IngestionJobStatus.DEAD_LETTERED
+      ) {
+        failedMatchCount += 1;
+        continue;
+      }
+      // BullMQ "failed" without durable dead-letter still counts as failed work.
+      if (bullState === 'failed') {
+        failedMatchCount += 1;
+        continue;
+      }
+
+      // Completed BullMQ jobs without a linked Match are stranded — count as queued repair work.
+      if (
+        durable &&
+        (durable.status === IngestionJobStatus.PENDING ||
+          durable.status === IngestionJobStatus.QUEUED) &&
+        (bullState === null || bullState === undefined || bullState === 'completed')
+      ) {
+        durableMissingRedis += 1;
+        queuedMatchCount += 1;
+        continue;
+      }
+
+      if (
+        durable?.status === IngestionJobStatus.PENDING ||
+        durable?.status === IngestionJobStatus.QUEUED
+      ) {
+        queuedMatchCount += 1;
+        continue;
+      }
+
+      // Discovered but not linked-complete and no in-flight job classification.
+      unresolvedMissing += 1;
     }
 
-    const queuedMatchCount = durablePending + durableQueued + bullWaiting;
-    const activeMatchCount = durableRunning + bullActive;
-    const delayedMatchCount = bullDelayed;
-    const failedMatchCount = durableFailed + bullFailed;
-    const completedMatchCount = Math.max(completedCount, knownFromDiscovery + durableCompleted);
+    if (durableMissingRedis > 0) {
+      warnings.push({
+        code: 'INGESTION_STATE_INCONSISTENT',
+        message:
+          'Some durable ingestion jobs are marked queued but missing from Redis. Reconciliation can repair them.',
+      });
+    }
 
-    const inFlight = queuedMatchCount + activeMatchCount + delayedMatchCount;
-    const rateLimited = warnings.some((w) => w.code === 'PROVIDER_RATE_LIMITED');
+    const waitingOrActive = queuedMatchCount + activeMatchCount;
+
+    const rateLimitedWarning = warnings.some((w) => w.code === 'PROVIDER_RATE_LIMITED');
     const retryAfterSeconds = warnings.find(
       (w) => w.retryAfterSeconds !== undefined,
     )?.retryAfterSeconds;
@@ -180,12 +238,13 @@ export class PlayerRefreshStatusService {
 
     const state = this.resolveState({
       discoveredCount: discoveredMatchIds.length,
-      knownCount: knownFromDiscovery,
-      inFlight,
+      linkedCompletedCount: completedMatchCount,
+      waitingOrActive,
+      delayedCount: delayedMatchCount,
       failedCount: failedMatchCount,
-      rateLimited,
+      unresolvedMissing,
+      rateLimited: rateLimitedWarning || (delayedMatchCount > 0 && waitingOrActive === 0),
       isStale,
-      requestedMatchCount,
     });
 
     return PlayerRefreshStatusSchema.parse({
@@ -208,37 +267,61 @@ export class PlayerRefreshStatusService {
     });
   }
 
+  /**
+   * Ingestion-aware refresh state. Profile sync success alone must never yield COMPLETE.
+   */
   private resolveState(input: {
     discoveredCount: number;
-    knownCount: number;
-    inFlight: number;
+    linkedCompletedCount: number;
+    waitingOrActive: number;
+    delayedCount: number;
     failedCount: number;
+    unresolvedMissing: number;
     rateLimited: boolean;
     isStale: boolean;
-    requestedMatchCount: number;
   }): PlayerRefreshState {
-    if (input.rateLimited) {
-      return 'RATE_LIMITED';
-    }
-    if (input.inFlight > 0) {
-      return 'PROCESSING';
-    }
     if (input.discoveredCount === 0) {
       return input.isStale ? 'STALE' : 'IDLE';
     }
-    if (input.knownCount >= input.discoveredCount) {
-      return input.isStale ? 'STALE' : 'COMPLETE';
+
+    const remainingWork =
+      input.waitingOrActive + input.delayedCount + input.unresolvedMissing + input.failedCount;
+
+    if (input.rateLimited && input.delayedCount > 0 && input.waitingOrActive === 0) {
+      return 'RATE_LIMITED';
     }
-    if (input.failedCount > 0 && input.knownCount > 0) {
+
+    if (input.waitingOrActive > 0) {
+      return input.linkedCompletedCount > 0 ? 'PARTIAL' : 'PROCESSING';
+    }
+
+    if (input.linkedCompletedCount > 0 && remainingWork > 0) {
       return 'PARTIAL';
     }
-    if (input.failedCount > 0 && input.knownCount === 0) {
+
+    if (
+      input.linkedCompletedCount >= input.discoveredCount &&
+      input.waitingOrActive === 0 &&
+      input.delayedCount === 0 &&
+      input.failedCount === 0 &&
+      input.unresolvedMissing === 0
+    ) {
+      return input.isStale ? 'STALE' : 'COMPLETE';
+    }
+
+    if (input.failedCount > 0 && input.linkedCompletedCount === 0) {
       return 'FAILED';
     }
-    if (input.isStale && input.knownCount < input.requestedMatchCount) {
+
+    if (input.unresolvedMissing > 0 || input.delayedCount > 0) {
+      return input.linkedCompletedCount > 0 ? 'PARTIAL' : 'PROCESSING';
+    }
+
+    if (input.isStale) {
       return 'STALE';
     }
-    return 'IDLE';
+
+    return input.linkedCompletedCount > 0 ? 'PARTIAL' : 'PROCESSING';
   }
 
   private async readMeta(accountId: string): Promise<RefreshMeta> {

@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import {
   type ChampionMastery,
   type GameDataProvider,
@@ -35,7 +34,6 @@ import {
 const MATCH_IDS_MAX_COUNT = 100;
 const MATCH_IDS_DEFAULT_COUNT = 20;
 
-@Injectable()
 export class RiotGameDataProvider implements GameDataProvider {
   constructor(private readonly client: RiotApiClient) {}
 

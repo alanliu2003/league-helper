@@ -6,7 +6,7 @@ import {
   RefreshInProgressError,
   ValidationFailureError,
   type PlayerRefreshRequest,
-  type PlayerSearchResponse,
+  type PlayerRefreshStatus,
 } from '@league-helper/shared';
 import {
   PLAYER_REFRESH_CONFIG,
@@ -42,7 +42,7 @@ export class PlayerRefreshService {
     playerId: string,
     request: PlayerRefreshRequest,
     correlationId: string,
-  ): Promise<PlayerSearchResponse> {
+  ): Promise<PlayerRefreshStatus> {
     const parsed = PlayerRefreshRequestSchema.parse(request);
     if (parsed.force && process.env.NODE_ENV !== 'development') {
       throw new ValidationFailureError('force refresh is only allowed in development.');
@@ -94,7 +94,8 @@ export class PlayerRefreshService {
       });
 
       const matchCount = this.searchService.resolveMatchCount(parsed.matchCount);
-      const queueId = parsed.queueId ?? this.config.defaultQueueId;
+      const queueId =
+        parsed.queueId !== undefined ? parsed.queueId : this.config.defaultMatchQueueId;
 
       const response = await this.searchService.syncPlayerData({
         account: updated,
@@ -104,6 +105,8 @@ export class PlayerRefreshService {
         correlationId,
       });
 
+      // Invalidate then cache authoritative stored profile (including existing matches).
+      // Refresh HTTP response returns status only — never treat it as the match list.
       await this.cache.invalidate(playerId);
       await this.cache.setProfile(playerId, response);
       await this.refreshStatus.recordRefreshCompleted(account.id);
@@ -119,8 +122,8 @@ export class PlayerRefreshService {
         refreshState: response.refresh.state,
       });
 
-      assertNoPuuidLeak(response);
-      return response;
+      assertNoPuuidLeak(response.refresh);
+      return response.refresh;
     } finally {
       await this.releaseLock(lockKey);
     }

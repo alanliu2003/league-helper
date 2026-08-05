@@ -1,5 +1,6 @@
 import { Queue, Worker, type ConnectionOptions, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
+import { createBullMqConnectionOptions, resolveBullMqPrefix } from '@league-helper/shared';
 import { QUEUE_NAME, getRedisUrl } from './config.js';
 import { logger } from './logger.js';
 
@@ -14,27 +15,35 @@ export function createRedisConnection(): Redis {
 }
 
 export function createDefaultQueue(connection: ConnectionOptions): Queue<PingJobData> {
-  return new Queue<PingJobData>(QUEUE_NAME, { connection });
+  return new Queue<PingJobData>(QUEUE_NAME, {
+    connection,
+    prefix: resolveBullMqPrefix(),
+  });
 }
 
 /**
  * Processes only the default smoke-test queue (`league-helper-default`).
- *
- * Intentionally does NOT consume `match-ingestion` / INGEST_MATCH jobs.
- * Those jobs are produced by the API in Milestone 5 and remain waiting
- * until Milestone 6 implements a dedicated match-ingestion processor.
- * Do not add a placeholder processor that discards or auto-completes them.
+ * Used exclusively by `pnpm worker:smoke`, never by `pnpm dev:worker`.
  */
 export function createDefaultWorker(connection: ConnectionOptions): Worker<PingJobData> {
   return new Worker<PingJobData>(
     QUEUE_NAME,
     async (job: Job<PingJobData>) => {
-      logger.info('Processed job', {
+      logger.info('Processed smoke job', {
         jobId: job.id ?? 'unknown',
         requestedAt: job.data.requestedAt,
       });
       return { processedAt: new Date().toISOString() };
     },
-    { connection },
+    {
+      connection,
+      prefix: resolveBullMqPrefix(),
+    },
   );
+}
+
+export function getSharedBullMqConnectionOptions(): ReturnType<
+  typeof createBullMqConnectionOptions
+> {
+  return createBullMqConnectionOptions(getRedisUrl());
 }

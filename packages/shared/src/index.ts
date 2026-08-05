@@ -72,7 +72,33 @@ export { RankTierSchema, RankDivisionSchema, type RankTier, type RankDivision } 
 
 export { QueueTypeSchema, type QueueType } from './queues';
 
+export {
+  RANKED_SOLO_QUEUE_ID,
+  RANKED_FLEX_QUEUE_ID,
+  NORMAL_DRAFT_QUEUE_ID,
+  NORMAL_BLIND_QUEUE_ID,
+  QUICKPLAY_QUEUE_ID,
+  ARAM_QUEUE_ID,
+  ARENA_QUEUE_ID,
+  SWIFTPLAY_QUEUE_ID,
+  CUSTOM_QUEUE_ID,
+  MATCH_QUEUE_LABELS,
+  PlayerMatchQueueCategorySchema,
+  getMatchQueueLabel,
+  resolveMatchQueueCategoryFilter,
+  type PlayerMatchQueueCategory,
+} from './match-queues';
+
 export { TeamPositionSchema, type TeamPosition } from './positions';
+
+export {
+  NormalizedPositionSchema,
+  normalizeParticipantPosition,
+  getNormalizedPositionLabel,
+  legacyBuggyPublicRole,
+  type NormalizedPosition,
+  type NormalizeParticipantPositionInput,
+} from './normalized-position';
 
 export { PatchVersionSchema, parsePatchVersion, type PatchVersion } from './patch';
 
@@ -113,10 +139,15 @@ export {
   MatchIngestionJobTypeSchema,
   buildMatchIngestionIdempotencyKey,
   buildMatchIngestionBullMqJobId,
+  BULLMQ_DEFAULT_PREFIX,
+  parseBullMqRedisConnectionInfo,
+  createBullMqConnectionOptions,
+  resolveBullMqPrefix,
   type MatchIngestionQueueName,
   type MatchIngestionJobName,
   type MatchIngestionJobPayload,
   type MatchIngestionJobType,
+  type BullMqRedisConnectionInfo,
 } from './job-queues';
 
 export {
@@ -125,6 +156,7 @@ export {
   PublicPlayerSchema,
   PublicRankSummarySchema,
   PublicMasterySummarySchema,
+  PublicMatchIngestionStatusSchema,
   PublicMatchSummarySchema,
   PlayerRefreshStatusSchema,
   PlayerSearchResponseSchema,
@@ -140,6 +172,7 @@ export {
   type PublicPlayer,
   type PublicRankSummary,
   type PublicMasterySummary,
+  type PublicMatchIngestionStatus,
   type PublicMatchSummary,
   type PlayerRefreshStatus,
   type PlayerSearchResponse,

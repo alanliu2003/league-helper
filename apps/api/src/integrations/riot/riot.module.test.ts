@@ -1,12 +1,14 @@
 import { Test } from '@nestjs/testing';
 import type { GameDataProvider } from '@league-helper/shared';
+import {
+  MockRiotGameDataProvider,
+  RiotGameDataProvider,
+  type RiotConfig,
+} from '@league-helper/server-riot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HealthService } from '../../health/health.service';
 import { RiotModule } from './riot.module';
 import { GAME_DATA_PROVIDER, RIOT_CONFIG } from './riot.tokens';
-import { MockRiotGameDataProvider } from './mock-riot-game-data.provider';
-import { RiotGameDataProvider } from './riot-game-data.provider';
-import type { RiotConfig } from './riot.config';
 
 describe('RiotModule DI', () => {
   const previous = {

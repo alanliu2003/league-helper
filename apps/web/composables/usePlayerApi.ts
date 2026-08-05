@@ -1,13 +1,17 @@
 import {
   ApiErrorResponseSchema,
+  CursorPageSchema,
   PlayerProfileResponseSchema,
   PlayerRefreshStatusSchema,
   PlayerSearchResponseSchema,
+  PublicMatchSummarySchema,
+  type PlayerMatchQueueCategory,
   type PlayerProfileResponse,
   type PlayerRefreshRequest,
   type PlayerRefreshStatus,
   type PlayerSearchRequest,
   type PlayerSearchResponse,
+  type PublicMatchSummary,
 } from '@league-helper/shared';
 
 export class PlayerApiError extends Error {
@@ -44,6 +48,21 @@ function parseApiError(error: unknown): PlayerApiError {
   );
 }
 
+const MatchesPageSchema = CursorPageSchema(PublicMatchSummarySchema);
+
+export type PlayerMatchesPage = {
+  items: PublicMatchSummary[];
+  nextCursor: string | null;
+};
+
+export type GetMatchesOptions = {
+  limit?: number;
+  cursor?: string;
+  queueId?: number;
+  queueCategory?: PlayerMatchQueueCategory;
+  includeRemakes?: boolean;
+};
+
 export function usePlayerApi() {
   const config = useRuntimeConfig();
   const apiBase = config.public.apiBase as string;
@@ -69,11 +88,32 @@ export function usePlayerApi() {
     }
   }
 
+  async function getMatches(
+    playerId: string,
+    options: GetMatchesOptions = {},
+  ): Promise<PlayerMatchesPage> {
+    try {
+      const response = await $fetch(`${apiBase}/api/players/${playerId}/matches`, {
+        query: {
+          limit: options.limit ?? 20,
+          cursor: options.cursor,
+          queueId: options.queueId,
+          queueCategory: options.queueCategory === 'all' ? undefined : options.queueCategory,
+          includeRemakes: options.includeRemakes ?? true,
+        },
+      });
+      return MatchesPageSchema.parse(response);
+    } catch (error) {
+      throw parseApiError(error);
+    }
+  }
+
   async function refresh(
     playerId: string,
     body: PlayerRefreshRequest = { force: false },
   ): Promise<PlayerRefreshStatus> {
     try {
+      // Do not send queueId by default — all-queue discovery.
       const response = await $fetch(`${apiBase}/api/players/${playerId}/refresh`, {
         method: 'POST',
         body,
@@ -97,6 +137,7 @@ export function usePlayerApi() {
     apiBase,
     search,
     getProfile,
+    getMatches,
     refresh,
     getRefreshStatus,
   };

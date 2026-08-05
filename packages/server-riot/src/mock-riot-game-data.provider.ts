@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import {
   type ChampionMastery,
   type GameDataProvider,
@@ -26,7 +25,6 @@ import {
  * Deterministic GameDataProvider for local development and automated tests.
  * Requires no network access and no Riot API key.
  */
-@Injectable()
 export class MockRiotGameDataProvider implements GameDataProvider {
   async resolvePlayer(input: {
     gameName: string;

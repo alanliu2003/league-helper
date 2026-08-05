@@ -1,7 +1,12 @@
 import { Global, Module } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
-import { MATCH_INGESTION_QUEUE_NAME, type MatchIngestionJobPayload } from '@league-helper/shared';
+import {
+  MATCH_INGESTION_QUEUE_NAME,
+  createBullMqConnectionOptions,
+  resolveBullMqPrefix,
+  type MatchIngestionJobPayload,
+} from '@league-helper/shared';
 import { loadPlayerRefreshConfig, PLAYER_REFRESH_CONFIG } from '../config/player-refresh.config';
 import { PersistenceModule } from '../persistence/persistence.module';
 import { IngestionReconciliationService } from './ingestion-reconciliation.service';
@@ -35,10 +40,8 @@ import { MATCH_INGESTION_QUEUE, REDIS_CONNECTION } from './queue.tokens';
         // Own connection options (not a shared ioredis instance) so Queue.close()
         // does not leave duplicate Redis sockets that hang Nest shutdown.
         return new Queue<MatchIngestionJobPayload>(queueName, {
-          connection: {
-            url: config.redisUrl,
-            maxRetriesPerRequest: null,
-          },
+          connection: createBullMqConnectionOptions(config.redisUrl),
+          prefix: resolveBullMqPrefix(),
         });
       },
     },

@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import type { GameDataProvider } from '@league-helper/shared';
-import { loadRiotConfig, type RiotConfig } from './riot.config';
-import { RiotApiClient } from './riot-api.client';
-import { RiotGameDataProvider } from './riot-game-data.provider';
-import { MockRiotGameDataProvider } from './mock-riot-game-data.provider';
+import {
+  loadRiotConfig,
+  MockRiotGameDataProvider,
+  RiotApiClient,
+  RiotGameDataProvider,
+  type RiotConfig,
+} from '@league-helper/server-riot';
 import { GAME_DATA_PROVIDER, RIOT_CONFIG } from './riot.tokens';
 
 @Module({
@@ -17,8 +20,15 @@ import { GAME_DATA_PROVIDER, RIOT_CONFIG } from './riot.tokens';
       useFactory: (config: RiotConfig): RiotApiClient => RiotApiClient.create(config),
       inject: [RIOT_CONFIG],
     },
-    MockRiotGameDataProvider,
-    RiotGameDataProvider,
+    {
+      provide: MockRiotGameDataProvider,
+      useFactory: (): MockRiotGameDataProvider => new MockRiotGameDataProvider(),
+    },
+    {
+      provide: RiotGameDataProvider,
+      useFactory: (client: RiotApiClient): RiotGameDataProvider => new RiotGameDataProvider(client),
+      inject: [RiotApiClient],
+    },
     {
       provide: GAME_DATA_PROVIDER,
       useFactory: (

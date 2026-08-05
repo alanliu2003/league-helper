@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   InvalidRegionalRouteError,
   UnsupportedPlatformRouteError,
@@ -21,49 +20,35 @@ import type {
   RiotRequestOptions,
   SleepFn,
 } from './riot-api.types';
+import { createConsoleRiotLogger, type RiotLogger } from './riot-logger';
 import { createRiotResponseMetadata } from './riot-response-metadata';
 import { decideRetry, sleep } from './riot-retry';
-import { RIOT_CONFIG } from './riot.tokens';
 
 export type RiotApiClientDependencies = {
   fetchFn?: FetchFn;
   sleepFn?: SleepFn;
   randomFn?: RandomFn;
-  logger?: Logger;
+  logger?: RiotLogger;
 };
 
-@Injectable()
 export class RiotApiClient {
   private readonly config: RiotConfig;
   private fetchFn: FetchFn;
   private sleepFn: SleepFn;
   private randomFn: RandomFn;
-  private logger: Logger;
+  private logger: RiotLogger;
 
-  constructor(@Inject(RIOT_CONFIG) config: RiotConfig) {
+  constructor(config: RiotConfig, deps: RiotApiClientDependencies = {}) {
     this.config = config;
-    this.fetchFn = fetch.bind(globalThis);
-    this.sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    this.randomFn = Math.random;
-    this.logger = new Logger(RiotApiClient.name);
+    this.fetchFn = deps.fetchFn ?? fetch.bind(globalThis);
+    this.sleepFn = deps.sleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.randomFn = deps.randomFn ?? Math.random;
+    this.logger = deps.logger ?? createConsoleRiotLogger(RiotApiClient.name);
   }
 
   /** Test-friendly factory with injectable fetch/sleep/random. */
   static create(config: RiotConfig, deps: RiotApiClientDependencies = {}): RiotApiClient {
-    const client = new RiotApiClient(config);
-    if (deps.fetchFn) {
-      client.fetchFn = deps.fetchFn;
-    }
-    if (deps.sleepFn) {
-      client.sleepFn = deps.sleepFn;
-    }
-    if (deps.randomFn) {
-      client.randomFn = deps.randomFn;
-    }
-    if (deps.logger) {
-      client.logger = deps.logger;
-    }
-    return client;
+    return new RiotApiClient(config, deps);
   }
 
   async requestJson<T>(

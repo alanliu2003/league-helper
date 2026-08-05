@@ -1,35 +1,80 @@
 import 'dotenv/config';
-import { createHealthResponse } from '@league-helper/shared';
-import { createDefaultQueue, createDefaultWorker, createRedisConnection } from './queues.js';
+import {
+  MATCH_INGESTION_JOB_NAME,
+  createHealthResponse,
+  parseBullMqRedisConnectionInfo,
+  resolveBullMqPrefix,
+} from '@league-helper/shared';
+import { loadMatchIngestionWorkerConfig, getRedisUrl } from './config.js';
 import { logger } from './logger.js';
+import { disconnectPrisma, getPrismaClient } from './prisma.js';
+import { createGameDataProvider } from './provider.js';
+import { createRedisConnection } from './queues.js';
+import { createMatchIngestionWorker } from './queues/match-ingestion/match-ingestion.worker.js';
 
 async function main(): Promise<void> {
+  const redisUrl = getRedisUrl();
+  const connectionInfo = parseBullMqRedisConnectionInfo(redisUrl, resolveBullMqPrefix());
+  const matchIngestionConfig = loadMatchIngestionWorkerConfig();
   const connection = createRedisConnection();
-  const queue = createDefaultQueue(connection);
-  const worker = createDefaultWorker(connection);
+  const prisma = getPrismaClient();
+  await prisma.$connect();
+  const providerHandle = createGameDataProvider();
+  const riotConfig = providerHandle.config;
 
-  worker.on('ready', () => {
-    logger.info('Worker ready', { health: createHealthResponse('worker').status });
+  logger.info('Match-ingestion worker starting', {
+    queue: matchIngestionConfig.queueName,
+    supportedJob: MATCH_INGESTION_JOB_NAME,
+    concurrency: matchIngestionConfig.concurrency,
+    providerMode: riotConfig.providerMode,
+    providerConfigured: riotConfig.providerMode === 'mock' || Boolean(riotConfig.apiKey),
+    redisDatabase: connectionInfo.database,
+    bullmqPrefix: connectionInfo.prefix,
+    redisConnectionReady: connection.status === 'ready' || connection.status === 'connecting',
+    prismaConnectionReady: true,
+    health: createHealthResponse('worker').status,
   });
 
-  worker.on('failed', (job, error) => {
-    logger.error('Job failed', {
-      jobId: job?.id ?? 'unknown',
-      error: error.message,
+  const matchIngestionWorker = createMatchIngestionWorker({
+    connection,
+    config: matchIngestionConfig,
+    deps: {
+      prisma,
+      provider: providerHandle.provider,
+      redis: connection,
+      config: matchIngestionConfig,
+    },
+  });
+
+  // Confirm paused state after worker registers.
+  try {
+    const { Queue } = await import('bullmq');
+    const probe = new Queue(matchIngestionConfig.queueName, {
+      connection: { url: redisUrl, maxRetriesPerRequest: null },
+      prefix: connectionInfo.prefix,
     });
-  });
+    const paused = await probe.isPaused();
+    logger.info('Match-ingestion queue probe', {
+      queue: matchIngestionConfig.queueName,
+      paused,
+      supportedJob: MATCH_INGESTION_JOB_NAME,
+    });
+    await probe.close();
+  } catch (error: unknown) {
+    logger.warn('Match-ingestion queue probe failed', {
+      error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
+    });
+  }
 
-  await queue.add(
-    'startup-ping',
-    { requestedAt: new Date().toISOString() },
-    { removeOnComplete: 100, removeOnFail: 100 },
-  );
-
+  let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
     logger.info('Shutting down worker', { signal });
-    await worker.close();
-    await queue.close();
-    await connection.quit();
+    await Promise.allSettled([matchIngestionWorker.close()]);
+    await Promise.allSettled([providerHandle.close(), disconnectPrisma(), connection.quit()]);
     process.exit(0);
   };
 
@@ -41,6 +86,7 @@ async function main(): Promise<void> {
   });
 }
 
+// Gate processing on main() — importing this module in tests must not start workers.
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : 'Unknown worker startup error';
   logger.error('Worker failed to start', { error: message });
