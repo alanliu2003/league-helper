@@ -644,7 +644,7 @@ EOF
 - Modify: root `package.json` scripts
 - Modify: `.env.example` files
 
-- [ ] **Step 1: Implement rebuild with flags**
+- [x] **Step 1: Implement rebuild with flags**
 
 ```text
 pnpm aggregates:rebuild-champions --dry-run --patch 16.15 --queue 420 --platform na1
@@ -655,21 +655,21 @@ Require `AGGREGATES_REBUILD_CHAMPIONS_CONFIRM=YES` or `--confirm` for mutations.
 `--json` on stdout; logs on stderr.  
 Batch loop with short transactions; scoped deletes; exit nonzero on batch failure.
 
-- [ ] **Step 2: Implement reconcile / status / audit-rank / audit-champions**
+- [x] **Step 2: Implement reconcile / status / audit-rank / audit-champions**
 
 Reconcile uses `ChampionAggregationProcessing` (+ eligible COMPLETED matches) to find missing/stale; enqueues deterministic jobs; dry-run + `--json`.
 
 Status: read-only metrics from spec §3.13 / §6.  
 Audits: read-only; integrity checks from §6.13; rank coverage excludes ARAM from primary denominator.
 
-- [ ] **Step 3: Smoke dry-run against test DB (manual in this task)**
+- [x] **Step 3: Smoke dry-run against test DB (manual in this task)**
 
 ```bash
 pnpm aggregates:status-champions --json
 pnpm aggregates:rebuild-champions --dry-run --json
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/worker/src/cli apps/api/src/queues/cli package.json apps/worker/.env.example apps/api/.env.example

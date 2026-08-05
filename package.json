@@ -34,6 +34,11 @@
     "jobs:reconcile-match-ingestion": "pnpm --filter @league-helper/api jobs:reconcile-match-ingestion",
     "jobs:status-match-ingestion": "pnpm --filter @league-helper/api jobs:status-match-ingestion",
     "jobs:retry-match-ingestion": "pnpm --filter @league-helper/worker jobs:retry-match-ingestion",
+    "aggregates:rebuild-champions": "pnpm --filter @league-helper/worker aggregates:rebuild-champions",
+    "aggregates:reconcile-champions": "pnpm --filter @league-helper/worker aggregates:reconcile-champions",
+    "aggregates:status-champions": "pnpm --filter @league-helper/worker aggregates:status-champions",
+    "aggregates:audit-rank-coverage": "pnpm --filter @league-helper/worker aggregates:audit-rank-coverage",
+    "aggregates:audit-champions": "pnpm --filter @league-helper/worker aggregates:audit-champions",
     "player:search:mock": "pnpm --filter @league-helper/api player:search:mock",
     "matches:recompute-positions": "pnpm --filter @league-helper/api matches:recompute-positions",
     "test:e2e": "pnpm --filter @league-helper/web test:e2e"
