@@ -453,7 +453,7 @@ EOF
 - Modify: `packages/shared/src/job-queues/index.ts`, `packages/shared/src/index.ts`
 - Modify: root/`packages` build so api/worker depend on match-analytics where needed later
 
-- [ ] **Step 1: Failing tests for job ID + cache keys + position-required schema**
+- [x] **Step 1: Failing tests for job ID + cache keys + position-required schema**
 
 ```ts
 import { ChampionStatsTableQuerySchema } from './champion-api';
@@ -480,7 +480,7 @@ it('builds deterministic job id', () => {
 });
 ```
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```ts
 // queue-names.ts
@@ -500,14 +500,14 @@ export const CHAMPION_AGGREGATION_JOB_NAME = 'RECALCULATE_CHAMPION_AGGREGATES' a
 
 For abilities: if seed `passive`/`spells`/`baseStats` JSON is not already frontend-safe, **omit** those fields from M8 `ChampionDetailSchema` rather than shipping `z.unknown()`.
 
-- [ ] **Step 3: Tests PASS; build shared**
+- [x] **Step 3: Tests PASS; build shared**
 
 ```bash
 pnpm --filter @league-helper/shared test
 pnpm --filter @league-helper/shared build
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/shared
