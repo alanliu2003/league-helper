@@ -10,6 +10,7 @@ League of Legends analytics and AI coaching monorepo.
 - `apps/api` — NestJS REST API with Prisma / PostgreSQL
 - `apps/worker` — BullMQ background worker
 - `packages/shared` — shared types, Zod schemas, constants
+- `packages/match-analytics` — pure champion aggregate math (Wilson, KDA, rollups)
 - `packages/config` — shared TypeScript and ESLint config
 
 ## Prerequisites
@@ -430,7 +431,8 @@ Jobs queued before the worker existed remain in Redis/Postgres. Start the worker
 
 ### What Milestone 6 still does **not** do
 
-- Champion aggregates, patch analysis, matchups, or AI coaching
+- ~~Champion aggregates~~ → Milestone 8
+- Patch analysis, matchups, or AI coaching
 - Polished OP.GG-style profile pages / live game coaching
 - Mainland Chinese server support
 - Authentication
@@ -477,7 +479,7 @@ apps/web/layouts/default.vue  Persistent shell
 | `/`                  | Product landing + Riot ID search + recent local searches       |
 | `/players/:playerId` | Profile hero, ranked overview, mastery showcase, match history |
 
-Navigation placeholders (e.g. Champions) are disabled as “Coming later”. Deferred: champion aggregates, matchups, patch impact, AI coaching, auth/social.
+Champions navigation is enabled in Milestone 8 (`/champions`). Deferred: matchups, patch impact, AI coaching, auth/social.
 
 ### Responsive breakpoints
 
@@ -486,6 +488,124 @@ Layouts target roughly **375px**, **768px**, **1280px**, and **1600px**. Match c
 ### Playwright e2e note
 
 `apps/web` e2e covers mock search → redesigned profile (hero, ranks, mastery, matches), queue filter URL sync, refresh preserving cards, and no horizontal overflow at 375px. API must use `RIOT_PROVIDER_MODE=mock`. Prefer running `pnpm dev` (API + web + worker) before `pnpm test:e2e`.
+
+## Champion aggregates (Milestone 8)
+
+Milestone 8 materializes champion-level aggregate statistics from successfully ingested matches, exposes public champion APIs, and ships Nuxt directory/detail pages. Stats represent **matches collected by League Helper** (primarily via searched players) — not Riot’s global match database.
+
+Design: `docs/superpowers/specs/2026-08-05-milestone-8-champion-aggregates-design.md`  
+Plan: `docs/superpowers/plans/2026-08-05-milestone-8-champion-aggregates.md`
+
+### Architecture
+
+Pipeline: Riot match ingestion → `MatchParticipant` storage → champion aggregation worker → `ChampionAggregate` materialization → API → Nuxt `/champions` pages.
+
+Pure math lives in `@league-helper/match-analytics` (no Prisma/Nest/BullMQ). The worker recalculates aggregates incrementally after match ingestion and via rebuild/reconcile CLIs. API reads versioned aggregate rows from **PostgreSQL** (optional Redis response cache with generation invalidation); Nuxt never calls Riot.
+
+```mermaid
+sequenceDiagram
+  participant Browser
+  participant Nuxt
+  participant API
+  participant PostgreSQL
+  participant BullMQ
+  participant Worker
+
+  Note over Worker,PostgreSQL: Match already COMPLETE with participants
+  Worker->>BullMQ: enqueue RECALCULATE_CHAMPION_AGGREGATES
+  Worker->>BullMQ: claim champion aggregation job
+  Worker->>PostgreSQL: load eligible participants + rank at ingestion
+  Worker->>Worker: accumulate / roll up / derive (match-analytics)
+  Worker->>PostgreSQL: upsert ChampionAggregate rows
+  Browser->>Nuxt: open /champions or /champions/:key
+  Nuxt->>API: GET champion directory / stats (URL filters)
+  API->>PostgreSQL: read ChampionAggregate (versioned)
+  API-->>Nuxt: DTOs + sample size + disclaimer
+  Nuxt->>Browser: directory / detail (no tier-list language)
+```
+
+### Analytics dimensions and rollups
+
+Stored dimensions: patch, platform, region, queue, rank tier, position, champion (+ `aggregationVersion` / `sourceNormalizationVersion`).
+
+Default rollup policy:
+
+- Exact dimension rows
+- `ALL` rank tier and `ALL` position rollups
+- **No** `ALL`×`ALL` (tier × position)
+- **No** `ALL` platform / region / queue by default
+
+Formulas (aligned with player UI where applicable): aggregate KDA (`computeAggregateKdaRatio`, same rules as player `computePublicKda`), CS/min, DPM, vision/min, GD@10 / CSD@10 when timeline metrics exist. Win rate uses a Wilson score interval. Sample confidence thresholds default to **30 / 100 / 500** (`INSUFFICIENT` / `LOW` / `MEDIUM` / `HIGH`). Remakes, incomplete matches, and wrong source-normalization versions are excluded from aggregation.
+
+### Data limitations
+
+- Always show sample size; never imply a full-population or balanced global sample.
+- Missing timeline metrics surface as unavailable/`null`, never as zero averages.
+- Directory ranking requires an **exact** position (role rankings are not mixed across ARAM / non-role queues).
+
+### Rank semantics
+
+`rankTierAtIngestion` comes from the local `RankSnapshot` at ingestion cutoff for queues **420** and **440** only. Other queues follow the UNKNOWN/`null` path. Do **not** claim historical match-time rank.
+
+### Queue handling
+
+Ranked Solo/Duo (420) and Ranked Flex (440) stay separated. ARAM and other non-role queues are not mixed into role rankings. Default queue for stats UI/API is configurable (`CHAMPION_AGGREGATION_DEFAULT_QUEUE_ID`, typically 420).
+
+### Operations (champion aggregate CLIs)
+
+Run from the repo root against your local database. Rebuilds **do not** delete match data.
+
+| Command                               | Purpose                                          |
+| ------------------------------------- | ------------------------------------------------ |
+| `pnpm aggregates:rebuild-champions`   | Full/partial rebuild of `ChampionAggregate` rows |
+| `pnpm aggregates:reconcile-champions` | Enqueue missing / stale recalculation jobs       |
+| `pnpm aggregates:status-champions`    | Queue + materialization status snapshot          |
+| `pnpm aggregates:audit-champions`     | Consistency / coverage audit                     |
+| `pnpm aggregates:audit-rank-coverage` | Rank-at-ingestion coverage audit                 |
+
+Safety:
+
+- `--dry-run` plans work without mutating
+- Mutating rebuild requires `--confirm` **or** `AGGREGATES_REBUILD_CHAMPIONS_CONFIRM=YES`
+- `--json` writes machine-readable results on **stdout**; human logs go to **stderr**
+
+Example local verify:
+
+```bash
+pnpm aggregates:rebuild-champions --dry-run --json
+pnpm aggregates:rebuild-champions --confirm
+pnpm aggregates:status-champions --json
+pnpm aggregates:audit-champions --json
+pnpm aggregates:audit-rank-coverage --json
+```
+
+Keep `CHAMPION_AGGREGATION_VERSION` and `CHAMPION_AGGREGATION_SOURCE_NORMALIZATION_VERSION` aligned between API and worker.
+
+### API / UI
+
+| Surface         | Path                                    |
+| --------------- | --------------------------------------- |
+| Directory       | `GET /api/champions`                    |
+| Champion        | `GET /api/champions/:championKey`       |
+| Champion stats  | `GET /api/champions/:championKey/stats` |
+| Ranked table    | `GET /api/champion-stats`               |
+| Filter metadata | `GET /api/champion-stats/filters`       |
+| Pages           | `/champions`, `/champions/:championKey` |
+
+Filters are URL-authoritative. Copy uses collected-sample wording — no tier-list claims.
+
+### Playwright e2e note
+
+Champions e2e (Task 11) uses **route mocks** for API responses so the suite does not require a seeded DB rebuild. Full DB seed → rebuild → live API e2e remains operational future work. Prefer `pnpm dev` (API + web + worker) for manual UI checks against real aggregates.
+
+### What Milestone 8 still does **not** do
+
+- Champion-versus-champion matchups / counters
+- AI coaching / player-specific champion coaching
+- Patch-impact causality or patch-note ingestion
+- Full-population / global ladder crawling
+- Data Dragon sync operations beyond existing champion metadata enrichment
+- Authentication
 
 ## Notes
 

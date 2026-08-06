@@ -879,11 +879,11 @@ Also: fixed directory filter URL race (rapid select drops) discovered by e2e.
 - Modify: env examples
 - Update: spec status line to “Approved; plan written”
 
-- [ ] **Step 1: README section**
+- [x] **Step 1: README section**
 
 Architecture, dimensions, rollups, formulas, Wilson, thresholds, remake exclusion, queue separation, search-driven limitation, rank-at-ingestion warning, incremental + reconcile, CLI safety table, endpoints, pages, Mermaid, deferred work.
 
-- [ ] **Step 2: Dev backfill (mutating; local only)**
+- [x] **Step 2: Dev backfill (mutating; local only)**
 
 ```bash
 pnpm aggregates:rebuild-champions --dry-run --json
@@ -895,7 +895,9 @@ pnpm aggregates:audit-rank-coverage --json
 
 Do not delete match data. Document sample size honesty in final report.
 
-- [ ] **Step 3: Full verification**
+Local run notes: dry-run ~78 matches / ~1582 estimated keys; confirm upserted 1582 rows; status shows all current-version rows below min sample 30 (collected-sample honesty); audits passed; rank coverage low on 420/440 as expected for search-driven data.
+
+- [x] **Step 3: Full verification**
 
 ```bash
 pnpm format:check
@@ -907,12 +909,12 @@ pnpm test:e2e
 pnpm build
 ```
 
-Fill baseline vs post-M8 results table.
+Post-M8 results (vs Task 0 baseline): `lint`/`typecheck`/`test`/`build` PASS; `format:check` FAIL (pre-existing Markdown/format debt); `test:api:integration` FAIL (Windows vitest glob, pre-existing); `test:e2e` — champions 14/14 PASS (mocks), player-search FAIL when API not up (pre-existing).
 
-- [ ] **Step 4: Commit docs + any leftover fixes**
+- [x] **Step 4: Commit docs + any leftover fixes** (coordinator)
 
 ```bash
-git add README.md apps/api/.env.example apps/worker/.env.example docs/superpowers
+git add README.md .env.example apps/api/.env.example apps/worker/.env.example docs/superpowers
 git commit -m "$(cat <<'EOF'
 docs: document champion aggregation architecture and operations
 
