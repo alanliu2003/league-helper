@@ -10,30 +10,36 @@
     >
       {{ rank }}
     </span>
-    <img
-      v-if="entry.championIconUrl && !iconFailed"
-      :src="entry.championIconUrl"
-      :alt="`${displayName} icon`"
-      width="32"
-      height="32"
-      class="h-8 w-8 shrink-0 rounded-md object-cover"
-      loading="lazy"
-      @error="iconFailed = true"
-    />
-    <div
-      v-else
-      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold text-[var(--lh-muted)]"
-      style="background: var(--lh-surface-raised)"
-      aria-hidden="true"
+    <component
+      :is="championPath ? 'NuxtLink' : 'div'"
+      v-bind="championPath ? { to: championPath } : {}"
+      class="flex min-w-0 flex-1 items-center gap-3 text-[var(--lh-text)] no-underline"
     >
-      {{ initials }}
-    </div>
-    <div class="min-w-0 flex-1">
-      <p class="truncate text-sm font-medium">{{ displayName }}</p>
-      <p class="text-xs text-[var(--lh-muted)]">
-        Lv {{ entry.championLevel }} · {{ entry.championPoints.toLocaleString() }} pts
-      </p>
-    </div>
+      <img
+        v-if="entry.championIconUrl && !iconFailed"
+        :src="entry.championIconUrl"
+        :alt="`${displayName} icon`"
+        width="32"
+        height="32"
+        class="h-8 w-8 shrink-0 rounded-md object-cover"
+        loading="lazy"
+        @error="iconFailed = true"
+      />
+      <div
+        v-else
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold text-[var(--lh-muted)]"
+        style="background: var(--lh-surface-raised)"
+        aria-hidden="true"
+      >
+        {{ initials }}
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="truncate text-sm font-medium">{{ displayName }}</p>
+        <p class="text-xs text-[var(--lh-muted)]">
+          Lv {{ entry.championLevel }} · {{ entry.championPoints.toLocaleString() }} pts
+        </p>
+      </div>
+    </component>
     <p v-if="entry.chestGranted === false" class="shrink-0 text-xs text-[var(--lh-accent-gold)]">
       Chest
     </p>
@@ -44,6 +50,7 @@
 import type { PublicMasterySummary } from '@league-helper/shared';
 import { computed, ref, watch } from 'vue';
 import { championDisplayName, championInitials } from '~/utils/champion-display';
+import { buildChampionPath } from '~/utils/champion-links';
 
 const props = defineProps<{
   entry: PublicMasterySummary;
@@ -64,4 +71,9 @@ const displayName = computed(() =>
 );
 
 const initials = computed(() => championInitials(props.entry.championName, props.entry.championId));
+
+const championPath = computed(() => {
+  const key = props.entry.championKey?.trim();
+  return key ? buildChampionPath(key) : null;
+});
 </script>

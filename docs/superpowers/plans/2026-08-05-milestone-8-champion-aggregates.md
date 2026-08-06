@@ -805,19 +805,23 @@ EOF
 - Modify: mastery/match cards to use `buildChampionPath` when `championKey` present
 - Create: component tests covering §5.18 list
 
-- [ ] **Step 1: Directory page**
+- [x] **Step 1: Directory page**
 
 Render disclaimer, filter bar, directory grid (static), position-required empty state, table/cards when position set. Use M7 tokens. Label sort “Collected sample ranking”.
 
-- [ ] **Step 2: Detail page**
+Delivered in Task 9 (`94de5e4`); not redone here.
+
+- [x] **Step 2: Detail page**
 
 Hero from metadata; independent stats/breakdown states; limitations panel with search-driven copy; case canonical `replace`; reject numeric params before API.
 
-- [ ] **Step 3: Component tests + isolation**
+- [x] **Step 3: Component tests + isolation**
 
 No Data Dragon URL construction; no PUUID; UNKNOWN tier not primary; ARAM not in role-ranking queue selector.
 
-- [ ] **Step 4: Commit**
+Also: mastery/match cards link via `buildChampionPath`; shared `champion-filter-query` helpers for directory + detail.
+
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/web

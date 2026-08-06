@@ -52,9 +52,21 @@ function match(overrides: Partial<PublicMatchSummary> = {}): PublicMatchSummary 
   };
 }
 
+const nuxtLinkStub = {
+  props: ['to'],
+  template: '<a :href="to"><slot /></a>',
+};
+
+function mountCard(matchProp: ReturnType<typeof match>) {
+  return mount(PlayerMatchCard, {
+    props: { match: matchProp },
+    global: { stubs: { NuxtLink: nuxtLinkStub } },
+  });
+}
+
 describe('PlayerMatchCard', () => {
   it('renders victory card with champion, role, KDA, CS, KP, items, queue, patch', () => {
-    const wrapper = mount(PlayerMatchCard, { props: { match: match() } });
+    const wrapper = mountCard(match());
     expect(wrapper.text()).toContain('Victory');
     expect(wrapper.text()).toContain('Tryndamere');
     expect(wrapper.text()).toContain('Top');
@@ -67,8 +79,19 @@ describe('PlayerMatchCard', () => {
     expect(wrapper.html().toLowerCase()).not.toContain('puuid');
   });
 
+  it('links champion name to detail path when championKey is present', () => {
+    const wrapper = mountCard(match());
+    const links = wrapper.findAll('a').filter((a) => a.attributes('href') === '/champions/Tryndamere');
+    expect(links.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not link when championKey is null', () => {
+    const wrapper = mountCard(match({ championKey: null }));
+    expect(wrapper.findAll('a').length).toBe(0);
+  });
+
   it('uses Data Dragon champion icon src and falls back on image error', async () => {
-    const wrapper = mount(PlayerMatchCard, { props: { match: match() } });
+    const wrapper = mountCard(match());
     const championImg = wrapper.get('img[alt="Tryndamere icon"]');
     expect(championImg.attributes('src')).toBe(
       'https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/Tryndamere.png',
@@ -80,46 +103,32 @@ describe('PlayerMatchCard', () => {
   });
 
   it('labels unknown queue IDs safely', () => {
-    const wrapper = mount(PlayerMatchCard, {
-      props: { match: match({ queueId: 1234 }) },
-    });
+    const wrapper = mountCard(match({ queueId: 1234 }));
     expect(wrapper.text()).toContain('Queue 1234');
   });
 
   it('renders normalized position labels and never shows raw SOLO/DUO_SUPPORT', () => {
-    expect(
-      mount(PlayerMatchCard, {
-        props: { match: match({ role: 'MIDDLE', teamPosition: 'MIDDLE' }) },
-      }).text(),
-    ).toContain('Mid');
-    expect(
-      mount(PlayerMatchCard, {
-        props: { match: match({ role: 'SUPPORT', teamPosition: 'SUPPORT' }) },
-      }).text(),
-    ).toContain('Support');
-    expect(
-      mount(PlayerMatchCard, {
-        props: { match: match({ role: 'UNKNOWN', teamPosition: 'UNKNOWN' }) },
-      }).text(),
-    ).toContain('Unknown role');
-    const html = mount(PlayerMatchCard, {
-      props: { match: match({ role: 'TOP', teamPosition: 'TOP' }) },
-    }).html();
+    expect(mountCard(match({ role: 'MIDDLE', teamPosition: 'MIDDLE' })).text()).toContain('Mid');
+    expect(mountCard(match({ role: 'SUPPORT', teamPosition: 'SUPPORT' })).text()).toContain(
+      'Support',
+    );
+    expect(mountCard(match({ role: 'UNKNOWN', teamPosition: 'UNKNOWN' })).text()).toContain(
+      'Unknown role',
+    );
+    const html = mountCard(match({ role: 'TOP', teamPosition: 'TOP' })).html();
     expect(html).not.toContain('SOLO');
     expect(html).not.toContain('DUO_SUPPORT');
   });
 
   it('renders remake result distinctly', () => {
-    const wrapper = mount(PlayerMatchCard, {
-      props: {
-        match: match({
-          remake: true,
-          result: 'remake',
-          win: true,
-          timelineMetricsAvailable: false,
-        }),
-      },
-    });
+    const wrapper = mountCard(
+      match({
+        remake: true,
+        result: 'remake',
+        win: true,
+        timelineMetricsAvailable: false,
+      }),
+    );
     expect(wrapper.text()).toContain('Remake');
     expect(wrapper.text()).not.toContain('Victory');
   });

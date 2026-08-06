@@ -25,7 +25,12 @@ function mastery(id: string, overrides: Partial<PublicMasterySummary> = {}): Pub
 }
 
 const mountOptions = {
-  global: { components: { FeaturedMasteryCard, MasteryRow } },
+  global: {
+    components: { FeaturedMasteryCard, MasteryRow },
+    stubs: {
+      NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+    },
+  },
 };
 
 describe('MasteryShowcase', () => {

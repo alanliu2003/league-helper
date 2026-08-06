@@ -1,11 +1,15 @@
 import {
   ApiErrorResponseSchema,
+  ChampionDetailResponseSchema,
   ChampionListResponseSchema,
   ChampionStatsFiltersResponseSchema,
+  ChampionStatsResponseSchema,
   ChampionStatsTableResponseSchema,
+  type ChampionDetailResponse,
   type ChampionListResponse,
   type ChampionRankingPosition,
   type ChampionStatsFiltersResponse,
+  type ChampionStatsResponse,
   type ChampionStatsSortBy,
   type ChampionStatsSortDirection,
   type ChampionStatsTableResponse,
@@ -74,6 +78,22 @@ export type GetChampionStatsTableOptions = {
   signal?: AbortSignal;
 };
 
+/**
+ * Single-champion stats. Public filter naming uses `queue`; API maps to `queueId`.
+ * Omit `position` for metadata + five-role breakdown without inventing ALL-position exact stats.
+ */
+export type GetChampionStatsOptions = {
+  platform: PlatformRoute;
+  /** Public queue id — sent to API as `queueId`. */
+  queue: number;
+  tier?: ChampionStatsTierFilter;
+  position?: ChampionRankingPosition;
+  patch?: string;
+  includeInsufficient?: boolean;
+  minimumSample?: number;
+  signal?: AbortSignal;
+};
+
 export function useChampionApi() {
   const config = useRuntimeConfig();
   const apiBase = config.public.apiBase as string;
@@ -131,11 +151,55 @@ export function useChampionApi() {
     }
   }
 
+  async function getChampionDetail(
+    championKey: string,
+    signal?: AbortSignal,
+  ): Promise<ChampionDetailResponse> {
+    try {
+      const response = await $fetch(
+        `${apiBase}/api/champions/${encodeURIComponent(championKey)}`,
+        { signal },
+      );
+      return ChampionDetailResponseSchema.parse(response);
+    } catch (error) {
+      throw parseApiError(error);
+    }
+  }
+
+  async function getChampionStats(
+    championKey: string,
+    options: GetChampionStatsOptions,
+  ): Promise<ChampionStatsResponse> {
+    try {
+      const response = await $fetch(
+        `${apiBase}/api/champions/${encodeURIComponent(championKey)}/stats`,
+        {
+          query: {
+            platform: options.platform,
+            // Map public `queue` → API `queueId` at the boundary only.
+            queueId: options.queue,
+            tier: options.tier,
+            position: options.position,
+            patch: options.patch,
+            includeInsufficient: options.includeInsufficient,
+            minimumSample: options.minimumSample,
+          },
+          signal: options.signal,
+        },
+      );
+      return ChampionStatsResponseSchema.parse(response);
+    } catch (error) {
+      throw parseApiError(error);
+    }
+  }
+
   return {
     apiBase,
     getFilters,
     listChampions,
     getStatsTable,
+    getChampionDetail,
+    getChampionStats,
   };
 }
 

@@ -7,25 +7,31 @@
   >
     <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
       <div class="flex min-w-0 flex-1 items-start gap-3">
-        <img
-          v-if="match.championIconUrl && !championImageFailed"
-          :src="match.championIconUrl"
-          :alt="`${championDisplayName} icon`"
-          width="48"
-          height="48"
-          class="h-12 w-12 shrink-0 rounded-md object-cover"
-          style="background: var(--lh-surface-inset)"
-          loading="lazy"
-          @error="championImageFailed = true"
-        />
-        <div
-          v-else
-          class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-xs font-semibold text-[var(--lh-muted)]"
-          style="background: var(--lh-surface-inset)"
-          aria-hidden="true"
+        <component
+          :is="championPath ? 'NuxtLink' : 'div'"
+          v-bind="championPath ? { to: championPath } : {}"
+          class="shrink-0"
         >
-          {{ championInitials }}
-        </div>
+          <img
+            v-if="match.championIconUrl && !championImageFailed"
+            :src="match.championIconUrl"
+            :alt="`${championDisplayName} icon`"
+            width="48"
+            height="48"
+            class="h-12 w-12 rounded-md object-cover"
+            style="background: var(--lh-surface-inset)"
+            loading="lazy"
+            @error="championImageFailed = true"
+          />
+          <div
+            v-else
+            class="flex h-12 w-12 items-center justify-center rounded-md text-xs font-semibold text-[var(--lh-muted)]"
+            style="background: var(--lh-surface-inset)"
+            aria-hidden="true"
+          >
+            {{ championInitials }}
+          </div>
+        </component>
 
         <div class="min-w-0 flex-1 space-y-1.5">
           <div class="flex flex-wrap items-center gap-2">
@@ -35,7 +41,14 @@
             >
               {{ resultLabel }}
             </span>
-            <span class="truncate font-medium">{{ championDisplayName }}</span>
+            <NuxtLink
+              v-if="championPath"
+              :to="championPath"
+              class="truncate font-medium text-[var(--lh-text)] no-underline hover:text-[var(--lh-accent)]"
+            >
+              {{ championDisplayName }}
+            </NuxtLink>
+            <span v-else class="truncate font-medium">{{ championDisplayName }}</span>
             <span v-if="roleLabel" :class="roleLabelClass">{{ roleLabel }}</span>
           </div>
 
@@ -95,6 +108,7 @@ import {
   championDisplayName as getChampionName,
   championInitials as getChampionInitials,
 } from '~/utils/champion-display';
+import { buildChampionPath } from '~/utils/champion-links';
 
 const props = defineProps<{
   match: PublicMatchSummary;
@@ -109,6 +123,11 @@ const championDisplayName = computed(() =>
 const championInitials = computed(() =>
   getChampionInitials(props.match.championName, props.match.championId ?? 0),
 );
+
+const championPath = computed(() => {
+  const key = props.match.championKey?.trim();
+  return key ? buildChampionPath(key) : null;
+});
 
 const resultLabel = computed(() => {
   switch (props.match.result) {

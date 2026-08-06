@@ -1,6 +1,8 @@
 <template>
-  <article
-    class="relative overflow-hidden rounded-xl"
+  <component
+    :is="championPath ? 'NuxtLink' : 'article'"
+    v-bind="championPath ? { to: championPath } : {}"
+    class="relative block overflow-hidden rounded-xl text-[var(--lh-text)] no-underline"
     style="min-height: 14rem; box-shadow: var(--lh-shadow-sm)"
     :aria-label="`${displayName} mastery`"
   >
@@ -67,13 +69,14 @@
         Last played {{ formatDate(entry.lastPlayTime) }}
       </p>
     </div>
-  </article>
+  </component>
 </template>
 
 <script setup lang="ts">
 import type { PublicMasterySummary } from '@league-helper/shared';
 import { computed, ref, watch } from 'vue';
 import { championDisplayName, championInitials } from '~/utils/champion-display';
+import { buildChampionPath } from '~/utils/champion-links';
 
 const props = defineProps<{
   entry: PublicMasterySummary;
@@ -103,6 +106,11 @@ const displayName = computed(() =>
 );
 
 const initials = computed(() => championInitials(props.entry.championName, props.entry.championId));
+
+const championPath = computed(() => {
+  const key = props.entry.championKey?.trim();
+  return key ? buildChampionPath(key) : null;
+});
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {

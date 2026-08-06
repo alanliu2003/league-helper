@@ -1,8 +1,5 @@
 import { computed, reactive, ref, type ComputedRef, type Ref } from 'vue';
 import {
-  ChampionRankingPositionSchema,
-  ChampionStatsTierFilterSchema,
-  PlatformRouteSchema,
   type ChampionListResponse,
   type ChampionRankingPosition,
   type ChampionStatsFilterQueue,
@@ -12,17 +9,16 @@ import {
   type PlatformRoute,
 } from '@league-helper/shared';
 import type { GetChampionStatsTableOptions, ListChampionsOptions } from './useChampionApi';
+import {
+  firstQueryValue,
+  parseDirectoryFiltersFromQuery,
+  resolveDirectoryFilterDefaults,
+  type ChampionDirectoryFilterValues,
+  type ChampionQueryRecord,
+} from '../utils/champion-filter-query';
 import { toChampionPublicQuery } from '../utils/champion-links';
 
-export type ChampionPublicFilters = {
-  platform: PlatformRoute | null;
-  queue: number | null;
-  tier: ChampionStatsTierFilter | null;
-  position: ChampionRankingPosition | null;
-  patch: string | null;
-  search: string | null;
-  tag: string | null;
-};
+export type ChampionPublicFilters = ChampionDirectoryFilterValues;
 
 export type ChampionStatsViewState = {
   displayedResponse: ChampionStatsTableResponse | null;
@@ -37,99 +33,9 @@ export type ChampionStatsFiltersApi = {
 };
 
 export type ChampionStatsFiltersRouter = {
-  getQuery: () => Record<string, string | string[] | undefined | null>;
+  getQuery: () => ChampionQueryRecord;
   replaceQuery: (query: Record<string, string>) => Promise<void>;
 };
-
-function firstQueryValue(
-  query: Record<string, string | string[] | undefined | null>,
-  key: string,
-): string | undefined {
-  const raw = query[key];
-  if (Array.isArray(raw)) {
-    return raw[0];
-  }
-  return raw ?? undefined;
-}
-
-function parseQueue(raw: string | undefined): number | null {
-  if (raw === undefined || raw === '') {
-    return null;
-  }
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 0) {
-    return null;
-  }
-  return n;
-}
-
-function parsePlatform(raw: string | undefined): PlatformRoute | null {
-  if (!raw) {
-    return null;
-  }
-  const parsed = PlatformRouteSchema.safeParse(raw);
-  return parsed.success ? parsed.data : null;
-}
-
-function parseTier(raw: string | undefined): ChampionStatsTierFilter | null {
-  if (!raw) {
-    return null;
-  }
-  const parsed = ChampionStatsTierFilterSchema.safeParse(raw);
-  return parsed.success ? parsed.data : null;
-}
-
-function parsePosition(raw: string | undefined): ChampionRankingPosition | null {
-  if (!raw) {
-    return null;
-  }
-  const parsed = ChampionRankingPositionSchema.safeParse(raw);
-  return parsed.success ? parsed.data : null;
-}
-
-function parsePublicFiltersFromQuery(
-  query: Record<string, string | string[] | undefined | null>,
-): {
-  filters: ChampionPublicFilters;
-  hadQueueIdAlias: boolean;
-} {
-  const queueFromCanonical = parseQueue(firstQueryValue(query, 'queue'));
-  const queueFromAlias = parseQueue(firstQueryValue(query, 'queueId'));
-  const hadQueueIdAlias = queueFromAlias !== null && firstQueryValue(query, 'queueId') !== undefined;
-
-  return {
-    hadQueueIdAlias,
-    filters: {
-      platform: parsePlatform(firstQueryValue(query, 'platform')),
-      queue: queueFromCanonical ?? queueFromAlias,
-      tier: parseTier(firstQueryValue(query, 'tier')),
-      position: parsePosition(firstQueryValue(query, 'position')),
-      patch: firstQueryValue(query, 'patch')?.trim() || null,
-      search: firstQueryValue(query, 'search')?.trim() || null,
-      tag: firstQueryValue(query, 'tag')?.trim() || null,
-    },
-  };
-}
-
-function resolveDefaults(
-  parsed: ChampionPublicFilters,
-  meta: ChampionStatsFiltersResponse,
-): ChampionPublicFilters {
-  const platform = parsed.platform ?? meta.defaultPlatform;
-  const queue = parsed.queue ?? meta.defaultQueueId;
-  const tier = parsed.tier ?? 'ALL';
-  const patch = parsed.patch ?? meta.defaultPatch ?? 'unavailable';
-
-  return {
-    platform,
-    queue,
-    tier,
-    position: parsed.position,
-    patch,
-    search: parsed.search,
-    tag: parsed.tag,
-  };
-}
 
 function publicFiltersEqual(a: ChampionPublicFilters, b: ChampionPublicFilters): boolean {
   return (
@@ -144,7 +50,7 @@ function publicFiltersEqual(a: ChampionPublicFilters, b: ChampionPublicFilters):
 }
 
 function needsCanonicalReplace(
-  currentQuery: Record<string, string | string[] | undefined | null>,
+  currentQuery: ChampionQueryRecord,
   resolved: ChampionPublicFilters,
   hadQueueIdAlias: boolean,
 ): boolean {
@@ -408,8 +314,8 @@ export function createChampionStatsFiltersController(
       const meta = await api.getFilters();
       filtersMeta.value = meta;
 
-      const { filters: parsed, hadQueueIdAlias } = parsePublicFiltersFromQuery(router.getQuery());
-      const resolved = resolveDefaults(parsed, meta);
+      const { filters: parsed, hadQueueIdAlias } = parseDirectoryFiltersFromQuery(router.getQuery());
+      const resolved = resolveDirectoryFilterDefaults(parsed, meta);
       // Ranking selector only offers supportsStandardPositions queues — remap others
       // so the <select> value always matches an option (URL still gets one replace).
       if (!queueSupportsStandardPositions(resolved.queue)) {
@@ -587,7 +493,7 @@ export function useChampionStatsFilters(): ChampionStatsFiltersController {
   const api = useChampionApi();
 
   return createChampionStatsFiltersController(api, {
-    getQuery: () => route.query as Record<string, string | string[] | undefined | null>,
+    getQuery: () => route.query as ChampionQueryRecord,
     replaceQuery: async (query) => {
       await router.replace({ path: '/champions', query });
     },

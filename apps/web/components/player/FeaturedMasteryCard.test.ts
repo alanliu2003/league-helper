@@ -22,10 +22,16 @@ function mastery(overrides: Partial<PublicMasterySummary> = {}): PublicMasterySu
   };
 }
 
+const nuxtLinkStub = {
+  props: ['to'],
+  template: '<a :href="to"><slot /></a>',
+};
+
 describe('FeaturedMasteryCard', () => {
   it('renders splash from backend-provided championSplashUrl', () => {
     const wrapper = mount(FeaturedMasteryCard, {
       props: { entry: mastery(), rank: 1 },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
     });
 
     const splashImg = wrapper.find('img[alt=""]');
@@ -37,12 +43,29 @@ describe('FeaturedMasteryCard', () => {
     expect(wrapper.text()).toContain('#1 mastery');
   });
 
+  it('links to the champion detail path when championKey is present', () => {
+    const wrapper = mount(FeaturedMasteryCard, {
+      props: { entry: mastery(), rank: 1 },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    });
+    expect(wrapper.find('a').attributes('href')).toBe('/champions/Tryndamere');
+  });
+
+  it('does not link when championKey is missing', () => {
+    const wrapper = mount(FeaturedMasteryCard, {
+      props: { entry: mastery({ championKey: null }), rank: 1 },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
+    });
+    expect(wrapper.find('a').exists()).toBe(false);
+  });
+
   it('shows neutral fallback when splash URL is null', () => {
     const wrapper = mount(FeaturedMasteryCard, {
       props: {
         entry: mastery({ championSplashUrl: null }),
         rank: 1,
       },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
     });
 
     expect(wrapper.find('img[alt=""]').exists()).toBe(false);
@@ -52,6 +75,7 @@ describe('FeaturedMasteryCard', () => {
   it('falls back when splash image fails to load', async () => {
     const wrapper = mount(FeaturedMasteryCard, {
       props: { entry: mastery(), rank: 1 },
+      global: { stubs: { NuxtLink: nuxtLinkStub } },
     });
 
     await wrapper.find('img[alt=""]').trigger('error');
