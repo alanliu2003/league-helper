@@ -36,6 +36,9 @@ blob-report/
 prisma/*.db
 prisma/*.db-journal
 
+# Brainstorm / local agent artifacts
+.superpowers/
+
 # Editors / OS
 .idea/
 .vscode/*
