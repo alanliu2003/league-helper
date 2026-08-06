@@ -31,6 +31,7 @@
     "riot:resolve": "pnpm --filter @league-helper/api riot:resolve",
     "riot:match-ids": "pnpm --filter @league-helper/api riot:match-ids",
     "ddragon:champion": "pnpm --filter @league-helper/api ddragon:champion",
+    "champions:sync-static": "pnpm --filter @league-helper/api champions:sync-static",
     "jobs:reconcile-match-ingestion": "pnpm --filter @league-helper/api jobs:reconcile-match-ingestion",
     "jobs:status-match-ingestion": "pnpm --filter @league-helper/api jobs:status-match-ingestion",
     "jobs:retry-match-ingestion": "pnpm --filter @league-helper/worker jobs:retry-match-ingestion",
@@ -40,6 +41,7 @@
     "aggregates:audit-rank-coverage": "pnpm --filter @league-helper/worker aggregates:audit-rank-coverage",
     "aggregates:audit-champions": "pnpm --filter @league-helper/worker aggregates:audit-champions",
     "player:search:mock": "pnpm --filter @league-helper/api player:search:mock",
+    "matches:bootstrap-player": "pnpm --filter @league-helper/api matches:bootstrap-player",
     "matches:recompute-positions": "pnpm --filter @league-helper/api matches:recompute-positions",
     "test:e2e": "pnpm --filter @league-helper/web test:e2e"
   },
