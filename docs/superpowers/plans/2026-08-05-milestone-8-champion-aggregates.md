@@ -756,7 +756,7 @@ EOF
 - Create: `apps/web/utils/champion-links.ts` (+ tests)
 - Create: splash/icon isolation test updates if needed
 
-- [ ] **Step 1: Failing filter tests**
+- [x] **Step 1: Failing filter tests**
 
 ```ts
 it('canonicalizes queueId alias to queue', () => { /* … */ });
@@ -765,7 +765,7 @@ it('ignores stale out-of-order table responses', async () => { /* … */ });
 it('keeps displayedResponse.sampleScope while isUpdating', () => { /* … */ });
 ```
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 ```ts
 // Public query: platform, queue, tier, position, patch, search, tag
@@ -776,13 +776,15 @@ it('keeps displayedResponse.sampleScope while isUpdating', () => { /* … */ });
 // buildChampionPath(key, filters) — never search/tag onto player links
 ```
 
-- [ ] **Step 3: Tests PASS**
+Also delivered under coordinator Task 9 (directory half of plan Task 10 Step 1): `/champions` page, directory components, position-gated ranking shell, AppHeader Champions nav. Detail page remains Task 10.
+
+- [x] **Step 3: Tests PASS**
 
 ```bash
 pnpm --filter @league-helper/web test
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/web/composables apps/web/utils

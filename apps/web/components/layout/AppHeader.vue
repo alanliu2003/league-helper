@@ -40,13 +40,13 @@
         >
           Home
         </NuxtLink>
-        <span
-          class="cursor-not-allowed text-sm text-[var(--lh-muted)]"
-          title="Coming later"
-          aria-disabled="true"
+        <NuxtLink
+          to="/champions"
+          class="text-sm text-[var(--lh-text-secondary)] no-underline hover:text-[var(--lh-accent)]"
+          active-class="!text-[var(--lh-accent)]"
         >
           Champions
-        </span>
+        </NuxtLink>
         <NuxtLink
           to="/"
           class="text-sm text-[var(--lh-text-secondary)] no-underline hover:text-[var(--lh-accent)]"
