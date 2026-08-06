@@ -155,7 +155,12 @@ export function createChampionStatsFiltersController(
   let directoryRequestId = 0;
   let directoryAbort: AbortController | null = null;
   let initialized = false;
-  let replacingUrl = false;
+  /**
+   * Serialize filter patches so rapid select changes (void setX from the page)
+   * cannot drop mid-flight updates. Do not short-circuit on URL sync — that
+   * previously discarded queue/tier/patch while platform sync was in flight.
+   */
+  let filterPatchTail: Promise<void> = Promise.resolve();
 
   function assignFilters(next: ChampionPublicFilters): void {
     filters.platform = next.platform;
@@ -180,12 +185,7 @@ export function createChampionStatsFiltersController(
   }
 
   async function syncUrl(next: ChampionPublicFilters): Promise<void> {
-    replacingUrl = true;
-    try {
-      await router.replaceQuery(toChampionPublicQuery(next));
-    } finally {
-      replacingUrl = false;
-    }
+    await router.replaceQuery(toChampionPublicQuery(next));
   }
 
   async function fetchDirectory(): Promise<void> {
@@ -349,53 +349,78 @@ export function createChampionStatsFiltersController(
     patch: Partial<ChampionPublicFilters>,
     options: { refreshDirectory?: boolean; refreshRanking?: boolean } = {},
   ): Promise<void> {
-    if (!filtersReady.value || replacingUrl) {
+    if (!filtersReady.value) {
       return;
     }
 
-    const refreshRanking = options.refreshRanking !== false;
-    const next: ChampionPublicFilters = {
-      ...snapshotFilters(),
-      ...patch,
-    };
+    // Serialize assign + URL sync only. Directory/ranking fetches run after the
+    // queue advances so rapid selects cannot drop mid-flight URL patches, while
+    // overlapping fetches still rely on request-id abort for staleness.
+    const previous = filterPatchTail;
+    let release!: () => void;
+    filterPatchTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
 
-    if (publicFiltersEqual(snapshotFilters(), next)) {
-      return;
-    }
+    let afterSync: (() => Promise<void>) | null = null;
+    await previous.catch(() => undefined);
+    try {
+      if (!filtersReady.value) {
+        return;
+      }
 
-    assignFilters(next);
-
-    if (refreshRanking && next.position && viewState.value.displayedResponse) {
-      viewState.value = {
-        displayedResponse: viewState.value.displayedResponse,
-        pendingFilters: next,
-        isUpdating: true,
+      const refreshRanking = options.refreshRanking !== false;
+      const next: ChampionPublicFilters = {
+        ...snapshotFilters(),
+        ...patch,
       };
-    }
 
-    await syncUrl(next);
+      if (publicFiltersEqual(snapshotFilters(), next)) {
+        return;
+      }
 
-    if (options.refreshDirectory) {
-      await fetchDirectory();
-    }
+      assignFilters(next);
 
-    if (!refreshRanking) {
-      return;
-    }
+      if (refreshRanking && next.position && viewState.value.displayedResponse) {
+        viewState.value = {
+          displayedResponse: viewState.value.displayedResponse,
+          pendingFilters: next,
+          isUpdating: true,
+        };
+      }
 
-    if (next.position && queueSupportsStandardPositions(next.queue)) {
-      await fetchRanking();
-    } else {
-      // Clear ranking display when position removed or queue cannot rank by role.
-      rankingRequestId += 1;
-      rankingAbort?.abort();
-      rankingPending.value = false;
-      viewState.value = {
-        displayedResponse: null,
-        pendingFilters: null,
-        isUpdating: false,
+      await syncUrl(next);
+
+      afterSync = async () => {
+        if (options.refreshDirectory) {
+          await fetchDirectory();
+        }
+
+        if (!refreshRanking) {
+          return;
+        }
+
+        if (next.position && queueSupportsStandardPositions(next.queue)) {
+          await fetchRanking();
+        } else {
+          // Clear ranking display when position removed or queue cannot rank by role.
+          rankingRequestId += 1;
+          rankingAbort?.abort();
+          rankingPending.value = false;
+          viewState.value = {
+            displayedResponse: null,
+            pendingFilters: null,
+            isUpdating: false,
+          };
+          rankingError.value = null;
+        }
       };
-      rankingError.value = null;
+    } finally {
+      release();
+    }
+
+    if (afterSync) {
+      await afterSync();
     }
   }
 

@@ -365,6 +365,49 @@ describe('createChampionStatsFiltersController', () => {
     expect(controller.directory.value?.champions.map((c) => c.championKey)).toEqual(['Ahri']);
   });
 
+  it('applies rapid setPlatform→setQueue→setTier to URL without dropping mid-flight changes', async () => {
+    let query: QueryRecord = {};
+    const api = createApi({
+      getFilters: vi.fn(async () =>
+        filtersMeta({
+          availableQueues: [
+            { queueId: 420, label: 'Ranked Solo/Duo', supportsStandardPositions: true },
+            { queueId: 440, label: 'Ranked Flex', supportsStandardPositions: true },
+            { queueId: 450, label: 'ARAM', supportsStandardPositions: false },
+          ],
+        }),
+      ),
+    });
+    const router: ChampionStatsFiltersRouter = {
+      getQuery: () => query,
+      // Slow sync recreates the race that used to drop patches while replacingUrl was true.
+      replaceQuery: vi.fn(async (next: Record<string, string>) => {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 25);
+        });
+        query = { ...next };
+      }),
+    };
+    const controller = createChampionStatsFiltersController(api, router);
+    await controller.initialize();
+
+    await Promise.all([
+      controller.setPlatform('euw1'),
+      controller.setQueue(440),
+      controller.setTier('GOLD'),
+      controller.setPatch('14.10'),
+    ]);
+
+    expect(controller.filters.platform).toBe('euw1');
+    expect(controller.filters.queue).toBe(440);
+    expect(controller.filters.tier).toBe('GOLD');
+    expect(controller.filters.patch).toBe('14.10');
+    expect(query.platform).toBe('euw1');
+    expect(query.queue).toBe('440');
+    expect(query.tier).toBe('GOLD');
+    expect(query.patch).toBe('14.10');
+  });
+
   it('keeps displayedResponse.sampleScope while isUpdating', async () => {
     const initial = tableResponse({
       sampleScope: {

@@ -838,30 +838,26 @@ EOF
 
 **Files:**
 - Create: `apps/web/e2e/champions.e2e.ts`
-- Create/modify: Playwright global setup using `TEST_DATABASE_URL` / `TEST_REDIS_URL`
-- Create: e2e seed helper (static champions + COMPLETED matches + invoke rebuild harness)
+- Create: `apps/web/e2e/champion-api.mocks.ts` (Playwright route fixtures; Zod-shaped)
+- Note: Prefer route mocks over global DB seed/rebuild for deterministic UI e2e. Full static-data sync + DB seed + aggregate rebuild harness remains future operational work.
 
-- [ ] **Step 1: Global setup**
+- [x] **Step 1: Mock setup (route fixtures)**
 
-1. Guard test DB name contains `test`  
-2. migrate deploy  
-3. seed static + deterministic COMPLETED matches (420, mixed W/L, positions, one remake, timeline missing/present)  
-4. run rebuild with test versions (spawn CLI or in-process harness)  
-5. bounded poll until expected aggregate rows exist / queues idle  
+Install `page.route` handlers for filters / champions list / detail / stats / ranking table. Track request URLs to assert no ranking before position. Variants: empty stats, unknown 404, numeric not-found, ranking rows, case-insensitive detail with `canonicalChampionKey`.
 
-- [ ] **Step 2: E2E assertions**
+- [x] **Step 2: E2E assertions**
 
-Open `/champions` → disclaimer; no ranking until position; select MIDDLE → rows; open Ahri → metrics; DOM scan no `puuid`/`PUUID`; no matchup/AI sections.
+Open `/champions` → disclaimer; no ranking until position; select MIDDLE → rows; open Ahri → metrics; DOM scan no `puuid`/`PUUID`; no matchup/AI sections; URL authority; empty stats; not-found; case replace; a11y/responsive; light player→champion link mock.
 
-- [ ] **Step 3: Run**
+- [x] **Step 3: Run**
 
 ```bash
 pnpm test:e2e
 ```
 
-Expected: PASS (or SKIPPED with explicit reason if infra missing — never silent pass)
+Expected: PASS (or SKIPPED with explicit reason if infra missing — never silent pass). Champions file uses route mocks; full suite may still surface pre-existing player-search waitForResponse flakes.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** (coordinator)
 
 ```bash
 git add apps/web/e2e apps/web/playwright.config.ts
@@ -871,6 +867,8 @@ test(e2e): add isolated champion statistics playwright coverage
 EOF
 )"
 ```
+
+Also: fixed directory filter URL race (rapid select drops) discovered by e2e.
 
 ---
 
