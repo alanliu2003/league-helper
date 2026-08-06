@@ -75,6 +75,8 @@ describe('champion stats cache keys', () => {
       championKey: 'Ahri',
       position: 'MIDDLE',
       tier: 'ALL',
+      minimumSample: 30,
+      includeInsufficient: false,
     });
     const filters = buildChampionStatsFiltersCacheKey({
       scope: baseScope,

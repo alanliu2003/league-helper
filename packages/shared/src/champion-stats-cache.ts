@@ -64,6 +64,8 @@ export type ChampionStatsChampionCacheKeyInput = {
   championKey: string;
   position?: string | null;
   tier: string;
+  minimumSample: number;
+  includeInsufficient: boolean;
 };
 
 export type ChampionStatsFiltersCacheKeyInput = {
@@ -105,7 +107,13 @@ export function buildChampionStatsChampionCacheKey(
   const scopeKey = serializeChampionStatsGenerationScope(input.scope);
   const generation = assertGeneration(input.generation);
   const championKey = z.string().min(1).parse(input.championKey);
-  const fingerprint = JSON.stringify([championKey, input.position ?? null, input.tier]);
+  const fingerprint = JSON.stringify([
+    championKey,
+    input.position ?? null,
+    input.tier,
+    input.minimumSample,
+    input.includeInsufficient,
+  ]);
   return `champ_stats:champion:${generation}:${scopeKey}:${fingerprint}`;
 }
 

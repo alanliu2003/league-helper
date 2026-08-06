@@ -18,6 +18,9 @@ export const DomainErrorCodeSchema = z.enum([
   'QUEUE_UNAVAILABLE',
   'DATABASE_UNAVAILABLE',
   'INVALID_CURSOR',
+  'CHAMPION_NOT_FOUND',
+  'CHAMPION_STATS_POSITION_REQUIRED',
+  'CHAMPION_STATS_INVALID_FILTER',
 ]);
 
 export type DomainErrorCode = z.infer<typeof DomainErrorCodeSchema>;
@@ -176,6 +179,30 @@ export class InvalidCursorError extends DomainError {
   constructor(message = 'Pagination cursor is invalid.', details?: unknown) {
     super('INVALID_CURSOR', message, details);
     this.name = 'InvalidCursorError';
+  }
+}
+
+export class ChampionNotFoundError extends DomainError {
+  constructor(message = 'Champion was not found.', details?: unknown) {
+    super('CHAMPION_NOT_FOUND', message, details);
+    this.name = 'ChampionNotFoundError';
+  }
+}
+
+export class ChampionStatsPositionRequiredError extends DomainError {
+  constructor(
+    message = 'Champion ranking requires a position filter.',
+    details?: unknown,
+  ) {
+    super('CHAMPION_STATS_POSITION_REQUIRED', message, details);
+    this.name = 'ChampionStatsPositionRequiredError';
+  }
+}
+
+export class ChampionStatsInvalidFilterError extends DomainError {
+  constructor(message = 'Champion stats filter is invalid.', details?: unknown) {
+    super('CHAMPION_STATS_INVALID_FILTER', message, details);
+    this.name = 'ChampionStatsInvalidFilterError';
   }
 }
 

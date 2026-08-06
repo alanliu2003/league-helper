@@ -17,6 +17,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@league-helper/match-analytics':
+        specifier: workspace:*
+        version: link:../../packages/match-analytics
       '@league-helper/server-riot':
         specifier: workspace:*
         version: link:../../packages/server-riot

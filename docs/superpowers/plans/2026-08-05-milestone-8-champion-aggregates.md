@@ -693,7 +693,7 @@ EOF
 - Modify: `apps/api/.env.example`
 - Expand seed champions in `apps/api/prisma/seed.ts` (static metadata only; more keys for directory)
 
-- [ ] **Step 1: Config test — invalid platform throws**
+- [x] **Step 1: Config test — invalid platform throws**
 
 ```ts
 expect(() => loadChampionStatsConfig({ CHAMPION_STATS_DEFAULT_PLATFORM: 'nope' })).toThrow(
@@ -701,7 +701,7 @@ expect(() => loadChampionStatsConfig({ CHAMPION_STATS_DEFAULT_PLATFORM: 'nope' }
 );
 ```
 
-- [ ] **Step 2: Service/unit tests**
+- [x] **Step 2: Service/unit tests**
 
 - table without position → `CHAMPION_STATS_POSITION_REQUIRED`  
 - unknown key → `CHAMPION_NOT_FOUND`  
@@ -714,7 +714,7 @@ expect(() => loadChampionStatsConfig({ CHAMPION_STATS_DEFAULT_PLATFORM: 'nope' }
 - no sentinel `""` in DTOs  
 - `effectiveMinimumSample` metadata  
 
-- [ ] **Step 3: Implement Nest module**
+- [x] **Step 3: Implement Nest module**
 
 ```ts
 // ChampionsController @Controller('api/champions')
@@ -726,14 +726,16 @@ expect(() => loadChampionStatsConfig({ CHAMPION_STATS_DEFAULT_PLATFORM: 'nope' }
 
 Offset pagination is acceptable for M8 if cursor complexity slips; if using cursor, encode `{ sortValue, championId, sortBy, sortDirection, aggregationVersion, filterFingerprint }` as opaque base64url JSON.
 
-- [ ] **Step 4: Unit + integration tests PASS**
+- [x] **Step 4: Unit + integration tests PASS**
 
 ```bash
 pnpm --filter @league-helper/api test:unit
 pnpm test:api:integration
 ```
 
-- [ ] **Step 5: Commit**
+Note: root Windows integration glob still baseline-FAIL; Task 8 verified via `test:unit` + focused `vitest run src/features/champions/champions.integration.test.ts`.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api packages/shared

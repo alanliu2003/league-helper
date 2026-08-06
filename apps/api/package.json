@@ -30,6 +30,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@league-helper/match-analytics": "workspace:*",
     "@league-helper/server-riot": "workspace:*",
     "@league-helper/shared": "workspace:*",
     "@nestjs/common": "^11.0.12",

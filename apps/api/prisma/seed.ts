@@ -32,9 +32,76 @@ async function main(): Promise<void> {
   });
 
   const champions = [
-    { championId: 1, championKey: 'Annie', name: 'Annie', title: 'the Dark Child' },
-    { championId: 103, championKey: 'Ahri', name: 'Ahri', title: 'the Nine-Tailed Fox' },
-    { championId: 157, championKey: 'Yasuo', name: 'Yasuo', title: 'the Unforgiven' },
+    {
+      championId: 1,
+      championKey: 'Annie',
+      name: 'Annie',
+      title: 'the Dark Child',
+      tags: ['Mage'],
+    },
+    {
+      championId: 103,
+      championKey: 'Ahri',
+      name: 'Ahri',
+      title: 'the Nine-Tailed Fox',
+      tags: ['Mage', 'Assassin'],
+    },
+    {
+      championId: 157,
+      championKey: 'Yasuo',
+      name: 'Yasuo',
+      title: 'the Unforgiven',
+      tags: ['Fighter', 'Assassin'],
+    },
+    {
+      championId: 222,
+      championKey: 'Jinx',
+      name: 'Jinx',
+      title: 'the Loose Cannon',
+      tags: ['Marksman'],
+    },
+    {
+      championId: 64,
+      championKey: 'LeeSin',
+      name: 'Lee Sin',
+      title: 'the Blind Monk',
+      tags: ['Fighter', 'Assassin'],
+    },
+    {
+      championId: 53,
+      championKey: 'Blitzcrank',
+      name: 'Blitzcrank',
+      title: 'the Great Steam Golem',
+      tags: ['Tank', 'Fighter'],
+    },
+    {
+      championId: 86,
+      championKey: 'Garen',
+      name: 'Garen',
+      title: 'The Might of Demacia',
+      tags: ['Fighter', 'Tank'],
+    },
+    {
+      championId: 245,
+      championKey: 'Ekko',
+      name: 'Ekko',
+      title: 'the Boy Who Shattered Time',
+      tags: ['Assassin', 'Fighter'],
+    },
+    {
+      championId: 235,
+      championKey: 'Senna',
+      name: 'Senna',
+      title: 'the Redeemer',
+      tags: ['Marksman', 'Support'],
+    },
+    {
+      championId: 202,
+      championKey: 'Jhin',
+      name: 'Jhin',
+      title: 'the Virtuoso',
+      tags: ['Marksman', 'Assassin'],
+    },
   ];
 
   for (const champion of champions) {
@@ -46,6 +113,7 @@ async function main(): Promise<void> {
         name: champion.name,
         title: champion.title,
         championKey: champion.championKey,
+        tags: champion.tags,
       },
       create: {
         patchId: patch.id,
@@ -53,7 +121,7 @@ async function main(): Promise<void> {
         championKey: champion.championKey,
         name: champion.name,
         title: champion.title,
-        tags: ['Mage'],
+        tags: champion.tags,
         baseStats: { hp: 500 },
         passive: { name: 'SeedPassive' },
         spells: [{ id: 'Q' }],
