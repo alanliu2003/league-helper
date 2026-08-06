@@ -228,7 +228,36 @@ pnpm riot:match-ids --puuid "fake-or-real-puuid" --platform na1 --count 5
 pnpm champions:sync-static --dry-run
 pnpm champions:sync-static
 pnpm champions:sync-static --json
+
+# Ops-only match bootstrap (not a crawler / not a tracked-player system)
+# Dry-run may call Riot for resolve + match ID discovery; never writes DB or enqueues jobs.
+pnpm matches:bootstrap-player --game-name "Example" --tag-line "NA1" --platform na1 --dry-run
+
+# Apply: upsert account, sync ranks, paginate queue 420 match IDs, enqueue via existing ingestion pipeline
+pnpm matches:bootstrap-player --game-name "Example" --tag-line "NA1" --platform na1 --queue 420 --max-matches 100
+
+# Optional lightweight --wait polls Match/durable job terminal states for IDs from this run only
+# (bounded timeout/poll from MATCH_BOOTSTRAP_*). Wait timeout with pending jobs is reported as
+# inconclusive smoke and exits 0 so you can retry; definitive smoke failure or finished wait with
+# ingestion failures exits 1.
+pnpm matches:bootstrap-player --game-name "Example" --tag-line "NA1" --platform na1 --wait --json
+
+# Optional file mode (Zod-validated; sequential by default; bounded --concurrency)
+pnpm matches:bootstrap-player --file players.json --concurrency 1 --wait
 ```
+
+Example `players.json`:
+
+```json
+[
+  { "gameName": "PlayerOne", "tagLine": "NA1", "platform": "na1" },
+  { "gameName": "PlayerTwo", "tagLine": "NA1", "platform": "na1" }
+]
+```
+
+Ops env (CLI only — not used by the public UI): `MATCH_BOOTSTRAP_DEFAULT_QUEUE_ID`, `MATCH_BOOTSTRAP_DEFAULT_MAX_MATCHES`, `MATCH_BOOTSTRAP_HARD_MAX_MATCHES`, `MATCH_BOOTSTRAP_PAGE_SIZE`, `MATCH_BOOTSTRAP_FILE_MAX_PLAYERS`, `MATCH_BOOTSTRAP_MAX_CONCURRENCY`, `MATCH_BOOTSTRAP_WAIT_TIMEOUT_MS`, `MATCH_BOOTSTRAP_WAIT_POLL_INTERVAL_MS`.
+
+Pipeline smoke after apply+`--wait` checks for ≥1 `ChampionAggregate` with `queueId=420`, known position, and `sampleSize > 0`. The public champion UI still hides stats below `sampleSize ≥ 30` — that floor remains best-effort for bootstrap sessions.
 
 Set `RIOT_PROVIDER_MODE=real` and a valid `RIOT_API_KEY` in `apps/api/.env` before using live Riot data. Champion static sync uses the public Data Dragon CDN only (`DATA_DRAGON_VERSION`, `DATA_DRAGON_SYNC_MIN_CHAMPIONS`, `DATA_DRAGON_SYNC_MAX_RETRIES`).
 

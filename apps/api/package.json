@@ -25,6 +25,7 @@
     "jobs:reconcile-match-ingestion": "tsx src/queues/cli/reconcile-match-ingestion.ts",
     "jobs:status-match-ingestion": "tsx src/queues/cli/status-match-ingestion.ts",
     "player:search:mock": "tsx src/features/players/cli/player-search-mock.ts",
+    "matches:bootstrap-player": "tsx src/features/players/cli/bootstrap-player.ts",
     "matches:recompute-positions": "tsx src/features/players/cli/recompute-positions.ts"
   },
   "prisma": {
