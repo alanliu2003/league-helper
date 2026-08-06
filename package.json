@@ -31,6 +31,7 @@
     "riot:resolve": "pnpm --filter @league-helper/api riot:resolve",
     "riot:match-ids": "pnpm --filter @league-helper/api riot:match-ids",
     "ddragon:champion": "pnpm --filter @league-helper/api ddragon:champion",
+    "champions:sync-static": "pnpm --filter @league-helper/api champions:sync-static",
     "jobs:reconcile-match-ingestion": "pnpm --filter @league-helper/api jobs:reconcile-match-ingestion",
     "jobs:status-match-ingestion": "pnpm --filter @league-helper/api jobs:status-match-ingestion",
     "jobs:retry-match-ingestion": "pnpm --filter @league-helper/worker jobs:retry-match-ingestion",

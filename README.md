@@ -223,9 +223,14 @@ pnpm riot:resolve --game-name "Example" --tag-line "NA1" --platform na1
 
 # List recent match IDs for a PUUID
 pnpm riot:match-ids --puuid "fake-or-real-puuid" --platform na1 --count 5
+
+# Sync champion static data from Data Dragon into Patch + ChampionStaticData (no API key)
+pnpm champions:sync-static --dry-run
+pnpm champions:sync-static
+pnpm champions:sync-static --json
 ```
 
-Set `RIOT_PROVIDER_MODE=real` and a valid `RIOT_API_KEY` in `apps/api/.env` before using live data.
+Set `RIOT_PROVIDER_MODE=real` and a valid `RIOT_API_KEY` in `apps/api/.env` before using live Riot data. Champion static sync uses the public Data Dragon CDN only (`DATA_DRAGON_VERSION`, `DATA_DRAGON_SYNC_MIN_CHAMPIONS`, `DATA_DRAGON_SYNC_MAX_RETRIES`).
 
 ### Common error interpretations
 
@@ -604,7 +609,7 @@ Champions e2e (Task 11) uses **route mocks** for API responses so the suite does
 - AI coaching / player-specific champion coaching
 - Patch-impact causality or patch-note ingestion
 - Full-population / global ladder crawling
-- Data Dragon sync operations beyond existing champion metadata enrichment
+- Advanced Data Dragon sync (items/runes/full spell text); champion roster sync is available via `pnpm champions:sync-static`
 - Authentication
 
 ## Notes
