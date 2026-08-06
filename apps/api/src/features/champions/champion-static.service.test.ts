@@ -95,4 +95,29 @@ describe('ChampionStaticService', () => {
     const { service } = createService({ row: null });
     await expect(service.getByKey('NotAChamp')).rejects.toBeInstanceOf(ChampionNotFoundError);
   });
+
+  it('throws CHAMPION_NOT_FOUND for hidden League Classic keys', async () => {
+    const { service, champions } = createService({ row: null });
+    await expect(service.getByKey('Jade_Ahri')).rejects.toBeInstanceOf(ChampionNotFoundError);
+    expect(champions.findByChampionKey).toHaveBeenCalledWith('Jade_Ahri');
+  });
+
+  it('lists only rows returned by the public repository filter', async () => {
+    const { service } = createService({
+      listRows: [
+        {
+          championId: 103,
+          championKey: 'Ahri',
+          name: 'Ahri',
+          title: 'the Nine-Tailed Fox',
+          tags: ['Mage'],
+          patchVersion: '16.15.1',
+          dataDragonVersion: '16.15.1',
+        },
+      ],
+    });
+    const response = await service.list();
+    expect(response.champions.map((c) => c.championKey)).toEqual(['Ahri']);
+    expect(response.champions.some((c) => c.championKey.startsWith('Jade_'))).toBe(false);
+  });
 });

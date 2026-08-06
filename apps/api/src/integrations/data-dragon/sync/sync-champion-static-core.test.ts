@@ -813,4 +813,30 @@ describe('syncChampionStatic', () => {
     expect(result.championRowCount).toBe(2);
     expect(result.distinctChampionKeyCount).toBe(2);
   });
+
+  it('preserves League Classic Jade_* rows during sync upserts', async () => {
+    const jadeAhri = {
+      id: 'Jade_Ahri',
+      key: '60103',
+      name: 'Ahri',
+      title: 'the Nine-Tailed Fox',
+      tags: ['Mage', 'Assassin'],
+    };
+    const { prisma, state } = createFakePrisma();
+    const fetchFn = vi.fn(async () => jsonResponse(championPayload([AHRI, MUNDO, jadeAhri])));
+
+    const result = await syncChampionStatic({
+      config: makeConfig({ minChampions: 3 }),
+      prisma,
+      dryRun: false,
+      fetchDeps: { fetchFn: fetchFn as unknown as typeof fetch, sleepFn: async () => undefined },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.upsertedCount).toBe(3);
+    const champions = state.patches.get('16.10.1')?.champions;
+    expect(champions?.get(103)?.championKey).toBe('Ahri');
+    expect(champions?.get(60103)?.championKey).toBe('Jade_Ahri');
+    expect(result.championRowCount).toBe(3);
+  });
 });

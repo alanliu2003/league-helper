@@ -1,5 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { StaticDataStatus, type ChampionStaticData, type Patch } from '@prisma/client';
+import {
+  CLASSIC_CHAMPION_ID_MIN,
+  isPublicChampionEntry,
+  publicChampionStaticWhere,
+} from './champion-public-visibility';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type ChampionStaticRow = Pick<
@@ -53,6 +58,7 @@ export class ChampionStaticRepository {
     const tag = query.tag?.trim();
     const where = {
       patchId: patch.id,
+      ...publicChampionStaticWhere(),
       ...(search
         ? {
             OR: [
@@ -64,7 +70,7 @@ export class ChampionStaticRepository {
       ...(tag ? { tags: { has: tag } } : {}),
     };
 
-    const [rows, totalCount] = await Promise.all([
+    const [rawRows, totalCount] = await Promise.all([
       this.prisma.championStaticData.findMany({
         where,
         select: {
@@ -81,12 +87,15 @@ export class ChampionStaticRepository {
       this.prisma.championStaticData.count({ where }),
     ]);
 
+    const rows = rawRows.filter((row) => isPublicChampionEntry(row));
+
     return {
       rows: rows.map((row) => ({
         ...row,
         patchVersion: patch.version,
         dataDragonVersion: patch.dataDragonVersion,
       })),
+      // ID-offset SQL filter removes Classic rows; in-memory filter is defensive only.
       totalCount,
       patch,
     };
@@ -103,8 +112,13 @@ export class ChampionStaticRepository {
       return null;
     }
 
+    const publicWhere = publicChampionStaticWhere();
+
     const exact = await this.prisma.championStaticData.findFirst({
-      where: { patchId: patch.id, championKey: key },
+      where: {
+        patchId: patch.id,
+        AND: [publicWhere, { championKey: key }],
+      },
       select: {
         championId: true,
         championKey: true,
@@ -113,7 +127,7 @@ export class ChampionStaticRepository {
         tags: true,
       },
     });
-    if (exact) {
+    if (exact && isPublicChampionEntry(exact)) {
       return {
         ...exact,
         patchVersion: patch.version,
@@ -124,7 +138,7 @@ export class ChampionStaticRepository {
     const insensitive = await this.prisma.championStaticData.findMany({
       where: {
         patchId: patch.id,
-        championKey: { equals: key, mode: 'insensitive' },
+        AND: [publicWhere, { championKey: { equals: key, mode: 'insensitive' } }],
       },
       select: {
         championId: true,
@@ -137,6 +151,10 @@ export class ChampionStaticRepository {
     });
 
     if (insensitive.length !== 1 || !insensitive[0]) {
+      return null;
+    }
+
+    if (!isPublicChampionEntry(insensitive[0])) {
       return null;
     }
 
@@ -160,8 +178,18 @@ export class ChampionStaticRepository {
       return result;
     }
 
+    const idFiltered = unique.filter(
+      (championId) => championId >= 0 && championId < CLASSIC_CHAMPION_ID_MIN,
+    );
+    if (idFiltered.length === 0) {
+      return result;
+    }
+
     const rows = await this.prisma.championStaticData.findMany({
-      where: { patchId: patch.id, championId: { in: unique } },
+      where: {
+        patchId: patch.id,
+        AND: [publicChampionStaticWhere(), { championId: { in: idFiltered } }],
+      },
       select: {
         championId: true,
         championKey: true,
@@ -172,6 +200,9 @@ export class ChampionStaticRepository {
     });
 
     for (const row of rows) {
+      if (!isPublicChampionEntry(row)) {
+        continue;
+      }
       result.set(row.championId, {
         ...row,
         patchVersion: patch.version,

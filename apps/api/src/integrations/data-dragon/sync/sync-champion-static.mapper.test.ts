@@ -73,4 +73,16 @@ describe('sync-champion-static.mapper', () => {
     expect(file.version).toBe('16.10.1');
     expect(Object.keys(file.data)).toEqual(['Ahri']);
   });
+
+  it('maps League Classic Jade_* entries without dropping them from sync', () => {
+    const row = mapDataDragonChampionEntry({
+      id: 'Jade_Ahri',
+      key: '60103',
+      name: 'Ahri',
+      title: 'the Nine-Tailed Fox',
+      tags: ['Mage', 'Assassin'],
+    });
+    expect(row.championKey).toBe('Jade_Ahri');
+    expect(row.championId).toBe(60103);
+  });
 });

@@ -140,6 +140,19 @@ describe('champions API integration', () => {
           spells: [],
           imageData: {},
         },
+        // League Classic variant — synced for history, hidden from public APIs
+        {
+          patchId: patch.id,
+          championId: 60103,
+          championKey: 'Jade_Ahri',
+          name: 'Ahri',
+          title: 'the Nine-Tailed Fox',
+          tags: ['Mage', 'Assassin'],
+          baseStats: {},
+          passive: {},
+          spells: [],
+          imageData: {},
+        },
       ],
     });
 
@@ -230,10 +243,22 @@ describe('champions API integration', () => {
     const { staticService } = createServices();
     const list = await staticService.list();
     expect(list.champions.length).toBeGreaterThanOrEqual(2);
+    expect(list.champions.map((c) => c.championKey).sort()).toEqual(['Ahri', 'Annie']);
+    expect(list.champions.some((c) => c.championKey === 'Jade_Ahri')).toBe(false);
 
     const detail = await staticService.getByKey('ahri');
     expect(detail.champion.championKey).toBe('Ahri');
     expect(detail.champion.canonicalChampionKey).toBe('Ahri');
+  });
+
+  it('hides League Classic champion detail routes', async () => {
+    const { staticService } = createServices();
+    await expect(staticService.getByKey('Jade_Ahri')).rejects.toBeInstanceOf(ChampionNotFoundError);
+
+    const hiddenRow = await prisma.championStaticData.findFirst({
+      where: { championKey: 'Jade_Ahri' },
+    });
+    expect(hiddenRow).not.toBeNull();
   });
 
   it('rejects numeric champion keys', async () => {
