@@ -15,6 +15,8 @@ import { CollectorCoverageService } from './collector-coverage.service';
 import { CollectorEligibilityService } from './collector-eligibility.service';
 import { CollectorEnrollmentModule } from './collector-enrollment.module';
 import { CollectorRunRepository } from './collector-run.repository';
+import { CollectorSchedulerService } from './collector-scheduler.service';
+import { CollectorSchedulerStateRepository } from './collector-scheduler-state.repository';
 import { CollectorStatusService } from './collector-status.service';
 import { PopulationCollectorService } from './population-collector.service';
 
@@ -30,6 +32,8 @@ import { PopulationCollectorService } from './population-collector.service';
       useValue: DEFAULT_DISCOVERY_MATCH_ID_PAGE_SIZE,
     },
     CollectorRunRepository,
+    CollectorSchedulerStateRepository,
+    CollectorSchedulerService,
     CollectorEligibilityService,
     CollectorCoverageService,
     CollectorStatusService,
@@ -40,6 +44,8 @@ import { PopulationCollectorService } from './population-collector.service';
     // Re-export enrollment surface (COLLECTOR_CONFIG / TrackedPlayerRepository / EnrollmentService).
     CollectorEnrollmentModule,
     CollectorRunRepository,
+    CollectorSchedulerStateRepository,
+    CollectorSchedulerService,
     CollectorEligibilityService,
     CollectorCoverageService,
     CollectorStatusService,

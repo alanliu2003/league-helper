@@ -20,8 +20,8 @@ import { runReconcileChampionAggregates } from './reconcile-core.js';
 import { runStatusChampionAggregates } from './status-core.js';
 
 const testDatabaseUrl =
-  process.env.TEST_DATABASE_URL ??
-  'postgresql://league:league@localhost:5432/league_helper?schema=league_helper_test';
+  process.env.WORKER_TEST_DATABASE_URL ??
+  'postgresql://league:league@localhost:5432/league_helper?schema=league_helper_worker_test';
 
 const prisma = new PrismaClient({
   datasources: { db: { url: testDatabaseUrl } },

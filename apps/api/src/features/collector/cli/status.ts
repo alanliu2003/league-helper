@@ -46,6 +46,7 @@ function formatRunLine(
   run: CollectorStatusReport['runState']['activeRunning'][number],
 ): string {
   const counters = run.counters;
+  const expansion = run.expansionCounters;
   return [
     `${label} runId=${run.runId} status=${run.status}`,
     `started=${run.startedAt}`,
@@ -61,6 +62,12 @@ function formatRunLine(
     `enqueued=${counters.matchesEnqueued}`,
     `skippedComplete=${counters.matchesSkippedComplete}`,
     ...(run.failureCode ? [`failureCode=${run.failureCode}`] : []),
+    `| ${run.expansionCountersLabel}`,
+    `participantsConsidered=${expansion.participantsConsidered}`,
+    `enrolledFromParticipants=${expansion.playersEnrolledFromParticipants}`,
+    `alreadyTrackedFromParticipants=${expansion.playersAlreadyTrackedFromParticipants}`,
+    `skippedDepthLimit=${expansion.playersSkippedDepthLimit}`,
+    `skippedPopulationCap=${expansion.playersSkippedPopulationCap}`,
   ].join(' ');
 }
 
@@ -80,12 +87,24 @@ function formatStatusText(report: CollectorStatusReport): string[] {
     ...report.runState.recentFinalized.map((run) => formatRunLine('finalized', run)),
     '',
     '## Tracked population',
+    `totalTrackedPlayers=${pop.totalTrackedPlayers}`,
     `byStatus=${JSON.stringify(pop.byStatus)}`,
     `byPlatform=${JSON.stringify(pop.byPlatform)}`,
     `byEnrollmentSource=${JSON.stringify(pop.byEnrollmentSource)}`,
+    `byDiscoveryDepth=${JSON.stringify(pop.byDiscoveryDepth)}`,
+    `autonomousParticipantBudget used=${pop.autonomousParticipantBudget.matchParticipantEnrolledCount}/${pop.autonomousParticipantBudget.expansionMaxTrackedPlayers} remaining=${pop.autonomousParticipantBudget.remainingAutonomousSlots} (MATCH_PARTICIPANT creates only; total tracked may exceed cap when operators seed roots)`,
     `eligibleNow=${pop.eligibleNow} activelyLeased=${pop.activelyLeased} expiredLeases=${pop.expiredLeases}`,
     `nextEligibleAt=${pop.nextEligibleAt ?? 'null'}`,
     `recentFailureCodes=${JSON.stringify(pop.recentFailureCodes)}`,
+    '',
+    '## Scheduler (config + singleton state; runtime owned by collector:scheduler)',
+    `enabled=${report.scheduler.enabled}`,
+    `leaseOwner=${report.scheduler.leaseOwnerPresent ? 'PRESENT' : 'ABSENT'}`,
+    `leaseExpiresAt=${report.scheduler.leaseExpiresAt ?? 'null'}`,
+    `lastOutcome=${report.scheduler.lastOutcome ?? 'null'}`,
+    `lastTriggerAt=${report.scheduler.lastTriggerAt ?? 'null'}`,
+    `lastCollectorRunId=${report.scheduler.lastCollectorRunId ?? 'null'}`,
+    `cooldownUntil=${report.scheduler.cooldownUntil ?? 'null'}`,
     '',
     '## Coverage',
   ];

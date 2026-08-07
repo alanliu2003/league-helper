@@ -19,6 +19,11 @@ export type CollectorEnrollmentInput = {
     platformRoute: string;
   };
   source: TrackedPlayerEnrollmentSource;
+  /**
+   * Proposed discovery depth. Explicit seed/search/bootstrap omit this and default to 0.
+   * UPDATE applies LEAST(existing, proposed); never increases depth.
+   */
+  discoveryDepth?: number;
   /** Clamp into config priority range. Default 0 on create. */
   priority?: number;
   /** Explicitly reactivate PAUSED/SUSPENDED to ACTIVE. */
@@ -138,6 +143,18 @@ export type CollectorRunCounters = {
   failureCode?: string | null;
 };
 
+/**
+ * Task 4 async post-finalization expansion metrics.
+ * May change after CollectorRun.status is terminal; not part of Task 3 equality.
+ */
+export type CollectorRunExpansionCounters = {
+  participantsConsidered: number;
+  playersEnrolledFromParticipants: number;
+  playersAlreadyTrackedFromParticipants: number;
+  playersSkippedDepthLimit: number;
+  playersSkippedPopulationCap: number;
+};
+
 export type CollectorRunOnceResult = {
   runId: string;
   ownerToken: string;
@@ -229,6 +246,45 @@ export type CollectorAuditCliArgs = {
   help: boolean;
 };
 
+export type CollectorSchedulerCliArgs = {
+  help: boolean;
+};
+
+export type CollectorSchedulerTriggerCliArgs = {
+  json: boolean;
+  help: boolean;
+};
+
+export type CollectorSchedulerStatusCliArgs = {
+  json: boolean;
+  help: boolean;
+};
+
+/** Focused read-only scheduler status (no raw lease owner UUID). */
+export type CollectorSchedulerStatusReport = {
+  ok: true;
+  mode: 'scheduler-status';
+  generatedAt: string;
+  /** From config (re-read preferred) — not inferred from lastOutcome. */
+  enabled: boolean;
+  scheduleIntervalMs: number;
+  scheduleQueueId: number;
+  schedulePlatform: string | null;
+  scheduleBatchSize: number;
+  scheduleConcurrency: number;
+  maxPendingIngestionJobs: number;
+  schedulerLeaseMs: number;
+  /** Presence only — do not expose owner UUID. */
+  leaseOwnerPresent: boolean;
+  leaseExpiresAt: string | null;
+  lastTriggerAt: string | null;
+  lastOutcome: string | null;
+  lastCollectorRunId: string | null;
+  lastErrorCode: string | null;
+  cooldownUntil: string | null;
+  cooldownActive: boolean;
+};
+
 export type CollectorStatusRunSummary = {
   runId: string;
   status: CollectorRunStatus;
@@ -238,17 +294,49 @@ export type CollectorStatusRunSummary = {
   queueId: number;
   counters: CollectorRunCounters;
   failureCode: string | null;
+  /**
+   * Async post-finalization expansion metrics (Task 4).
+   * Distinct from Task 3 execution counters; may update after terminal status.
+   */
+  expansionCounters: CollectorRunExpansionCounters;
+  expansionCountersLabel: 'ASYNC_POST_FINALIZATION_EXPANSION_METRICS';
+};
+
+export type CollectorStatusAutonomousBudget = {
+  /** Reserved/committed MATCH_PARTICIPANT creates (not total TrackedPlayer rows). */
+  matchParticipantEnrolledCount: number;
+  /** Configured autonomous MATCH_PARTICIPANT creation cap. */
+  expansionMaxTrackedPlayers: number;
+  remainingAutonomousSlots: number;
 };
 
 export type CollectorStatusTrackedPopulation = {
   byStatus: Record<string, number>;
   byPlatform: Record<string, number>;
   byEnrollmentSource: Record<string, number>;
+  byDiscoveryDepth: Record<string, number>;
+  /** Total TrackedPlayer rows (may exceed autonomous cap when operators seed roots). */
+  totalTrackedPlayers: number;
+  autonomousParticipantBudget: CollectorStatusAutonomousBudget;
   eligibleNow: number;
   activelyLeased: number;
   expiredLeases: number;
   nextEligibleAt: string | null;
   recentFailureCodes: Array<{ code: string; count: number }>;
+};
+
+/** Read-only snapshot of CollectorSchedulerState (Phase 3 owns runtime behavior). */
+export type CollectorStatusSchedulerSnapshot = {
+  /** From config — not inferred solely from lastOutcome. */
+  enabled: boolean;
+  /** PRESENT/ABSENT only — raw leaseOwner UUID is never exposed in operator output. */
+  leaseOwnerPresent: boolean;
+  leaseExpiresAt: string | null;
+  lastTriggerAt: string | null;
+  lastOutcome: string | null;
+  lastCollectorRunId: string | null;
+  lastErrorCode: string | null;
+  cooldownUntil: string | null;
 };
 
 export type CollectorStatusReport = {
@@ -261,6 +349,10 @@ export type CollectorStatusReport = {
     staleRunAfterMs: number;
     leaseDurationMs: number;
     platformAllowlist: string[];
+    schedulerEnabled: boolean;
+    expandFromParticipants: boolean;
+    expansionMaxTrackedPlayers: number;
+    expansionMaxDepth: number;
   };
   runState: {
     activeRunning: CollectorStatusRunSummary[];
@@ -268,6 +360,7 @@ export type CollectorStatusReport = {
     recentFinalized: CollectorStatusRunSummary[];
   };
   trackedPopulation: CollectorStatusTrackedPopulation;
+  scheduler: CollectorStatusSchedulerSnapshot;
   coverage: CollectorCoverageSnapshot | null;
   warnings: string[];
 };
@@ -287,7 +380,19 @@ export type CollectorAuditFindingCode =
   | 'DENORMALIZED_PROVIDER_MISMATCH'
   | 'DENORMALIZED_PLATFORM_ROUTE_MISMATCH'
   | 'LEFTOVER_LEASE_FINALIZED_OWNER'
-  | 'UNSAFE_TIMING_CONFIG';
+  | 'UNSAFE_TIMING_CONFIG'
+  | 'NEGATIVE_DISCOVERY_DEPTH'
+  | 'DISCOVERY_DEPTH_ABOVE_HARD_MAX'
+  | 'DISCOVERY_DEPTH_ABOVE_CONFIGURED_MAX'
+  | 'POPULATION_BUDGET_DRIFT'
+  | 'NEGATIVE_POPULATION_BUDGET'
+  | 'NEGATIVE_EXPANSION_COUNTER'
+  | 'MATCH_PARTICIPANT_ABOVE_HARD_CAP'
+  | 'MATCH_PARTICIPANT_ABOVE_CONFIGURED_CAP'
+  | 'SOURCE_QUOTA_RUN_MISMATCH'
+  | 'MALFORMED_SCHEDULER_LEASE_STATE'
+  | 'MISSING_POPULATION_BUDGET_SINGLETON'
+  | 'MISSING_SCHEDULER_STATE_SINGLETON';
 
 export type CollectorAuditFinding = {
   code: CollectorAuditFindingCode;
@@ -305,4 +410,27 @@ export type CollectorAuditReport = {
   label: 'discovery_enqueue_orchestration';
   findingCount: number;
   findings: CollectorAuditFinding[];
+};
+
+/** Local + owner-recorded scheduler tick outcomes (Phase 3). */
+export type SchedulerTickOutcome =
+  | 'TRIGGERED'
+  | 'SKIPPED_DISABLED'
+  | 'SKIPPED_OVERLAP'
+  | 'SKIPPED_BACKPRESSURE'
+  | 'SKIPPED_COOLDOWN'
+  | 'FAILED_TO_START';
+
+export type SchedulerTickResult = {
+  outcome: SchedulerTickOutcome;
+  collectorRunId?: string;
+  errorCode?: string;
+};
+
+export type CollectorSchedulerTriggerReport = {
+  ok: boolean;
+  mode: 'scheduler-trigger';
+  outcome: SchedulerTickOutcome;
+  collectorRunId?: string;
+  errorCode?: string;
 };

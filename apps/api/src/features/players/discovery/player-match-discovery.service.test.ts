@@ -322,6 +322,45 @@ describe('PlayerMatchDiscoveryService', () => {
     expect(spies.resolvePlayer).not.toHaveBeenCalled();
   });
 
+  it('passes sourceCollectorRunId to enqueue in PLAYER_ACCOUNT mode', async () => {
+    const sourceCollectorRunId = '33333333-3333-4333-8333-333333333333';
+    const { service, spies } = createService();
+
+    await service.discoverAndEnqueue({
+      mode: 'PLAYER_ACCOUNT',
+      playerAccountId: ACCOUNT_ID,
+      queueId: 420,
+      maxMatches: 100,
+      dryRun: false,
+      correlationId: 'corr-collector',
+      sourceCollectorRunId,
+    });
+
+    expect(spies.enqueueDiscoveredMatches).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sourceCollectorRunId }),
+    );
+  });
+
+  it('does not pass sourceCollectorRunId for RIOT_ID mode', async () => {
+    const { service, spies } = createService();
+
+    await service.discoverAndEnqueue({
+      mode: 'RIOT_ID',
+      gameName: 'PlayerOne',
+      tagLine: 'NA1',
+      platform: 'na1',
+      queueId: 420,
+      maxMatches: 100,
+      dryRun: false,
+      correlationId: 'corr-search',
+    });
+
+    expect(spies.enqueueDiscoveredMatches.mock.calls[0]?.[1]).not.toHaveProperty(
+      'sourceCollectorRunId',
+    );
+  });
+
   it('honors per-call pageSize override over Nest/runtime default', async () => {
     const getRecentMatchIds = vi.fn(async () => ['m-0']);
     const { service, deps } = createService({ getRecentMatchIds });

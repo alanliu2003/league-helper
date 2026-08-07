@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CollectorRunStatus, type CollectorRun } from '@prisma/client';
-import type { CollectorConfig } from './collector.config';
+import { loadCollectorConfig, type CollectorConfig } from './collector.config';
 import type { CollectorCoverageService } from './collector-coverage.service';
 import type { CollectorRunRepository } from './collector-run.repository';
 import { CollectorStatusService } from './collector-status.service';
@@ -9,27 +9,7 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import type { CollectorCoverageSnapshot } from './collector.types';
 
 function baseConfig(overrides: Partial<CollectorConfig> = {}): CollectorConfig {
-  return {
-    batchSize: 10,
-    concurrency: 2,
-    matchesPerPlayer: 20,
-    maxMatchIdsPerRun: 200,
-    maxEnqueuePerRun: 200,
-    minRefreshIntervalMs: 6 * 60 * 60_000,
-    baseBackoffMs: 15 * 60_000,
-    maxBackoffMs: 24 * 60 * 60_000,
-    maxBackoffExponent: 8,
-    playerTimeoutMs: 10 * 60_000,
-    leaseDurationMs: 15 * 60_000,
-    staleRunAfterMs: 2 * 60 * 60_000,
-    platformAllowlist: ['na1'],
-    estimatedRequestsPerEnqueuedMatch: 2,
-    priorityMin: 0,
-    priorityMax: 1000,
-    enrollFromBootstrap: false,
-    enrollFromSearch: false,
-    ...overrides,
-  };
+  return { ...loadCollectorConfig({}), ...overrides };
 }
 
 function runRow(overrides: Partial<CollectorRun> = {}): CollectorRun {
@@ -55,6 +35,11 @@ function runRow(overrides: Partial<CollectorRun> = {}): CollectorRun {
     rateLimitStops: 0,
     budgetExhausted: false,
     failureCode: null,
+    participantsConsidered: 0,
+    playersEnrolledFromParticipants: 0,
+    playersAlreadyTrackedFromParticipants: 0,
+    playersSkippedDepthLimit: 0,
+    playersSkippedPopulationCap: 0,
     createdAt: new Date('2026-08-01T00:00:00.000Z'),
     updatedAt: new Date('2026-08-01T00:00:00.000Z'),
     ...overrides,
@@ -85,6 +70,8 @@ describe('CollectorStatusService', () => {
       count: ReturnType<typeof vi.fn>;
       aggregate: ReturnType<typeof vi.fn>;
     };
+    collectorPopulationBudget: { findUnique: ReturnType<typeof vi.fn> };
+    collectorSchedulerState: { findUnique: ReturnType<typeof vi.fn> };
   };
   let runs: { findStaleRunning: ReturnType<typeof vi.fn> };
   let trackedPlayers: { countEligible: ReturnType<typeof vi.fn> };
@@ -104,20 +91,75 @@ describe('CollectorStatusService', () => {
               status: CollectorRunStatus.COMPLETED,
               finishedAt: new Date('2026-08-01T01:00:00.000Z'),
               ownerToken: 'final-token',
+              participantsConsidered: 4,
+              playersEnrolledFromParticipants: 1,
             }),
           ];
         }),
       },
       trackedPlayer: {
-        groupBy: vi
-          .fn()
-          .mockResolvedValueOnce([{ status: 'ACTIVE', _count: { _all: 3 } }])
-          .mockResolvedValueOnce([{ platformRoute: 'na1', _count: { _all: 3 } }])
-          .mockResolvedValueOnce([{ enrollmentSource: 'ADMIN_SEED', _count: { _all: 3 } }])
-          .mockResolvedValueOnce([{ lastFailureCode: 'RIOT_RATE_LIMITED', _count: { _all: 1 } }]),
-        count: vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(0),
+        groupBy: vi.fn().mockImplementation(async (args: { by?: string[] }) => {
+          const key = args?.by?.[0];
+          if (key === 'status') {
+            return [{ status: 'ACTIVE', _count: { _all: 3 } }];
+          }
+          if (key === 'platformRoute') {
+            return [{ platformRoute: 'na1', _count: { _all: 3 } }];
+          }
+          if (key === 'enrollmentSource') {
+            return [
+              { enrollmentSource: 'ADMIN_SEED', _count: { _all: 2 } },
+              { enrollmentSource: 'MATCH_PARTICIPANT', _count: { _all: 1 } },
+            ];
+          }
+          if (key === 'discoveryDepth') {
+            return [
+              { discoveryDepth: 0, _count: { _all: 2 } },
+              { discoveryDepth: 1, _count: { _all: 1 } },
+            ];
+          }
+          if (key === 'lastFailureCode') {
+            return [{ lastFailureCode: 'RIOT_RATE_LIMITED', _count: { _all: 1 } }];
+          }
+          return [];
+        }),
+        count: vi.fn().mockImplementation(async (args?: { where?: unknown }) => {
+          // No where → totalTrackedPlayers
+          if (!args?.where) {
+            return 3;
+          }
+          const where = args.where as {
+            leaseOwner?: unknown;
+            leaseExpiresAt?: { gt?: Date; lte?: Date };
+          };
+          if (where.leaseExpiresAt && 'gt' in where.leaseExpiresAt) {
+            return 1; // activelyLeased
+          }
+          if (where.leaseExpiresAt && 'lte' in where.leaseExpiresAt) {
+            return 0; // expiredLeases
+          }
+          return 0;
+        }),
         aggregate: vi.fn().mockResolvedValue({
           _min: { nextEligibleAt: new Date('2026-08-07T00:00:00.000Z') },
+        }),
+      },
+      collectorPopulationBudget: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'singleton',
+          matchParticipantEnrolledCount: 1,
+        }),
+      },
+      collectorSchedulerState: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'singleton',
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          lastTriggerAt: null,
+          lastOutcome: null,
+          lastCollectorRunId: null,
+          lastErrorCode: null,
+          cooldownUntil: null,
         }),
       },
     };
@@ -163,13 +205,33 @@ describe('CollectorStatusService', () => {
     expect(report.trackedPopulation).toMatchObject({
       byStatus: { ACTIVE: 3 },
       byPlatform: { na1: 3 },
-      byEnrollmentSource: { ADMIN_SEED: 3 },
+      byEnrollmentSource: { ADMIN_SEED: 2, MATCH_PARTICIPANT: 1 },
+      byDiscoveryDepth: { '0': 2, '1': 1 },
+      totalTrackedPlayers: 3,
+      autonomousParticipantBudget: {
+        matchParticipantEnrolledCount: 1,
+        expansionMaxTrackedPlayers: 500,
+        remainingAutonomousSlots: 499,
+      },
       eligibleNow: 2,
       activelyLeased: 1,
       expiredLeases: 0,
       nextEligibleAt: '2026-08-07T00:00:00.000Z',
       recentFailureCodes: [{ code: 'RIOT_RATE_LIMITED', count: 1 }],
     });
+    expect(report.runState.recentFinalized[0]).toMatchObject({
+      expansionCountersLabel: 'ASYNC_POST_FINALIZATION_EXPANSION_METRICS',
+      expansionCounters: {
+        participantsConsidered: 4,
+        playersEnrolledFromParticipants: 1,
+      },
+    });
+    expect(report.scheduler).toMatchObject({
+      enabled: false,
+      leaseOwnerPresent: false,
+      lastOutcome: null,
+    });
+    expect(report.config.schedulerEnabled).toBe(false);
     expect(report.coverage?.status).toBe('available');
     expect(report.warnings.some((w) => w.includes('staleRunAfterMs'))).toBe(true);
   });
@@ -210,6 +272,28 @@ describe('CollectorStatusService', () => {
     expect(serialized).not.toMatch(/puuid/i);
     expect(serialized).not.toContain('secret-owner-token-should-not-leak');
     expect(serialized).not.toContain('ownerToken');
+  });
+
+  it('exposes scheduler leaseOwner as PRESENT/ABSENT only (never raw UUID)', async () => {
+    const secretOwner = 'scheduler-lease-owner-uuid-should-not-leak';
+    prisma.collectorSchedulerState.findUnique.mockResolvedValue({
+      id: 'singleton',
+      leaseOwner: secretOwner,
+      leaseExpiresAt: new Date('2026-08-07T12:00:00.000Z'),
+      lastTriggerAt: null,
+      lastOutcome: 'TRIGGERED',
+      lastCollectorRunId: null,
+      lastErrorCode: null,
+      cooldownUntil: null,
+    });
+
+    const report = await service.report({ includeCoverage: false });
+    const serialized = JSON.stringify(report);
+
+    expect(report.scheduler.leaseOwnerPresent).toBe(true);
+    expect(report.scheduler).not.toHaveProperty('leaseOwner');
+    expect(serialized).not.toContain(secretOwner);
+    expect(serialized).not.toMatch(/"leaseOwner"\s*:/);
   });
 
   it('skips coverage when includeCoverage is false', async () => {

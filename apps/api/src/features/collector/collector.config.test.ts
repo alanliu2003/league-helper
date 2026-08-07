@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { ValidationFailureError } from '@league-helper/shared';
-import { loadCollectorConfig } from './collector.config';
+import {
+  computeMinimumSchedulerLeaseMs,
+  loadCollectorConfig,
+  PARTICIPANT_EXPANSION_CONFIG_VECTORS,
+  readCollectorSchedulerEnabled,
+} from './collector.config';
 
 const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
@@ -28,6 +33,26 @@ describe('loadCollectorConfig', () => {
       priorityMax: 1000,
       enrollFromBootstrap: false,
       enrollFromSearch: false,
+      schedulerEnabled: false,
+      scheduleIntervalMs: 15 * MINUTE_MS,
+      scheduleBatchSize: 10,
+      scheduleConcurrency: 2,
+      scheduleMaxMatchesPerPlayer: 20,
+      scheduleMaxMatchIds: 200,
+      scheduleMaxEnqueue: 200,
+      schedulerLeaseSafetyMarginMs: 5 * MINUTE_MS,
+      schedulerLeaseMs: 60 * MINUTE_MS,
+      schedulerRateLimitCooldownMs: 15 * MINUTE_MS,
+      maxPendingIngestionJobs: 500,
+      scheduleQueueId: 420,
+      schedulePlatform: null,
+      expandFromParticipants: false,
+      expansionMaxDepth: 1,
+      expansionMaxNewPlayersPerMatch: 3,
+      expansionMaxNewPlayersPerSourcePlayer: 5,
+      expansionMaxNewPlayersPerRun: 20,
+      expansionMaxTrackedPlayers: 500,
+      expansionQueueId: 420,
     });
   });
 
@@ -148,5 +173,112 @@ describe('loadCollectorConfig', () => {
       COLLECTOR_MIN_REFRESH_INTERVAL_MS: String(MINUTE_MS),
     });
     expect(config.minRefreshIntervalMs).toBe(MINUTE_MS);
+  });
+
+  it('defaults expansion/scheduler flags to safe disabled values', () => {
+    const config = loadCollectorConfig({});
+    expect(config.schedulerEnabled).toBe(false);
+    expect(config.expandFromParticipants).toBe(false);
+  });
+
+  it('readCollectorSchedulerEnabled uses same boolean rules as loadCollectorConfig', () => {
+    expect(readCollectorSchedulerEnabled({})).toBe(false);
+    expect(readCollectorSchedulerEnabled({ COLLECTOR_SCHEDULER_ENABLED: 'true' })).toBe(true);
+    expect(readCollectorSchedulerEnabled({ COLLECTOR_SCHEDULER_ENABLED: '0' })).toBe(false);
+    expect(() =>
+      readCollectorSchedulerEnabled({ COLLECTOR_SCHEDULER_ENABLED: 'maybe' }),
+    ).toThrow(ValidationFailureError);
+  });
+
+  it('rejects unsafe scheduler lease vs batch/concurrency/timeout', () => {
+    // Derived minimum under Task 3 defaults: ceil(10/2)*10m + 5m = 55m
+    const unsafeLease = 30 * MINUTE_MS;
+    expect(() =>
+      loadCollectorConfig({
+        COLLECTOR_SCHEDULER_LEASE_MS: String(unsafeLease),
+      }),
+    ).toThrow(ValidationFailureError);
+  });
+
+  it('rejects lease equal to derived minimum (strict greater-than)', () => {
+    const minimum = computeMinimumSchedulerLeaseMs({
+      scheduleBatchSize: 10,
+      scheduleConcurrency: 2,
+      playerTimeoutMs: 10 * MINUTE_MS,
+      schedulerLeaseSafetyMarginMs: 5 * MINUTE_MS,
+    });
+    expect(minimum).toBe(55 * MINUTE_MS);
+
+    expect(() =>
+      loadCollectorConfig({
+        COLLECTOR_SCHEDULER_LEASE_MS: String(minimum),
+      }),
+    ).toThrow(/SCHEDULER_LEASE_MS must be greater/i);
+  });
+
+  it('accepts lease at minimum + 1ms', () => {
+    const minimum = 55 * MINUTE_MS;
+    const config = loadCollectorConfig({
+      COLLECTOR_SCHEDULER_LEASE_MS: String(minimum + 1),
+    });
+    expect(config.schedulerLeaseMs).toBe(minimum + 1);
+  });
+
+  it('accepts default config (60m lease with Task 3 defaults)', () => {
+    const config = loadCollectorConfig({});
+    const minimum = computeMinimumSchedulerLeaseMs({
+      scheduleBatchSize: config.scheduleBatchSize,
+      scheduleConcurrency: config.scheduleConcurrency,
+      playerTimeoutMs: config.playerTimeoutMs,
+      schedulerLeaseSafetyMarginMs: config.schedulerLeaseSafetyMarginMs,
+    });
+    expect(minimum).toBe(55 * MINUTE_MS);
+    expect(config.schedulerLeaseMs).toBe(60 * MINUTE_MS);
+    expect(config.schedulerLeaseMs).toBeGreaterThan(minimum);
+  });
+
+  it('clamps expansion budget knobs to hard maxima', () => {
+    // Hard-max schedule batch/concurrency raises lease minimum to 105m; set lease above it.
+    const config = loadCollectorConfig({
+      COLLECTOR_EXPANSION_MAX_NEW_PLAYERS_PER_MATCH: '999',
+      COLLECTOR_EXPANSION_MAX_NEW_PLAYERS_PER_SOURCE_PLAYER: '999',
+      COLLECTOR_EXPANSION_MAX_NEW_PLAYERS_PER_RUN: '9999',
+      COLLECTOR_EXPANSION_MAX_TRACKED_PLAYERS: '99999',
+      COLLECTOR_SCHEDULE_BATCH_SIZE: '999',
+      COLLECTOR_SCHEDULE_CONCURRENCY: '99',
+      COLLECTOR_SCHEDULER_LEASE_MS: String(120 * MINUTE_MS),
+    });
+
+    expect(config.expansionMaxNewPlayersPerMatch).toBe(
+      PARTICIPANT_EXPANSION_CONFIG_VECTORS.maxNewPlayersPerMatchHardMax,
+    );
+    expect(config.expansionMaxNewPlayersPerSourcePlayer).toBe(
+      PARTICIPANT_EXPANSION_CONFIG_VECTORS.maxNewPlayersPerSourcePlayerHardMax,
+    );
+    expect(config.expansionMaxNewPlayersPerRun).toBe(
+      PARTICIPANT_EXPANSION_CONFIG_VECTORS.maxNewPlayersPerRunHardMax,
+    );
+    expect(config.expansionMaxTrackedPlayers).toBe(
+      PARTICIPANT_EXPANSION_CONFIG_VECTORS.maxTrackedPlayersHardMax,
+    );
+    expect(config.scheduleBatchSize).toBe(50);
+    expect(config.scheduleConcurrency).toBe(5);
+  });
+
+  it('rejects expansion depth outside 0..3', () => {
+    expect(() =>
+      loadCollectorConfig({
+        COLLECTOR_EXPANSION_MAX_DEPTH: '4',
+      }),
+    ).toThrow(ValidationFailureError);
+
+    expect(() =>
+      loadCollectorConfig({
+        COLLECTOR_EXPANSION_MAX_DEPTH: '-1',
+      }),
+    ).toThrow(ValidationFailureError);
+
+    expect(loadCollectorConfig({ COLLECTOR_EXPANSION_MAX_DEPTH: '0' }).expansionMaxDepth).toBe(0);
+    expect(loadCollectorConfig({ COLLECTOR_EXPANSION_MAX_DEPTH: '3' }).expansionMaxDepth).toBe(3);
   });
 });

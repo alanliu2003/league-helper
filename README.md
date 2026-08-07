@@ -88,7 +88,7 @@ pnpm db:test:prepare         # apply migrations to TEST_DATABASE_URL schema
 pnpm test:api:integration
 ```
 
-Population-collector schema rollback (manual ops): drop additive objects — `DROP TABLE IF EXISTS "CollectorRun"; DROP TABLE IF EXISTS "TrackedPlayer";` (indexes including `TrackedPlayer_claim_eligibility_idx` drop with the tables), then drop enums `CollectorRunStatus`, `TrackedPlayerEnrollmentSource`, `TrackedPlayerStatus`. No PlayerAccount backfill was performed, so rollback does not rewrite account rows.
+Population-collector schema rollback (manual ops, Task 3 + Task 4 additive objects): drop in dependency order — `DROP TABLE IF EXISTS "CollectorRunSourceQuota"; DROP TABLE IF EXISTS "CollectorSchedulerState"; DROP TABLE IF EXISTS "CollectorPopulationBudget"; DROP TABLE IF EXISTS "CollectorRun"; DROP TABLE IF EXISTS "TrackedPlayer";` (indexes drop with the tables), then drop enums `CollectorSchedulerOutcome`, `CollectorRunStatus`, `TrackedPlayerEnrollmentSource`, `TrackedPlayerStatus`. No PlayerAccount backfill was performed, so rollback does not rewrite account rows. Prefer forward migrations in shared environments.
 
 Safe local reset (destroys local Docker volumes):
 
@@ -100,13 +100,17 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
-Integration tests use a separate schema:
+Integration tests use separate schemas (do not point destructive tests at `schema=public`):
 
 ```text
+# API integration tests (pnpm --filter @league-helper/api test / db:test:prepare)
 TEST_DATABASE_URL=postgresql://league:league@localhost:5432/league_helper?schema=league_helper_test
+
+# Worker integration tests (pnpm --filter @league-helper/worker test / db:test:prepare)
+WORKER_TEST_DATABASE_URL=postgresql://league:league@localhost:5432/league_helper?schema=league_helper_worker_test
 ```
 
-Do not point destructive tests at `schema=public`.
+API and worker use distinct schemas so parallel `pnpm test` TRUNCATE resets cannot race across packages.
 
 ## Useful scripts
 
@@ -263,7 +267,7 @@ Pipeline smoke after apply+`--wait` checks for ≥1 `ChampionAggregate` with `qu
 
 ### Population collector (Milestone 9 Task 3 — manual one-shot)
 
-Task 3 adds a **bounded, manually triggered** population collector that selects known ranked players and feeds the existing Task 2 discovery → match-ingestion → champion-aggregation pipeline. It does **not** schedule itself, crawl ladders, or auto-enroll match participants (those are Task 4+).
+Task 3 adds a **bounded, manually triggered** population collector that selects known ranked players and feeds the existing Task 2 discovery → match-ingestion → champion-aggregation pipeline. It does **not** schedule itself or auto-enroll match participants. Recurring scheduling and bounded participant expansion are **Task 4** (opt-in; see next section).
 
 **Architecture (one-shot only):**
 
@@ -280,7 +284,7 @@ collector:status / collector:audit (read-only)
 
 Collector success means **discovery/enqueue orchestration succeeded**, not that downstream ingestion or aggregation has finished. Coverage reporting is an asynchronous **current DB snapshot**, not “this run added N samples.” The public ranking floor (`CHAMPION_AGGREGATION_MIN_SAMPLE`) is unchanged. A player-timeout wrapper does **not** cancel an already-started underlying Riot provider operation.
 
-**Migration / setup:** apply Prisma migrations (`pnpm db:migrate` / `pnpm db:migrate:deploy`). Schema rollback note is under Database commands above (drop `CollectorRun` / `TrackedPlayer` + enums; no PlayerAccount backfill).
+**Migration / setup:** apply Prisma migrations (`pnpm db:migrate` / `pnpm db:migrate:deploy`). Schema rollback note is under Database commands above (drop `CollectorRun` / `TrackedPlayer` + enums; no PlayerAccount backfill). Task 4 adds additive tables/columns on top of Task 3 — apply the full migration history.
 
 **Commands (root or `apps/api`):**
 
@@ -309,7 +313,7 @@ pnpm collector:run \
   --max-enqueue 200 \
   --json
 
-# Read-only ops
+# Read-only ops (Task 3 + Task 4 population/scheduler snapshot)
 pnpm collector:status --json
 pnpm collector:audit --json
 ```
@@ -334,10 +338,165 @@ Example seed file (`tracked-players.json`):
 
 When false, enrollment is short-circuited before any collector enrollment DB work or extra Riot calls. Enrollment failures never change bootstrap/search success. Unsupported platforms are informational only. `enrollmentSource` is first-source only.
 
-**Task 3 does not include:** recurring scheduler, BullMQ repeatable collector jobs, cron, in-process collector loops, participant auto-enrollment, ladder crawling, public collector HTTP endpoints, or Nuxt collector UI. Reaching `sampleSize >=` configured floor for a ranking key is an ops validation target, not a merge gate.
-
 Set `RIOT_PROVIDER_MODE=real` and a valid `RIOT_API_KEY` in `apps/api/.env` before using live Riot data. Champion static sync uses the public Data Dragon CDN only (`DATA_DRAGON_VERSION`, `DATA_DRAGON_SYNC_MIN_CHAMPIONS`, `DATA_DRAGON_SYNC_MAX_RETRIES`).
 
+### Recurring collection + bounded population expansion (Milestone 9 Task 4)
+
+Task 4 adds two **independent, opt-in** autonomous behaviors on top of Task 3:
+
+1. **Optional scheduler** — dedicated Nest CLI process that periodically invokes the same bounded `PopulationCollectorService.runOnce`
+2. **Optional bounded participant expansion** — after successful completed match ingestion, enroll a fixed consideration-window of match participants as `TrackedPlayer` rows (`MATCH_PARTICIPANT`)
+
+Both are **disabled by default**. Neither starts on normal API boot (`pnpm dev:api` / `AppModule`) nor on normal worker boot (`pnpm dev:worker`). There is **no** public collector/scheduler HTTP API and **no** Nuxt admin UI. Ranking formulas and `CHAMPION_AGGREGATION_MIN_SAMPLE` are unchanged. Task 4 improves collection coverage over time but does **not** guarantee any champion bucket reaches the ranking floor.
+
+```text
+# Scheduler path (opt-in process)
+pnpm collector:scheduler
+  → PostgreSQL CollectorSchedulerState lease
+  → (winner only) BullMQ pending probe
+  → PopulationCollectorService.runOnce  (same Task 3 path)
+  → release lease
+
+# Expansion path (opt-in worker hook)
+match-ingestion COMPLETED
+  → expandMatchParticipantsSafe (non-fatal)
+  → fixed per-match window → race-safe quota TX → TrackedPlayer
+  → newly enrolled players wait for later bounded collector runs
+  (no recursive immediate crawl; no Account-v1 N+1)
+```
+
+#### Process ownership (scheduler)
+
+| Process | Schedules collection? |
+| ------- | --------------------- |
+| Normal API boot | **No** |
+| Normal worker boot | **No** |
+| `pnpm collector:scheduler` | **Yes** — long-running loop |
+| `pnpm collector:scheduler-trigger` | One-shot guarded tick |
+| `pnpm collector:scheduler-status` | Read-only focused scheduler status |
+| `pnpm collector:run` | Manual Task 3 one-shot (independent of scheduler) |
+| `pnpm collector:status` / `pnpm collector:audit` | Broader read-only ops (includes Task 4 fields) |
+
+```bash
+# Long-running scheduler (only this process owns the loop)
+pnpm collector:scheduler
+
+# One-shot guarded tick (same lease/backpressure/cooldown rules)
+pnpm collector:scheduler-trigger --json
+
+# Focused read-only scheduler snapshot
+pnpm collector:scheduler-status --json
+```
+
+`COLLECTOR_SCHEDULER_ENABLED` is re-read from `process.env` **each tick**. Other scheduler knobs are loaded at process bootstrap. Changing `.env` files under a process manager still requires restarting the scheduler process unless you mutate that process’s environment in place. Worker expansion knobs are loaded per expansion-hook invocation from `process.env`; changing on-disk `.env` still requires a worker restart under normal process managers.
+
+#### Lease safety
+
+PostgreSQL `CollectorSchedulerState` singleton (`id='singleton'`) is authoritative. Each tick generates an owner token. Stale owners cannot mutate active owner state (renew / outcome / cooldown / release are all `WHERE leaseOwner = $owner`).
+
+Lease TTL invariant (**strict greater-than** — equality is rejected at config load):
+
+```text
+COLLECTOR_SCHEDULER_LEASE_MS
+  > ceil(COLLECTOR_SCHEDULE_BATCH_SIZE / COLLECTOR_SCHEDULE_CONCURRENCY)
+    * COLLECTOR_PLAYER_TIMEOUT_MS
+    + COLLECTOR_SCHEDULER_LEASE_SAFETY_MARGIN_MS
+```
+
+Current defaults: `batch=10`, `concurrency=2`, `playerTimeout=10m`, `safetyMargin=5m` → derived minimum **55m**; default lease **60m** (`60m > 55m`).
+
+Local-only tick outcomes (not persisted by losers): `SKIPPED_DISABLED`, `SKIPPED_OVERLAP`. Persisted outcomes (owner only): `TRIGGERED`, `SKIPPED_BACKPRESSURE`, `SKIPPED_COOLDOWN`, `FAILED_TO_START`.
+
+Scheduler `TRIGGERED` means the scheduler successfully invoked the bounded collector run. The `CollectorRun` itself may still finish `COMPLETED` / `PARTIAL` / `FAILED`. It does **not** mean ingestion or aggregation is complete.
+
+#### Backpressure (scheduled path only)
+
+After lease acquisition, the **winning** owner probes BullMQ `match-ingestion` pending count:
+
+```text
+pending = waiting + active + delayed
+```
+
+Skip when `pending > COLLECTOR_MAX_PENDING_INGESTION_JOBS` (default **500**):
+
+- `pending === 500` → allowed
+- `pending === 501` → `SKIPPED_BACKPRESSURE`
+
+Queue probe failure is fail-safe: do **not** trigger collection (`SKIPPED_BACKPRESSURE` / `QUEUE_PROBE_FAILED`). Manual `pnpm collector:run` bypasses scheduler backpressure by default.
+
+#### Rate-limit cooldown
+
+If a scheduled run reports rate-limit stops/failure, the scheduler sets cooldown using configured `COLLECTOR_SCHEDULER_RATE_LIMIT_COOLDOWN_MS` (default **15m**). Observed Riot `Retry-After` is **not** currently exposed on `CollectorRunOnceResult`, so cooldown is the configured duration — not exact Retry-After integration. Later ticks may acquire the lease, observe active cooldown, return `SKIPPED_COOLDOWN`, and release.
+
+#### Participant expansion safety
+
+| Knob | Default |
+| ---- | ------- |
+| `COLLECTOR_EXPAND_FROM_PARTICIPANTS` | `false` |
+| `COLLECTOR_EXPANSION_MAX_DEPTH` | `1` (hard max ≤ 3) |
+| `COLLECTOR_EXPANSION_MAX_NEW_PLAYERS_PER_MATCH` | `3` |
+| `COLLECTOR_EXPANSION_MAX_NEW_PLAYERS_PER_SOURCE_PLAYER` | `5` |
+| `COLLECTOR_EXPANSION_MAX_NEW_PLAYERS_PER_RUN` | `20` |
+| `COLLECTOR_EXPANSION_MAX_TRACKED_PLAYERS` | `500` (autonomous MATCH_PARTICIPANT creates only) |
+| `COLLECTOR_EXPANSION_QUEUE_ID` | `420` |
+
+Expansion runs only after successful **completed** match ingestion (including already-complete reprocess paths). Incomplete normalized identity is skipped — **no Account-v1 N+1**. There is **no** recursive immediate crawl: newly enrolled players wait for later bounded collector runs.
+
+Enrollment source: `MATCH_PARTICIPANT`. Depth: root explicit enrollment = `0`; participant child = source depth + 1; rediscovery uses minimum depth; hard max depth ≤ 3. Explicit search/bootstrap/seed can root an existing player to depth `0` without changing first `enrollmentSource`.
+
+#### Fixed per-match consideration window
+
+`COLLECTOR_EXPANSION_MAX_NEW_PLAYERS_PER_MATCH` is a **deterministic lifetime consideration-window size**, not “N new players per retry.”
+
+Window ordering uses only stable persisted identity fields:
+
+```text
+externalAccountId ASC, participantId ASC
+```
+
+Already-tracked candidates remain window occupants. Repeated processing must not slide to later candidates. There is no `MatchExpansion` table. Do not log or dump raw participant identities / PUUIDs in ops output unless necessary.
+
+#### Quota model (race-safe)
+
+The global autonomous cap applies **only** to `MATCH_PARTICIPANT` creates. It does **not** cap total `TrackedPlayer` rows. Explicit `ADMIN_SEED` / `PRODUCT_SEARCH` / `BOOTSTRAP` enrollments do **not** consume or get blocked by the autonomous participant budget.
+
+Reservation order inside one short PostgreSQL transaction:
+
+1. Global `CollectorPopulationBudget`
+2. CollectorRun attributed cap (`playersEnrolledFromParticipants`)
+3. `CollectorRunSourceQuota`
+4. `TrackedPlayer` INSERT
+
+Unique race rolls back **all** reservations. There is no `COUNT(...) < cap` race.
+
+#### Async expansion counters vs Task 3 counters
+
+Task 3 execution counters / status equality are finalized by `runOnce`. Task 4 expansion counters on `CollectorRun` (`participantsConsidered`, `playersEnrolledFromParticipants`, …) are **async post-finalization** and may legally increase after the run is terminal. Do not treat “participant enrolled” as “participant collected,” and do not treat scheduler `TRIGGERED` as ingestion/aggregation complete. `collector:status` labels expansion counters as `ASYNC_POST_FINALIZATION_EXPANSION_METRICS`.
+
+#### Status / audit
+
+`pnpm collector:status` includes total tracked population, depth histogram, enrollment-source counts, autonomous `MATCH_PARTICIPANT` budget usage, async expansion counters, and scheduler config/state snapshot. Scheduler lease ownership is reported as `PRESENT` / `ABSENT` only (no raw owner UUID) — same privacy rule as `collector:scheduler-status`.
+
+`pnpm collector:audit` is **read-only**. It checks depth anomalies, budget drift, impossible counters, scheduler singleton/lease shape, and existing Task 3 invariants. It does **not** repair.
+
+#### Emergency disable
+
+Strongest stop: terminate the `collector:scheduler` process.
+
+Also set independently:
+
+```bash
+COLLECTOR_SCHEDULER_ENABLED=false
+COLLECTOR_EXPAND_FROM_PARTICIPANTS=false
+```
+
+- Scheduler enable is re-read each tick in the running scheduler process.
+- Expansion disable is honored on the next expansion-hook invocation once the worker’s `process.env` reflects the change (restart worker after editing `.env`).
+- Do not leave a long-running scheduler process up after intentional disable without also stopping the process.
+
+#### Product boundaries
+
+Task 4 adds **no** public collector API and **no** Nuxt admin UI. No frontend behavior is intentionally changed. Ranking sample floor remains unchanged. Reaching floor for a ranking key is an ops coverage outcome, not a Task 4 success criterion.
 ### Common error interpretations
 
 | Situation                              | Meaning                                                                                                                                    |

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CollectorRunStatus, type CollectorRun, type TrackedPlayer } from '@prisma/client';
-import type { CollectorConfig } from './collector.config';
+import { loadCollectorConfig, type CollectorConfig } from './collector.config';
 import {
   CollectorRunError,
   PopulationCollectorService,
@@ -15,24 +15,8 @@ import type { PlayerAccountRepository } from '../../persistence/player-account.r
 
 function baseConfig(overrides: Partial<CollectorConfig> = {}): CollectorConfig {
   return {
-    batchSize: 10,
-    concurrency: 2,
-    matchesPerPlayer: 20,
-    maxMatchIdsPerRun: 200,
-    maxEnqueuePerRun: 200,
-    minRefreshIntervalMs: 6 * 60 * 60_000,
-    baseBackoffMs: 15 * 60_000,
-    maxBackoffMs: 24 * 60 * 60_000,
-    maxBackoffExponent: 8,
+    ...loadCollectorConfig({}),
     playerTimeoutMs: 5_000,
-    leaseDurationMs: 15 * 60_000,
-    staleRunAfterMs: 2 * 60 * 60_000,
-    platformAllowlist: ['na1'],
-    estimatedRequestsPerEnqueuedMatch: 2,
-    priorityMin: 0,
-    priorityMax: 1000,
-    enrollFromBootstrap: false,
-    enrollFromSearch: false,
     ...overrides,
   };
 }
@@ -57,6 +41,7 @@ function tracked(
     provider: 'RIOT',
     platformRoute: 'na1',
     enrollmentSource: 'ADMIN_SEED',
+    discoveryDepth: 0,
     status: 'ACTIVE',
     priority: 0,
     nextEligibleAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -95,6 +80,11 @@ function runRow(overrides: Partial<CollectorRun> = {}): CollectorRun {
     rateLimitStops: 0,
     budgetExhausted: false,
     failureCode: null,
+    participantsConsidered: 0,
+    playersEnrolledFromParticipants: 0,
+    playersAlreadyTrackedFromParticipants: 0,
+    playersSkippedDepthLimit: 0,
+    playersSkippedPopulationCap: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -692,6 +682,7 @@ describe('PopulationCollectorService.runOnce', () => {
         mode: 'PLAYER_ACCOUNT',
         playerAccountId: accountId,
         dryRun: false,
+        sourceCollectorRunId: 'run-1',
       }),
     );
   });

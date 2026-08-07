@@ -1,32 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TrackedPlayer } from '@prisma/client';
 import { CollectorEligibilityService } from './collector-eligibility.service';
-import type { CollectorConfig } from './collector.config';
+import { loadCollectorConfig, type CollectorConfig } from './collector.config';
 import type { TrackedPlayerRepository } from './tracked-player.repository';
 import type { PlayerAccountRepository } from '../../persistence/player-account.repository';
 
 function baseConfig(overrides: Partial<CollectorConfig> = {}): CollectorConfig {
-  return {
-    batchSize: 10,
-    concurrency: 2,
-    matchesPerPlayer: 20,
-    maxMatchIdsPerRun: 200,
-    maxEnqueuePerRun: 200,
-    minRefreshIntervalMs: 6 * 60 * 60_000,
-    baseBackoffMs: 15 * 60_000,
-    maxBackoffMs: 24 * 60 * 60_000,
-    maxBackoffExponent: 8,
-    playerTimeoutMs: 10 * 60_000,
-    leaseDurationMs: 15 * 60_000,
-    staleRunAfterMs: 2 * 60 * 60_000,
-    platformAllowlist: ['na1'],
-    estimatedRequestsPerEnqueuedMatch: 2,
-    priorityMin: 0,
-    priorityMax: 1000,
-    enrollFromBootstrap: false,
-    enrollFromSearch: false,
-    ...overrides,
-  };
+  return { ...loadCollectorConfig({}), ...overrides };
 }
 
 function tracked(overrides: Partial<TrackedPlayer> = {}): TrackedPlayer {
@@ -36,6 +16,7 @@ function tracked(overrides: Partial<TrackedPlayer> = {}): TrackedPlayer {
     provider: 'RIOT',
     platformRoute: 'na1',
     enrollmentSource: 'ADMIN_SEED',
+    discoveryDepth: 0,
     status: 'ACTIVE',
     priority: 10,
     nextEligibleAt: new Date('2026-01-01T00:00:00.000Z'),

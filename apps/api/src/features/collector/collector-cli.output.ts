@@ -1,8 +1,13 @@
-import type { CollectorRunStatus } from '@prisma/client';
+import type { CollectorRunStatus, CollectorSchedulerState } from '@prisma/client';
+import type { CollectorConfig } from './collector.config';
 import type {
   CollectorCoverageSnapshot,
   CollectorRunCounters,
   CollectorRunOnceResult,
+  CollectorSchedulerStatusReport,
+  CollectorSchedulerTriggerReport,
+  SchedulerTickOutcome,
+  SchedulerTickResult,
 } from './collector.types';
 
 export type CollectorApplyReport = {
@@ -76,4 +81,95 @@ export function formatCoverageTextLines(snapshot: CollectorCoverageSnapshot): st
 
   lines.push(...formatCoverageWarningLines(snapshot));
   return lines;
+}
+
+/**
+ * Exit codes for collector:scheduler-trigger (user-locked).
+ * Skips (including disabled/overlap/backpressure/cooldown) → 0.
+ * FAILED_TO_START → 1.
+ */
+export function resolveSchedulerTriggerExitCode(outcome: SchedulerTickOutcome): 0 | 1 {
+  return outcome === 'FAILED_TO_START' ? 1 : 0;
+}
+
+export function buildSchedulerTriggerReport(
+  result: SchedulerTickResult,
+): CollectorSchedulerTriggerReport {
+  return {
+    ok: result.outcome !== 'FAILED_TO_START',
+    mode: 'scheduler-trigger',
+    outcome: result.outcome,
+    ...(result.collectorRunId !== undefined
+      ? { collectorRunId: result.collectorRunId }
+      : {}),
+    ...(result.errorCode !== undefined ? { errorCode: result.errorCode } : {}),
+  };
+}
+
+export function isSchedulerLeaseOwnerPresent(
+  leaseOwner: string | null | undefined,
+): boolean {
+  return typeof leaseOwner === 'string' && leaseOwner.length > 0;
+}
+
+export function isSchedulerCooldownActive(
+  cooldownUntil: Date | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  return cooldownUntil != null && cooldownUntil.getTime() > now.getTime();
+}
+
+export function buildCollectorSchedulerStatusReport(input: {
+  config: CollectorConfig;
+  /** Prefer re-read via readCollectorSchedulerEnabled(process.env). */
+  enabled: boolean;
+  state: CollectorSchedulerState | null;
+  now?: Date;
+}): CollectorSchedulerStatusReport {
+  const now = input.now ?? new Date();
+  const state = input.state;
+  return {
+    ok: true,
+    mode: 'scheduler-status',
+    generatedAt: now.toISOString(),
+    enabled: input.enabled,
+    scheduleIntervalMs: input.config.scheduleIntervalMs,
+    scheduleQueueId: input.config.scheduleQueueId,
+    schedulePlatform: input.config.schedulePlatform,
+    scheduleBatchSize: input.config.scheduleBatchSize,
+    scheduleConcurrency: input.config.scheduleConcurrency,
+    maxPendingIngestionJobs: input.config.maxPendingIngestionJobs,
+    schedulerLeaseMs: input.config.schedulerLeaseMs,
+    leaseOwnerPresent: isSchedulerLeaseOwnerPresent(state?.leaseOwner),
+    leaseExpiresAt: state?.leaseExpiresAt?.toISOString() ?? null,
+    lastTriggerAt: state?.lastTriggerAt?.toISOString() ?? null,
+    lastOutcome: state?.lastOutcome ?? null,
+    lastCollectorRunId: state?.lastCollectorRunId ?? null,
+    lastErrorCode: state?.lastErrorCode ?? null,
+    cooldownUntil: state?.cooldownUntil?.toISOString() ?? null,
+    cooldownActive: isSchedulerCooldownActive(state?.cooldownUntil, now),
+  };
+}
+
+export function formatSchedulerStatusText(report: CollectorSchedulerStatusReport): string[] {
+  return [
+    'collector:scheduler-status (read-only scheduler config + singleton state)',
+    `generatedAt=${report.generatedAt}`,
+    `enabled=${report.enabled} (from config; not inferred from lastOutcome)`,
+    `scheduleIntervalMs=${report.scheduleIntervalMs}`,
+    `scheduleQueueId=${report.scheduleQueueId}`,
+    `schedulePlatform=${report.schedulePlatform ?? 'null'}`,
+    `scheduleBatchSize=${report.scheduleBatchSize}`,
+    `scheduleConcurrency=${report.scheduleConcurrency}`,
+    `maxPendingIngestionJobs=${report.maxPendingIngestionJobs}`,
+    `schedulerLeaseMs=${report.schedulerLeaseMs}`,
+    `leaseOwner=${report.leaseOwnerPresent ? 'PRESENT' : 'ABSENT'}`,
+    `leaseExpiresAt=${report.leaseExpiresAt ?? 'null'}`,
+    `lastTriggerAt=${report.lastTriggerAt ?? 'null'}`,
+    `lastOutcome=${report.lastOutcome ?? 'null'}`,
+    `lastCollectorRunId=${report.lastCollectorRunId ?? 'null'}`,
+    `lastErrorCode=${report.lastErrorCode ?? 'null'}`,
+    `cooldownUntil=${report.cooldownUntil ?? 'null'}`,
+    `cooldownActive=${report.cooldownActive}`,
+  ];
 }

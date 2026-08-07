@@ -1,31 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TrackedPlayer } from '@prisma/client';
 import { CollectorEnrollmentService } from './collector-enrollment.service';
-import type { CollectorConfig } from './collector.config';
+import { loadCollectorConfig, type CollectorConfig } from './collector.config';
 import type { TrackedPlayerRepository } from './tracked-player.repository';
 
 function baseConfig(overrides: Partial<CollectorConfig> = {}): CollectorConfig {
-  return {
-    batchSize: 10,
-    concurrency: 2,
-    matchesPerPlayer: 20,
-    maxMatchIdsPerRun: 200,
-    maxEnqueuePerRun: 200,
-    minRefreshIntervalMs: 6 * 60 * 60_000,
-    baseBackoffMs: 15 * 60_000,
-    maxBackoffMs: 24 * 60 * 60_000,
-    maxBackoffExponent: 8,
-    playerTimeoutMs: 10 * 60_000,
-    leaseDurationMs: 15 * 60_000,
-    staleRunAfterMs: 2 * 60 * 60_000,
-    platformAllowlist: ['na1'],
-    estimatedRequestsPerEnqueuedMatch: 2,
-    priorityMin: 0,
-    priorityMax: 1000,
-    enrollFromBootstrap: false,
-    enrollFromSearch: false,
-    ...overrides,
-  };
+  return { ...loadCollectorConfig({}), ...overrides };
 }
 
 function tracked(overrides: Partial<TrackedPlayer> = {}): TrackedPlayer {
@@ -35,6 +15,7 @@ function tracked(overrides: Partial<TrackedPlayer> = {}): TrackedPlayer {
     provider: 'RIOT',
     platformRoute: 'na1',
     enrollmentSource: 'ADMIN_SEED',
+    discoveryDepth: 0,
     status: 'ACTIVE',
     priority: 0,
     nextEligibleAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -91,9 +72,50 @@ describe('CollectorEnrollmentService', () => {
       expect.objectContaining({
         playerAccountId: 'acc-1',
         enrollmentSource: 'ADMIN_SEED',
+        discoveryDepth: 0,
         priority: 1000,
         reactivate: false,
         platformRoute: 'na1',
+      }),
+    );
+  });
+
+  it('proposes discoveryDepth 0 for explicit enrollment paths', async () => {
+    repo.findByPlayerAccountId.mockResolvedValue(null);
+    repo.upsertEnrollment.mockResolvedValue({
+      trackedPlayer: tracked({ discoveryDepth: 0 }),
+      created: true,
+      reactivated: false,
+    });
+
+    await service.enroll({
+      account: { id: 'acc-1', provider: 'RIOT', platformRoute: 'na1' },
+      source: 'BOOTSTRAP',
+    });
+
+    expect(repo.upsertEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({ discoveryDepth: 0, enrollmentSource: 'BOOTSTRAP' }),
+    );
+  });
+
+  it('forwards explicit discoveryDepth proposals (participant-style)', async () => {
+    repo.findByPlayerAccountId.mockResolvedValue(null);
+    repo.upsertEnrollment.mockResolvedValue({
+      trackedPlayer: tracked({ discoveryDepth: 1, enrollmentSource: 'MATCH_PARTICIPANT' }),
+      created: true,
+      reactivated: false,
+    });
+
+    await service.enroll({
+      account: { id: 'acc-1', provider: 'RIOT', platformRoute: 'na1' },
+      source: 'MATCH_PARTICIPANT',
+      discoveryDepth: 1,
+    });
+
+    expect(repo.upsertEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        discoveryDepth: 1,
+        enrollmentSource: 'MATCH_PARTICIPANT',
       }),
     );
   });

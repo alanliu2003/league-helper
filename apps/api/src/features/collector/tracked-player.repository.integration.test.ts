@@ -38,6 +38,10 @@ async function resetTestData(): Promise<void> {
       "Player"
     RESTART IDENTITY CASCADE;
   `);
+  await prisma.collectorPopulationBudget.update({
+    where: { id: 'singleton' },
+    data: { matchParticipantEnrolledCount: 0 },
+  });
 }
 
 async function seedAccount(suffix: string): Promise<{ playerAccountId: string }> {
@@ -593,16 +597,19 @@ describe('TrackedPlayerRepository + CollectorRunRepository (integration)', () =>
       provider: PROVIDER,
       platformRoute: PLATFORM,
       enrollmentSource: TrackedPlayerEnrollmentSource.ADMIN_SEED,
+      discoveryDepth: 0,
       priority: 3,
       reactivate: false,
     });
     expect(first.created).toBe(true);
+    expect(first.trackedPlayer.discoveryDepth).toBe(0);
 
     const second = await trackedPlayers.upsertEnrollment({
       playerAccountId,
       provider: PROVIDER,
       platformRoute: PLATFORM,
       enrollmentSource: TrackedPlayerEnrollmentSource.PRODUCT_SEARCH,
+      discoveryDepth: 0,
       priority: 3,
       reactivate: false,
     });
@@ -637,6 +644,90 @@ describe('TrackedPlayerRepository + CollectorRunRepository (integration)', () =>
     expect(withForce?.leaseOwner).toBeNull();
     expect(withForce?.leaseExpiresAt).toBeNull();
     expect(withForce?.consecutiveFailureCount).toBe(0);
+  });
+
+  it('discoveryDepth: insert uses proposed depth; update applies LEAST and never deepens', async () => {
+    const { playerAccountId } = await seedAccount('depth-1');
+
+    const created = await trackedPlayers.upsertEnrollment({
+      playerAccountId,
+      provider: PROVIDER,
+      platformRoute: PLATFORM,
+      enrollmentSource: TrackedPlayerEnrollmentSource.MATCH_PARTICIPANT,
+      discoveryDepth: 2,
+      priority: 0,
+      reactivate: false,
+    });
+    expect(created.created).toBe(true);
+    expect(created.trackedPlayer.discoveryDepth).toBe(2);
+    expect(created.trackedPlayer.enrollmentSource).toBe(
+      TrackedPlayerEnrollmentSource.MATCH_PARTICIPANT,
+    );
+
+    const rediscoveryDeeper = await trackedPlayers.upsertEnrollment({
+      playerAccountId,
+      provider: PROVIDER,
+      platformRoute: PLATFORM,
+      enrollmentSource: TrackedPlayerEnrollmentSource.MATCH_PARTICIPANT,
+      discoveryDepth: 3,
+      priority: 0,
+      reactivate: false,
+    });
+    expect(rediscoveryDeeper.created).toBe(false);
+    expect(rediscoveryDeeper.trackedPlayer.discoveryDepth).toBe(2);
+
+    const lowerDepthWins = await trackedPlayers.upsertEnrollment({
+      playerAccountId,
+      provider: PROVIDER,
+      platformRoute: PLATFORM,
+      enrollmentSource: TrackedPlayerEnrollmentSource.MATCH_PARTICIPANT,
+      discoveryDepth: 1,
+      priority: 0,
+      reactivate: false,
+    });
+    expect(lowerDepthWins.trackedPlayer.discoveryDepth).toBe(1);
+
+    const explicitRoot = await trackedPlayers.upsertEnrollment({
+      playerAccountId,
+      provider: PROVIDER,
+      platformRoute: PLATFORM,
+      enrollmentSource: TrackedPlayerEnrollmentSource.BOOTSTRAP,
+      discoveryDepth: 0,
+      priority: 0,
+      reactivate: false,
+    });
+    expect(explicitRoot.trackedPlayer.discoveryDepth).toBe(0);
+    expect(explicitRoot.trackedPlayer.enrollmentSource).toBe(
+      TrackedPlayerEnrollmentSource.MATCH_PARTICIPANT,
+    );
+  });
+
+  it('explicit enrollment succeeds when autonomous population budget is at cap', async () => {
+    await prisma.collectorPopulationBudget.update({
+      where: { id: 'singleton' },
+      data: { matchParticipantEnrolledCount: 500 },
+    });
+
+    const before = await prisma.collectorPopulationBudget.findUniqueOrThrow({
+      where: { id: 'singleton' },
+    });
+
+    const { playerAccountId } = await seedAccount('cap-seed');
+    const result = await trackedPlayers.upsertEnrollment({
+      playerAccountId,
+      provider: PROVIDER,
+      platformRoute: PLATFORM,
+      enrollmentSource: TrackedPlayerEnrollmentSource.ADMIN_SEED,
+      discoveryDepth: 0,
+      priority: 0,
+      reactivate: false,
+    });
+    expect(result.created).toBe(true);
+
+    const after = await prisma.collectorPopulationBudget.findUniqueOrThrow({
+      where: { id: 'singleton' },
+    });
+    expect(after.matchParticipantEnrolledCount).toBe(before.matchParticipantEnrolledCount);
   });
 
   it('forceReleaseOwnedLeases clears only the owner token leases', async () => {

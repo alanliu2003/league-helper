@@ -177,4 +177,59 @@ describe('enqueueDiscoveredMatches', () => {
       expect.objectContaining({ scheduledAt: expect.any(Date) }),
     );
   });
+
+  it('includes sourceCollectorRunId in payload when provided', async () => {
+    const durableJob = {
+      id: 'job-1',
+      status: IngestionJobStatus.PENDING,
+      externalResourceId: 'm4',
+    };
+    const sourceCollectorRunId = '22222222-2222-4222-8222-222222222222';
+    const producer = {
+      enqueueMatch: vi.fn(async () => ({
+        externalMatchId: 'm4',
+        jobId: bullJobId('m4'),
+        published: true,
+        alreadyExists: false,
+      })),
+      getJobStates: vi.fn(async () => new Map([[bullJobId('m4'), null]])),
+    };
+    const ingestionJobs = {
+      findByExternalResourceIds: vi.fn(async () => []),
+      createIdempotent: vi.fn(async () => ({ job: durableJob, created: true })),
+      updateStatus: vi.fn(async () => durableJob),
+    };
+    const matches = {
+      linkParticipantsByExternalAccountId: vi.fn(async () => 0),
+      findExistingByExternalIds: vi.fn(async () => []),
+      findLinkedCompletedExternalIds: vi.fn(async () => []),
+      findExistingExternalIdsMissingLink: vi.fn(async () => []),
+    };
+
+    await enqueueDiscoveredMatches(
+      {
+        matches: matches as never,
+        ingestionJobs: ingestionJobs as never,
+        producer: producer as never,
+        matchIngestionJobAttempts: 5,
+        logger: { log: vi.fn() },
+        invalidatePlayerCache: vi.fn(),
+      },
+      {
+        account: makeAccount(),
+        discoveredMatchIds: ['m4'],
+        correlationId: 'c1',
+        sourceCollectorRunId,
+      },
+    );
+
+    expect(producer.enqueueMatch).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceCollectorRunId }),
+    );
+    expect(ingestionJobs.createIdempotent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ sourceCollectorRunId }),
+      }),
+    );
+  });
 });

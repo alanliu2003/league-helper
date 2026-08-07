@@ -73,6 +73,7 @@ enum TrackedPlayerEnrollmentSource {
   ADMIN_SEED
   PRODUCT_SEARCH
   BOOTSTRAP
+  MATCH_PARTICIPANT
 }
 
 enum CollectorRunStatus {
@@ -80,6 +81,14 @@ enum CollectorRunStatus {
   COMPLETED
   PARTIAL
   FAILED
+}
+
+/// Persisted scheduler tick outcomes only. SKIPPED_DISABLED / SKIPPED_OVERLAP are local-only.
+enum CollectorSchedulerOutcome {
+  TRIGGERED
+  SKIPPED_BACKPRESSURE
+  SKIPPED_COOLDOWN
+  FAILED_TO_START
 }
 
 // ---------------------------------------------------------------------------
@@ -672,6 +681,8 @@ model TrackedPlayer {
   provider                String
   platformRoute           String
   enrollmentSource        TrackedPlayerEnrollmentSource
+  /// Explicit discovery graph depth (0 = root). Not inferred from enrollmentSource.
+  discoveryDepth          Int                           @default(0)
   status                  TrackedPlayerStatus           @default(ACTIVE)
   priority                Int                           @default(0)
   nextEligibleAt          DateTime                      @db.Timestamptz(3)
@@ -684,41 +695,90 @@ model TrackedPlayer {
   createdAt               DateTime                      @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime                      @updatedAt @db.Timestamptz(3)
 
-  playerAccount PlayerAccount @relation(fields: [playerAccountId], references: [id], onDelete: Restrict)
+  playerAccount   PlayerAccount             @relation(fields: [playerAccountId], references: [id], onDelete: Restrict)
+  runSourceQuotas CollectorRunSourceQuota[]
 
   @@index([status, nextEligibleAt, priority, leaseExpiresAt])
   @@index([platformRoute, status])
   /// Claim EXPLAIN preferred platform+status lead; short map avoids PG 63-char truncation drift.
   @@index([platformRoute, status, nextEligibleAt, priority, leaseExpiresAt], map: "TrackedPlayer_claim_eligibility_idx")
   @@index([leaseOwner])
+  @@index([discoveryDepth])
 }
 
 model CollectorRun {
-  id                      String             @id @default(uuid())
-  ownerToken              String             @unique
-  status                  CollectorRunStatus
-  startedAt               DateTime           @db.Timestamptz(3)
-  finishedAt              DateTime?          @db.Timestamptz(3)
-  platformFilter          String?
+  id                                    String             @id @default(uuid())
+  ownerToken                            String             @unique
+  status                                CollectorRunStatus
+  startedAt                             DateTime           @db.Timestamptz(3)
+  finishedAt                            DateTime?          @db.Timestamptz(3)
+  platformFilter                        String?
   /// JSON string array of platforms used for this run's claims
-  effectivePlatforms      Json
-  queueId                 Int
-  batchLimit              Int
-  concurrency             Int
-  playersClaimed          Int                @default(0)
-  playersAttempted        Int                @default(0)
-  playersSucceeded        Int                @default(0)
-  playersFailed           Int                @default(0)
-  ownershipLost           Int                @default(0)
-  matchIdsDiscovered      Int                @default(0)
-  matchesEnqueued         Int                @default(0)
-  matchesSkippedComplete  Int                @default(0)
-  rateLimitStops          Int                @default(0)
-  budgetExhausted         Boolean            @default(false)
-  failureCode             String?
-  createdAt               DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt               DateTime           @updatedAt @db.Timestamptz(3)
+  effectivePlatforms                    Json
+  queueId                               Int
+  batchLimit                            Int
+  concurrency                           Int
+  playersClaimed                        Int                @default(0)
+  playersAttempted                      Int                @default(0)
+  playersSucceeded                      Int                @default(0)
+  playersFailed                         Int                @default(0)
+  ownershipLost                         Int                @default(0)
+  matchIdsDiscovered                    Int                @default(0)
+  matchesEnqueued                       Int                @default(0)
+  matchesSkippedComplete                Int                @default(0)
+  rateLimitStops                        Int                @default(0)
+  budgetExhausted                       Boolean            @default(false)
+  failureCode                           String?
+  /// Task 4 async post-finalization expansion metrics (do not affect Task 3 status/equality).
+  participantsConsidered                Int                @default(0)
+  /// Also used as attributed create reservation counter (committed creates only).
+  playersEnrolledFromParticipants       Int                @default(0)
+  playersAlreadyTrackedFromParticipants Int                @default(0)
+  playersSkippedDepthLimit              Int                @default(0)
+  playersSkippedPopulationCap           Int                @default(0)
+  createdAt                             DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt                             DateTime           @updatedAt @db.Timestamptz(3)
+
+  sourceQuotas CollectorRunSourceQuota[]
 
   @@index([status, startedAt])
   @@index([finishedAt])
+}
+
+/// Singleton autonomous MATCH_PARTICIPANT growth budget (id = 'singleton').
+model CollectorPopulationBudget {
+  id                            String   @id
+  matchParticipantEnrolledCount Int      @default(0)
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                     DateTime @updatedAt @db.Timestamptz(3)
+}
+
+/// Singleton scheduler lease/outcome state (id = 'singleton').
+model CollectorSchedulerState {
+  id                 String                     @id
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?                  @db.Timestamptz(3)
+  lastTriggerAt      DateTime?                  @db.Timestamptz(3)
+  lastOutcome        CollectorSchedulerOutcome?
+  lastCollectorRunId String?
+  lastErrorCode      String?
+  cooldownUntil      DateTime?                  @db.Timestamptz(3)
+  createdAt          DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                   @updatedAt @db.Timestamptz(3)
+}
+
+/// Ephemeral per-source-per-run expansion budget (not a discovery graph).
+model CollectorRunSourceQuota {
+  id                    String   @id @default(uuid())
+  collectorRunId        String
+  sourceTrackedPlayerId String
+  newPlayersEnrolled    Int      @default(0)
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
+
+  collectorRun        CollectorRun  @relation(fields: [collectorRunId], references: [id], onDelete: Cascade)
+  sourceTrackedPlayer TrackedPlayer @relation(fields: [sourceTrackedPlayerId], references: [id], onDelete: Cascade)
+
+  @@unique([collectorRunId, sourceTrackedPlayerId])
+  @@index([collectorRunId])
 }

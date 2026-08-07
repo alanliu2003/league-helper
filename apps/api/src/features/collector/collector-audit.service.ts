@@ -1,5 +1,10 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { CollectorRunStatus, type CollectorRun, type TrackedPlayer } from '@prisma/client';
+import {
+  CollectorRunStatus,
+  TrackedPlayerEnrollmentSource,
+  type CollectorRun,
+  type TrackedPlayer,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { loadCollectorConfig, type CollectorConfig } from './collector.config';
 import { COLLECTOR_CONFIG } from './collector-enrollment.service';
@@ -16,6 +21,10 @@ const LEASE_SAFETY_MARGIN_MS = 60_000;
 const FINALIZED_RUN_AUDIT_LIMIT = 500;
 const LEASED_PLAYER_AUDIT_LIMIT = 500;
 const MISMATCH_AUDIT_LIMIT = 200;
+const DEPTH_AUDIT_LIMIT = 50;
+/** Hard max discoveryDepth from Task 4 design (config may be lower). */
+const HARD_MAX_DISCOVERY_DEPTH = 3;
+const HARD_MAX_EXPANSION_MAX_TRACKED_PLAYERS = 5000;
 
 function ownerTokenPrefix(token: string): string {
   return token.length <= 8 ? token : `${token.slice(0, 8)}…`;
@@ -169,6 +178,8 @@ export class CollectorAuditService {
       );
     }
 
+    findings.push(...(await this.auditTask4ExpansionState(finalizedRuns)));
+
     return {
       ok: findings.length === 0,
       mode: 'audit',
@@ -264,6 +275,199 @@ export class CollectorAuditService {
             'error',
             run.id,
             `matchesSkippedComplete (${run.matchesSkippedComplete}) > matchIdsDiscovered (${run.matchIdsDiscovered}).`,
+          ),
+        );
+      }
+    }
+
+    return findings;
+  }
+
+  /**
+   * Task 4 read-only checks. Must NOT flag Task 3 counter equality failures
+   * merely because expansion counters changed after terminal status.
+   */
+  private async auditTask4ExpansionState(
+    finalizedRuns: CollectorRun[],
+  ): Promise<CollectorAuditFinding[]> {
+    const findings: CollectorAuditFinding[] = [];
+
+    const negativeDepth = await this.prisma.trackedPlayer.findMany({
+      where: { discoveryDepth: { lt: 0 } },
+      select: { id: true, discoveryDepth: true },
+      take: DEPTH_AUDIT_LIMIT,
+    });
+    for (const row of negativeDepth) {
+      findings.push(
+        finding(
+          'NEGATIVE_DISCOVERY_DEPTH',
+          'error',
+          row.id,
+          `TrackedPlayer.discoveryDepth=${row.discoveryDepth} is negative.`,
+        ),
+      );
+    }
+
+    const aboveHard = await this.prisma.trackedPlayer.findMany({
+      where: { discoveryDepth: { gt: HARD_MAX_DISCOVERY_DEPTH } },
+      select: { id: true, discoveryDepth: true },
+      take: DEPTH_AUDIT_LIMIT,
+    });
+    for (const row of aboveHard) {
+      findings.push(
+        finding(
+          'DISCOVERY_DEPTH_ABOVE_HARD_MAX',
+          'error',
+          row.id,
+          `TrackedPlayer.discoveryDepth=${row.discoveryDepth} exceeds hard max ${HARD_MAX_DISCOVERY_DEPTH}.`,
+        ),
+      );
+    }
+
+    const configuredMax = this.config.expansionMaxDepth;
+    if (configuredMax < HARD_MAX_DISCOVERY_DEPTH) {
+      const aboveConfigured = await this.prisma.trackedPlayer.findMany({
+        where: {
+          discoveryDepth: { gt: configuredMax, lte: HARD_MAX_DISCOVERY_DEPTH },
+        },
+        select: { id: true, discoveryDepth: true },
+        take: DEPTH_AUDIT_LIMIT,
+      });
+      for (const row of aboveConfigured) {
+        findings.push(
+          finding(
+            'DISCOVERY_DEPTH_ABOVE_CONFIGURED_MAX',
+            'warning',
+            row.id,
+            `TrackedPlayer.discoveryDepth=${row.discoveryDepth} exceeds configured COLLECTOR_EXPANSION_MAX_DEPTH=${configuredMax} (may predate a config lower).`,
+          ),
+        );
+      }
+    }
+
+    const budget = await this.prisma.collectorPopulationBudget.findUnique({
+      where: { id: 'singleton' },
+    });
+    if (!budget) {
+      findings.push(
+        finding(
+          'MISSING_POPULATION_BUDGET_SINGLETON',
+          'error',
+          'CollectorPopulationBudget:singleton',
+          'CollectorPopulationBudget singleton row is missing.',
+        ),
+      );
+    } else {
+      if (budget.matchParticipantEnrolledCount < 0) {
+        findings.push(
+          finding(
+            'NEGATIVE_POPULATION_BUDGET',
+            'error',
+            'CollectorPopulationBudget:singleton',
+            `matchParticipantEnrolledCount=${budget.matchParticipantEnrolledCount} is negative.`,
+          ),
+        );
+      }
+
+      const matchParticipantCount = await this.prisma.trackedPlayer.count({
+        where: { enrollmentSource: TrackedPlayerEnrollmentSource.MATCH_PARTICIPANT },
+      });
+
+      if (budget.matchParticipantEnrolledCount !== matchParticipantCount) {
+        findings.push(
+          finding(
+            'POPULATION_BUDGET_DRIFT',
+            'error',
+            'CollectorPopulationBudget:singleton',
+            `matchParticipantEnrolledCount=${budget.matchParticipantEnrolledCount} != COUNT(MATCH_PARTICIPANT)=${matchParticipantCount} (tolerance 0).`,
+          ),
+        );
+      }
+
+      if (matchParticipantCount > HARD_MAX_EXPANSION_MAX_TRACKED_PLAYERS) {
+        findings.push(
+          finding(
+            'MATCH_PARTICIPANT_ABOVE_HARD_CAP',
+            'error',
+            'TrackedPlayer:MATCH_PARTICIPANT',
+            `COUNT(MATCH_PARTICIPANT)=${matchParticipantCount} exceeds hard max ${HARD_MAX_EXPANSION_MAX_TRACKED_PLAYERS}.`,
+          ),
+        );
+      } else if (matchParticipantCount > this.config.expansionMaxTrackedPlayers) {
+        findings.push(
+          finding(
+            'MATCH_PARTICIPANT_ABOVE_CONFIGURED_CAP',
+            'error',
+            'TrackedPlayer:MATCH_PARTICIPANT',
+            `COUNT(MATCH_PARTICIPANT)=${matchParticipantCount} exceeds configured autonomous cap ${this.config.expansionMaxTrackedPlayers}.`,
+          ),
+        );
+      }
+    }
+
+    for (const run of finalizedRuns) {
+      const expansionFields: Array<[string, number]> = [
+        ['participantsConsidered', run.participantsConsidered],
+        ['playersEnrolledFromParticipants', run.playersEnrolledFromParticipants],
+        ['playersAlreadyTrackedFromParticipants', run.playersAlreadyTrackedFromParticipants],
+        ['playersSkippedDepthLimit', run.playersSkippedDepthLimit],
+        ['playersSkippedPopulationCap', run.playersSkippedPopulationCap],
+      ];
+      for (const [name, value] of expansionFields) {
+        if (value < 0) {
+          findings.push(
+            finding(
+              'NEGATIVE_EXPANSION_COUNTER',
+              'error',
+              run.id,
+              `CollectorRun.${name}=${value} is negative.`,
+            ),
+          );
+        }
+      }
+
+      // Attributed creates always reserve source quota in the same TX → equality expected.
+      const sourceQuotaSum = await this.prisma.collectorRunSourceQuota.aggregate({
+        where: { collectorRunId: run.id },
+        _sum: { newPlayersEnrolled: true },
+      });
+      const sum = sourceQuotaSum._sum.newPlayersEnrolled ?? 0;
+      if (sum !== run.playersEnrolledFromParticipants) {
+        findings.push(
+          finding(
+            'SOURCE_QUOTA_RUN_MISMATCH',
+            'warning',
+            run.id,
+            `SUM(CollectorRunSourceQuota.newPlayersEnrolled)=${sum} != playersEnrolledFromParticipants=${run.playersEnrolledFromParticipants}.`,
+          ),
+        );
+      }
+    }
+
+    const scheduler = await this.prisma.collectorSchedulerState.findUnique({
+      where: { id: 'singleton' },
+    });
+    if (!scheduler) {
+      findings.push(
+        finding(
+          'MISSING_SCHEDULER_STATE_SINGLETON',
+          'error',
+          'CollectorSchedulerState:singleton',
+          'CollectorSchedulerState singleton row is missing.',
+        ),
+      );
+    } else {
+      const ownerSet = scheduler.leaseOwner != null && scheduler.leaseOwner.length > 0;
+      const expirySet = scheduler.leaseExpiresAt != null;
+      if (ownerSet !== expirySet) {
+        findings.push(
+          finding(
+            'MALFORMED_SCHEDULER_LEASE_STATE',
+            'warning',
+            'CollectorSchedulerState:singleton',
+            ownerSet
+              ? 'leaseOwner is set but leaseExpiresAt is null.'
+              : 'leaseExpiresAt is set but leaseOwner is null.',
           ),
         );
       }
