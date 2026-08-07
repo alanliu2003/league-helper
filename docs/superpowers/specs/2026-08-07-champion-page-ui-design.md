@@ -1,7 +1,7 @@
 # Milestone 10 Design: Champion Page UI + Data Binding
 
 **Date:** 2026-08-07
-**Status:** Phase 0 approved (visibility minimum corrected to 1); Phase 1 in progress
+**Status:** Milestone 10 complete (Phases 0–5; Phase 4 skipped — backend prerequisite)
 **Branch:** `milestone-10-champion-page-ui` (from `master` @ `91a019f`, Task 4 merged)
 **Plan:** `docs/superpowers/plans/2026-08-07-champion-page-ui.md`
 
@@ -572,15 +572,15 @@ Each phase **STOP FOR REVIEW**. Do not commit unless explicitly requested.
 
 ## 24. Success criteria checklist (spec-level)
 
-- [ ] Detail returns stats for `1 <= sampleSize < 30` with `INSUFFICIENT`; zero/missing → no stats
-- [ ] Ranking table still excludes `< 30`
-- [ ] Splash-led hero without adjacent champion chips
-- [ ] Sample size visible beside primary win rate
-- [ ] No fabricated pick/ban/matchup numbers
-- [ ] Position URL sync + radiogroup a11y preserved
-- [ ] Independent section error/empty states
-- [ ] Mobile usable
-- [ ] No collector internals on public UI
+- [x] Detail returns stats for `1 <= sampleSize < 30` with `INSUFFICIENT`; zero/missing → no stats
+- [x] Ranking table still excludes `< 30`
+- [x] Splash-led hero without adjacent champion chips
+- [x] Sample size visible beside primary win rate
+- [x] No fabricated pick/ban/matchup numbers
+- [x] Position URL sync + radiogroup a11y preserved
+- [x] Independent section error/empty states
+- [x] Mobile usable
+- [x] No collector internals on public UI
 
 ---
 
