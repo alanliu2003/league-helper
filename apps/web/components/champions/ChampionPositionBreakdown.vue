@@ -1,10 +1,14 @@
 <template>
   <section aria-labelledby="position-breakdown-heading" class="space-y-3">
     <div>
-      <h2 id="position-breakdown-heading" class="font-display text-xl">Position breakdown</h2>
+      <h2
+        id="position-breakdown-heading"
+        class="font-display text-lg text-[var(--lh-text-secondary)]"
+      >
+        Position breakdown
+      </h2>
       <p class="mt-1 text-sm text-[var(--lh-muted)]">
-        Five standard roles from one collected-sample response. Missing roles show no data — never
-        a fabricated 0% win rate.
+        Where this champion appears in the collected sample, by role.
       </p>
     </div>
 
@@ -12,43 +16,96 @@
       Position breakdown is unavailable until statistics load.
     </p>
 
-    <div v-else class="overflow-x-auto">
-      <table class="w-full min-w-[28rem] border-collapse text-left text-sm">
-        <thead>
-          <tr
-            class="border-b text-xs uppercase tracking-wide text-[var(--lh-muted)]"
-            style="border-color: var(--lh-border)"
-          >
-            <th scope="col" class="px-3 py-2 font-medium">Position</th>
-            <th scope="col" class="px-3 py-2 font-medium">Sample</th>
-            <th scope="col" class="px-3 py-2 font-medium">Win rate</th>
-            <th scope="col" class="px-3 py-2 font-medium">Confidence</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="row in rows"
-            :key="row.position"
-            class="border-b"
-            style="border-color: var(--lh-border)"
-            :class="row.position === selectedPosition ? 'bg-[var(--lh-accent)]/10' : ''"
-          >
-            <td class="px-3 py-2.5 font-medium">{{ row.label }}</td>
-            <td class="px-3 py-2.5 tabular-nums text-[var(--lh-text-secondary)]">
-              {{ row.sampleLabel }}
-            </td>
-            <td class="px-3 py-2.5 tabular-nums">{{ row.winRateLabel }}</td>
-            <td class="px-3 py-2.5">
+    <p
+      v-else-if="allMissing"
+      class="rounded-lg border px-4 py-3 text-sm text-[var(--lh-muted)]"
+      style="border-color: var(--lh-border); background: var(--lh-surface)"
+      role="status"
+      data-testid="position-breakdown-empty"
+    >
+      No position breakdown data for these filters.
+    </p>
+
+    <template v-else>
+      <!-- Desktop: semantic table -->
+      <div
+        class="hidden md:block overflow-x-auto rounded-lg border"
+        style="border-color: var(--lh-border)"
+      >
+        <table class="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr
+              class="border-b text-xs uppercase tracking-wide text-[var(--lh-muted)]"
+              style="border-color: var(--lh-border); background: var(--lh-surface)"
+            >
+              <th scope="col" class="px-3 py-2.5 font-medium">Position</th>
+              <th scope="col" class="px-3 py-2.5 font-medium">Games</th>
+              <th scope="col" class="px-3 py-2.5 font-medium">Win rate</th>
+              <th scope="col" class="px-3 py-2.5 font-medium">Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in rows"
+              :key="`desktop-${row.position}`"
+              class="border-b last:border-b-0"
+              style="border-color: var(--lh-border)"
+              :class="row.position === selectedPosition ? 'bg-[var(--lh-accent)]/10' : ''"
+            >
+              <th scope="row" class="px-3 py-2.5 font-medium text-[var(--lh-text)]">
+                {{ row.label }}
+              </th>
+              <td class="px-3 py-2.5 tabular-nums text-[var(--lh-text-secondary)]">
+                {{ row.gamesLabel }}
+              </td>
+              <td class="px-3 py-2.5 tabular-nums text-[var(--lh-text)]">
+                {{ row.winRateLabel }}
+              </td>
+              <td class="px-3 py-2.5">
+                <ChampionsChampionConfidenceIndicator
+                  v-if="row.confidence"
+                  :confidence="row.confidence"
+                />
+                <span v-else class="text-[var(--lh-muted)]">No data</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile: stacked rows (display:none on md+ removes from a11y tree) -->
+      <ul
+        class="space-y-2 md:hidden"
+        data-testid="position-breakdown-mobile"
+        aria-labelledby="position-breakdown-heading"
+      >
+        <li
+          v-for="row in rows"
+          :key="`mobile-${row.position}`"
+          data-testid="position-breakdown-row"
+          class="rounded-lg border px-3 py-3"
+          style="border-color: var(--lh-border); background: var(--lh-surface)"
+          :class="row.position === selectedPosition ? 'ring-1 ring-[var(--lh-accent-gold)]/40' : ''"
+        >
+          <p class="font-medium text-[var(--lh-text)]">{{ row.label }}</p>
+          <template v-if="row.hasData">
+            <p class="mt-1 text-sm tabular-nums text-[var(--lh-text-secondary)]">
+              {{ row.gamesLabel }}
+            </p>
+            <p class="mt-0.5 text-sm tabular-nums text-[var(--lh-text)]">
+              {{ row.winRateLabel }} WR
+            </p>
+            <p class="mt-1 text-sm">
               <ChampionsChampionConfidenceIndicator
                 v-if="row.confidence"
                 :confidence="row.confidence"
               />
-              <span v-else class="text-[var(--lh-muted)]">No data</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            </p>
+          </template>
+          <p v-else class="mt-1 text-sm text-[var(--lh-muted)]">No data</p>
+        </li>
+      </ul>
+    </template>
   </section>
 </template>
 
@@ -66,16 +123,24 @@ const props = defineProps<{
   selectedPosition?: ChampionRankingPosition | null;
 }>();
 
+const allMissing = computed(
+  () => props.entries.length > 0 && props.entries.every((entry) => entry.metrics == null),
+);
+
 const rows = computed(() =>
   props.entries.map((entry) => {
     const metrics = entry.metrics;
     const confidence: SampleConfidence | null = metrics?.sampleConfidence ?? null;
+    const hasData = metrics != null;
     return {
       position: entry.position,
       label: positionDisplayLabel(entry.position),
-      sampleLabel: metrics ? String(metrics.sampleSize) : 'No data',
+      hasData,
+      gamesLabel: hasData
+        ? `${metrics.sampleSize} ${metrics.sampleSize === 1 ? 'game' : 'games'}`
+        : 'No data',
       // Missing role → "No data", never 0%.
-      winRateLabel: metrics ? formatChampionRate(metrics.winRate) : 'No data',
+      winRateLabel: hasData ? formatChampionRate(metrics.winRate) : 'No data',
       confidence,
     };
   }),

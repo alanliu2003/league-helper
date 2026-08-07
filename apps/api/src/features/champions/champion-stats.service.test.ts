@@ -5,7 +5,10 @@ import {
   ChampionStatsPositionRequiredError,
   type ChampionStatsTableQuery,
 } from '@league-helper/shared';
-import { assertTablePositionPresent, computeEffectiveMinimumSample } from './champion-stats-filters';
+import {
+  assertTablePositionPresent,
+  computeEffectiveMinimumSample,
+} from './champion-stats-filters';
 import { ChampionStatsService } from './champion-stats.service';
 import { pickLatestSemanticPatch } from '../../persistence/champion-aggregate-read.repository';
 
@@ -64,18 +67,20 @@ function baseAggregate(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createService(overrides: {
-  exact?: ReturnType<typeof baseAggregate> | null;
-  breakdown?: Array<ReturnType<typeof baseAggregate>>;
-  tableRows?: Array<ReturnType<typeof baseAggregate>>;
-  totalCount?: number;
-  latestPatch?: string | null;
-  freshness?: 'CURRENT' | 'RECALCULATION_PENDING' | 'UNKNOWN';
-  cacheGet?: unknown | null;
-  generation?: number;
-  setResult?: 'written' | 'skipped' | 'failed';
-  findByKey?: typeof ahri | null;
-} = {}) {
+function createService(
+  overrides: {
+    exact?: ReturnType<typeof baseAggregate> | null;
+    breakdown?: Array<ReturnType<typeof baseAggregate>>;
+    tableRows?: Array<ReturnType<typeof baseAggregate>>;
+    totalCount?: number;
+    latestPatch?: string | null;
+    freshness?: 'CURRENT' | 'RECALCULATION_PENDING' | 'UNKNOWN';
+    cacheGet?: unknown | null;
+    generation?: number;
+    setResult?: 'written' | 'skipped' | 'failed';
+    findByKey?: typeof ahri | null;
+  } = {},
+) {
   const aggregates = {
     resolveLatestSemanticPatch: vi.fn(async () =>
       overrides.latestPatch === undefined ? '16.10' : overrides.latestPatch,
@@ -83,14 +88,27 @@ function createService(overrides: {
     listDistinctPatches: vi.fn(async () => ['16.9', '16.10']),
     listAvailablePlatforms: vi.fn(async () => ['na1', 'euw1']),
     listAvailableQueueIds: vi.fn(async () => [420, 440]),
-    findExactAggregate: vi.fn(async () =>
-      overrides.exact === undefined ? baseAggregate() : overrides.exact,
-    ),
-    findPositionBreakdown: vi.fn(async () => overrides.breakdown ?? [baseAggregate()]),
-    findTableRows: vi.fn(async () => ({
-      rows: overrides.tableRows ?? [baseAggregate()],
-      totalCount: overrides.totalCount ?? 1,
-    })),
+    findExactAggregate: vi.fn(async (input: { scope: { minimumSample: number } }) => {
+      const row = overrides.exact === undefined ? baseAggregate() : overrides.exact;
+      if (row === null) {
+        return null;
+      }
+      // Mirror repository `sampleSize: { gte: scope.minimumSample }`.
+      return row.sampleSize >= input.scope.minimumSample ? row : null;
+    }),
+    findPositionBreakdown: vi.fn(async (input: { scope: { minimumSample: number } }) => {
+      const rows = overrides.breakdown ?? [baseAggregate()];
+      return rows.filter((row) => row.sampleSize >= input.scope.minimumSample);
+    }),
+    findTableRows: vi.fn(async (input: { scope: { minimumSample: number } }) => {
+      const rows = (overrides.tableRows ?? [baseAggregate()]).filter(
+        (row) => row.sampleSize >= input.scope.minimumSample,
+      );
+      return {
+        rows,
+        totalCount: overrides.totalCount ?? rows.length,
+      };
+    }),
     resolveFreshness: vi.fn(async () => overrides.freshness ?? 'CURRENT'),
   };
 
@@ -116,8 +134,7 @@ function createService(overrides: {
         `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${key}.png`,
     ),
     buildChampionSplashUrl: vi.fn(
-      (key: string) =>
-        `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${key}_0.jpg`,
+      (key: string) => `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${key}_0.jpg`,
     ),
   };
 
@@ -148,12 +165,8 @@ describe('champion stats helpers', () => {
   });
 
   it('computes effectiveMinimumSample from includeInsufficient and config floor', () => {
-    expect(
-      computeEffectiveMinimumSample(config, { includeInsufficient: false }),
-    ).toBe(30);
-    expect(
-      computeEffectiveMinimumSample(config, { includeInsufficient: true }),
-    ).toBe(0);
+    expect(computeEffectiveMinimumSample(config, { includeInsufficient: false })).toBe(30);
+    expect(computeEffectiveMinimumSample(config, { includeInsufficient: true })).toBe(0);
     expect(
       computeEffectiveMinimumSample(config, { minimumSample: 50, includeInsufficient: false }),
     ).toBe(50);
@@ -354,6 +367,124 @@ describe('ChampionStatsService', () => {
     expect(response.emptyReason).toBe('CHAMPION_HAS_NO_STATS');
     expect(response.positionBreakdown).toHaveLength(5);
     expect(response.positionBreakdown.every((entry) => entry.metrics === null)).toBe(true);
+  });
+
+  it('returns detail exact stats for sampleSize 18 without includeInsufficient', async () => {
+    const { service, aggregates } = createService({
+      exact: baseAggregate({ sampleSize: 18, wins: 10, teamPosition: 'MIDDLE' }),
+      breakdown: [baseAggregate({ sampleSize: 18, wins: 10, teamPosition: 'MIDDLE' })],
+    });
+
+    const response = await service.getChampionStats('Ahri', {
+      tier: 'ALL',
+      position: 'MIDDLE',
+    });
+
+    expect(response.stats).not.toBeNull();
+    expect(response.stats?.metrics.sampleSize).toBe(18);
+    expect(response.stats?.metrics.sampleConfidence).toBe('INSUFFICIENT');
+    expect(response.emptyReason).toBeUndefined();
+    // Envelope ranking/confidence floor remains configured minimum (not detail visibility).
+    expect(response.effectiveMinimumSample).toBe(config.minimumSample);
+    expect(aggregates.findExactAggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({ minimumSample: 1 }),
+      }),
+    );
+  });
+
+  it('returns detail exact stats for sampleSize 1 without includeInsufficient', async () => {
+    const { service } = createService({
+      exact: baseAggregate({
+        sampleSize: 1,
+        wins: 1,
+        teamPosition: 'MIDDLE',
+        goldDifferenceAt10Samples: 0,
+        goldDifferenceAt15Samples: 0,
+        csDifferenceAt10Samples: 0,
+        csDifferenceAt15Samples: 0,
+        totalGoldDifferenceAt10: null,
+        totalGoldDifferenceAt15: null,
+        totalCsDifferenceAt10: null,
+        totalCsDifferenceAt15: null,
+      }),
+      breakdown: [],
+    });
+
+    const response = await service.getChampionStats('Ahri', {
+      tier: 'ALL',
+      position: 'MIDDLE',
+    });
+
+    expect(response.stats).not.toBeNull();
+    expect(response.stats?.metrics.sampleSize).toBe(1);
+    expect(response.stats?.metrics.sampleConfidence).toBe('INSUFFICIENT');
+    expect(response.emptyReason).toBeUndefined();
+  });
+
+  it('does not present a zero-sample aggregate as valid detail statistics', async () => {
+    const { service, aggregates } = createService({
+      exact: baseAggregate({
+        sampleSize: 0,
+        wins: 0,
+        teamPosition: 'MIDDLE',
+        goldDifferenceAt10Samples: 0,
+        goldDifferenceAt15Samples: 0,
+        csDifferenceAt10Samples: 0,
+        csDifferenceAt15Samples: 0,
+        totalGoldDifferenceAt10: null,
+        totalGoldDifferenceAt15: null,
+        totalCsDifferenceAt10: null,
+        totalCsDifferenceAt15: null,
+      }),
+      breakdown: [],
+    });
+
+    const response = await service.getChampionStats('Ahri', {
+      tier: 'ALL',
+      position: 'MIDDLE',
+    });
+
+    expect(response.stats).toBeNull();
+    expect(response.emptyReason).toBe('CHAMPION_HAS_NO_STATS');
+    expect(aggregates.findExactAggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({ minimumSample: 1 }),
+      }),
+    );
+  });
+
+  it('includes sub-30 position breakdown roles without includeInsufficient', async () => {
+    const { service, aggregates } = createService({
+      exact: null,
+      breakdown: [
+        baseAggregate({
+          sampleSize: 8,
+          wins: 3,
+          teamPosition: 'SUPPORT',
+          goldDifferenceAt10Samples: 8,
+          goldDifferenceAt15Samples: 8,
+          csDifferenceAt10Samples: 8,
+          csDifferenceAt15Samples: 8,
+        }),
+      ],
+    });
+
+    const response = await service.getChampionStats('Ahri', { tier: 'ALL' });
+
+    expect(aggregates.findPositionBreakdown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({ minimumSample: 1 }),
+      }),
+    );
+
+    const support = response.positionBreakdown.find((entry) => entry.position === 'SUPPORT');
+    const top = response.positionBreakdown.find((entry) => entry.position === 'TOP');
+    expect(support?.metrics).not.toBeNull();
+    expect(support?.metrics?.sampleSize).toBe(8);
+    expect(support?.metrics?.sampleConfidence).toBe('INSUFFICIENT');
+    expect(top?.metrics).toBeNull();
+    expect(top?.dimensions).toBeNull();
   });
 
   it('returns five-role breakdown with nulls for missing roles when position omitted', async () => {
