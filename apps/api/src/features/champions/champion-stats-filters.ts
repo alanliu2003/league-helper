@@ -11,6 +11,13 @@ import {
 import { isAllQueueId } from '@league-helper/match-analytics';
 import type { ChampionStatsConfig } from '../../config/champion-stats.config';
 
+/**
+ * Detail exact + position-breakdown reads require sampleSize >= 1.
+ * Distinct from ranking floor (`CHAMPION_AGGREGATION_MIN_SAMPLE`, default 30).
+ * Never use 0 here — repository `gte` would admit a persisted zero-sample row.
+ */
+export const DETAIL_VISIBILITY_MINIMUM_SAMPLE = 1;
+
 export type ResolvedChampionStatsScope = {
   platform: PlatformRoute;
   queueId: number;
@@ -46,10 +53,9 @@ export function assertTablePositionPresent(query: Record<string, unknown>): void
 
 export function assertNotAllQueue(queueId: number): void {
   if (isAllQueueId(queueId)) {
-    throw new ChampionStatsInvalidFilterError(
-      'Champion stats do not support ALL-queue filters.',
-      { queueId },
-    );
+    throw new ChampionStatsInvalidFilterError('Champion stats do not support ALL-queue filters.', {
+      queueId,
+    });
   }
 }
 

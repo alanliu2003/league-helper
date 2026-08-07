@@ -295,6 +295,130 @@ describe('champions API integration', () => {
     expect(response.positionBreakdown).toHaveLength(5);
   });
 
+  it('returns detail stats for sampleSize 18 with INSUFFICIENT confidence (no includeInsufficient)', async () => {
+    await prisma.championAggregate.create({
+      data: {
+        patch: '16.10',
+        platformRoute: 'na1',
+        regionalRoute: 'americas',
+        queueId: 420,
+        rankTier: 'ALL',
+        teamPosition: 'MIDDLE',
+        championId: 1, // Annie
+        sampleSize: 18,
+        wins: 10,
+        totalKills: 40,
+        totalDeaths: 20,
+        totalAssists: 30,
+        totalCs: 300,
+        totalGameSeconds: 4_000,
+        totalDamageToChampions: 30_000,
+        totalVisionScore: 100,
+        sourceNormalizationVersion: '1',
+        aggregationVersion: '1',
+        calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+        latestEligibleMatchAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    });
+    await prisma.championAggregate.create({
+      data: {
+        patch: '16.10',
+        platformRoute: 'na1',
+        regionalRoute: 'americas',
+        queueId: 420,
+        rankTier: 'ALL',
+        teamPosition: 'SUPPORT',
+        championId: 1,
+        sampleSize: 8,
+        wins: 3,
+        totalKills: 10,
+        totalDeaths: 15,
+        totalAssists: 40,
+        totalCs: 50,
+        totalGameSeconds: 2_000,
+        totalDamageToChampions: 8_000,
+        totalVisionScore: 200,
+        sourceNormalizationVersion: '1',
+        aggregationVersion: '1',
+        calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+        latestEligibleMatchAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    });
+
+    const { statsService } = createServices();
+    const response = await statsService.getChampionStats('Annie', {
+      tier: 'ALL',
+      position: 'MIDDLE',
+    });
+
+    expect(response.stats).not.toBeNull();
+    expect(response.stats?.metrics.sampleSize).toBe(18);
+    expect(response.stats?.metrics.sampleConfidence).toBe('INSUFFICIENT');
+    expect(response.emptyReason).toBeUndefined();
+    expect(response.effectiveMinimumSample).toBe(30);
+
+    const support = response.positionBreakdown.find((entry) => entry.position === 'SUPPORT');
+    expect(support?.metrics?.sampleSize).toBe(8);
+    expect(support?.metrics?.sampleConfidence).toBe('INSUFFICIENT');
+
+    // Ranking floor unchanged: sampleSize 18 is not table-eligible.
+    const table = await statsService.getTable(
+      ChampionStatsTableQuerySchema.parse({ position: 'MIDDLE' }),
+    );
+    expect(table.rows.every((row) => row.champion.championKey !== 'Annie')).toBe(true);
+    expect(table.effectiveMinimumSample).toBe(30);
+  });
+
+  it('excludes ranking rows at sampleSize 29 and includes sampleSize 30', async () => {
+    await prisma.championAggregate.create({
+      data: {
+        patch: '16.10',
+        platformRoute: 'na1',
+        regionalRoute: 'americas',
+        queueId: 420,
+        rankTier: 'ALL',
+        teamPosition: 'TOP',
+        championId: 1,
+        sampleSize: 29,
+        wins: 15,
+        totalKills: 50,
+        totalDeaths: 40,
+        totalAssists: 40,
+        totalCs: 500,
+        totalGameSeconds: 8_000,
+        totalDamageToChampions: 40_000,
+        totalVisionScore: 200,
+        sourceNormalizationVersion: '1',
+        aggregationVersion: '1',
+        calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+      },
+    });
+
+    const { statsService } = createServices();
+    const excluded = await statsService.getTable(
+      ChampionStatsTableQuerySchema.parse({ position: 'TOP' }),
+    );
+    expect(excluded.rows).toEqual([]);
+    expect(excluded.emptyReason).toBe('BELOW_MINIMUM_SAMPLE');
+
+    await prisma.championAggregate.updateMany({
+      where: {
+        championId: 1,
+        teamPosition: 'TOP',
+        patch: '16.10',
+        sampleSize: 29,
+      },
+      data: { sampleSize: 30, wins: 16 },
+    });
+
+    const included = await statsService.getTable(
+      ChampionStatsTableQuerySchema.parse({ position: 'TOP' }),
+    );
+    expect(included.rows).toHaveLength(1);
+    expect(included.rows[0]?.metrics.sampleSize).toBe(30);
+    expect(included.emptyReason).toBeUndefined();
+  });
+
   it('marks freshness RECALCULATION_PENDING when recalc scope rows exist', async () => {
     const match = await prisma.match.findFirstOrThrow();
     await prisma.championAggregationRecalcScope.create({

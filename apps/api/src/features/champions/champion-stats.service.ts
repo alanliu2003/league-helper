@@ -31,6 +31,7 @@ import { ChampionAggregateReadRepository } from '../../persistence/champion-aggr
 import { ChampionStaticRepository } from '../../persistence/champion-static.repository';
 import { ChampionStatsCacheService } from './champion-stats-cache.service';
 import {
+  DETAIL_VISIBILITY_MINIMUM_SAMPLE,
   resolveSharedFilters,
   toRequestedFiltersFromStats,
   toRequestedFiltersFromTable,
@@ -44,11 +45,7 @@ import {
 } from './champion-stats.mapper';
 import { ChampionStaticService } from './champion-static.service';
 
-const AVAILABLE_TIERS: ChampionStatsTierFilter[] = [
-  'ALL',
-  ...RankTierSchema.options,
-  'UNKNOWN',
-];
+const AVAILABLE_TIERS: ChampionStatsTierFilter[] = ['ALL', ...RankTierSchema.options, 'UNKNOWN'];
 
 @Injectable()
 export class ChampionStatsService {
@@ -72,11 +69,7 @@ export class ChampionStatsService {
       versions,
     });
 
-    const scope = this.generationScope(
-      platform,
-      defaultPatch ?? '__none__',
-      queueId,
-    );
+    const scope = this.generationScope(platform, defaultPatch ?? '__none__', queueId);
     const generation = await this.cache.getGeneration(scope);
     const cacheKey = this.cache.filtersKey({ scope, generation });
     const cached = await this.cache.getParsed(cacheKey, ChampionStatsFiltersResponseSchema);
@@ -152,11 +145,7 @@ export class ChampionStatsService {
     const position = query.position;
     const offset = query.offset ?? 0;
     const limit = query.limit;
-    const resolvedPatch = await this.resolvePatch(
-      shared.platform,
-      shared.queueId,
-      query.patch,
-    );
+    const resolvedPatch = await this.resolvePatch(shared.platform, shared.queueId, query.patch);
 
     if (resolvedPatch.patch === null) {
       return this.emptyTableResponse({
@@ -304,11 +293,7 @@ export class ChampionStatsService {
   ): Promise<ChampionStatsResponse> {
     const staticRow = await this.championStatic.requireByKey(championKey);
     const shared = resolveSharedFilters(this.config, query);
-    const resolvedPatch = await this.resolvePatch(
-      shared.platform,
-      shared.queueId,
-      query.patch,
-    );
+    const resolvedPatch = await this.resolvePatch(shared.platform, shared.queueId, query.patch);
 
     if (resolvedPatch.patch === null) {
       return this.emptyChampionStatsResponse({
@@ -326,13 +311,15 @@ export class ChampionStatsService {
     const regionalRoute = getRegionalRouteForPlatform(shared.platform);
     const scope = this.generationScope(shared.platform, patch, shared.queueId);
     const generation = await this.cache.getGeneration(scope);
+    // Detail visibility is independent of ranking floor. Cache on visibility min
+    // so pre-fix entries keyed by ranking minimum are not reused.
     const cacheKey = this.cache.championKey({
       scope,
       generation,
       championKey: staticRow.championKey,
       position: shared.position,
       tier: shared.tier,
-      minimumSample: shared.effectiveMinimumSample,
+      minimumSample: DETAIL_VISIBILITY_MINIMUM_SAMPLE,
       includeInsufficient: shared.includeInsufficient,
     });
 
@@ -341,19 +328,19 @@ export class ChampionStatsService {
       return cached;
     }
 
-    const baseScope = {
+    const detailVisibilityScope = {
       ...this.versions(),
       platform: shared.platform,
       regionalRoute,
       queueId: shared.queueId,
       patch,
       tier: shared.tier,
-      minimumSample: shared.effectiveMinimumSample,
+      minimumSample: DETAIL_VISIBILITY_MINIMUM_SAMPLE,
     };
 
     const breakdownRows = await this.aggregates.findPositionBreakdown({
       championId: staticRow.championId,
-      scope: baseScope,
+      scope: detailVisibilityScope,
       positions: FIVE_RANKING_POSITIONS,
     });
     const byPosition = new Map(
@@ -368,6 +355,7 @@ export class ChampionStatsService {
       return {
         position,
         dimensions: mapAggregateDimensions(aggregate, regionalRoute),
+        // Confidence still uses ranking floor (insufficientBelow = config.minimumSample).
         metrics: mapAggregateMetrics(
           aggregate,
           this.config.confidenceLevel,
@@ -382,7 +370,7 @@ export class ChampionStatsService {
     if (shared.position !== null) {
       const exact = await this.aggregates.findExactAggregate({
         championId: staticRow.championId,
-        scope: { ...baseScope, position: shared.position },
+        scope: { ...detailVisibilityScope, position: shared.position },
       });
 
       if (exact) {
@@ -395,10 +383,8 @@ export class ChampionStatsService {
           ),
         };
       } else {
-        emptyReason = await this.resolveChampionEmptyReason({
-          championId: staticRow.championId,
-          scope: { ...baseScope, position: shared.position },
-        });
+        // Missing or sampleSize < 1 — not ranking-floor suppression.
+        emptyReason = 'CHAMPION_HAS_NO_STATS';
       }
     } else {
       const anyRole = positionBreakdown.some((entry) => entry.metrics !== null);
@@ -455,7 +441,7 @@ export class ChampionStatsService {
           championKey: staticRow.championKey,
           position: shared.position,
           tier: shared.tier,
-          minimumSample: shared.effectiveMinimumSample,
+          minimumSample: DETAIL_VISIBILITY_MINIMUM_SAMPLE,
           includeInsufficient: shared.includeInsufficient,
         }),
       value: response,
@@ -527,34 +513,6 @@ export class ChampionStatsService {
       return 'BELOW_MINIMUM_SAMPLE';
     }
     return 'NO_MATCHING_AGGREGATES';
-  }
-
-  private async resolveChampionEmptyReason(input: {
-    championId: number;
-    scope: {
-      platform: PlatformRoute;
-      regionalRoute: ReturnType<typeof getRegionalRouteForPlatform>;
-      queueId: number;
-      patch: string;
-      tier: ChampionStatsTierFilter;
-      position: ChampionRankingPosition;
-      minimumSample: number;
-      sourceNormalizationVersion: string;
-      aggregationVersion: string;
-    };
-  }): Promise<ChampionStatsResponse['emptyReason']> {
-    if (input.scope.minimumSample <= 0) {
-      return 'CHAMPION_HAS_NO_STATS';
-    }
-
-    const below = await this.aggregates.findExactAggregate({
-      championId: input.championId,
-      scope: { ...input.scope, minimumSample: 0 },
-    });
-    if (below) {
-      return 'BELOW_MINIMUM_SAMPLE';
-    }
-    return 'CHAMPION_HAS_NO_STATS';
   }
 
   private emptyTableResponse(input: {

@@ -36,19 +36,18 @@ export const MOCK_SPLASH_AHRI = 'https://cdn.example.test/splash/Ahri_0.jpg';
 export const MOCK_ICON_ANNIE = 'https://cdn.example.test/champions/Annie.png';
 export const MOCK_ICON_ZED = 'https://cdn.example.test/champions/Zed.png';
 
-const POSITIONS: ChampionRankingPosition[] = [
-  'TOP',
-  'JUNGLE',
-  'MIDDLE',
-  'BOTTOM',
-  'SUPPORT',
-];
+const POSITIONS: ChampionRankingPosition[] = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'SUPPORT'];
 
 export type ChampionMockOptions = {
   /** When true, Ahri /stats returns stats:null with emptyReason. */
   emptyStats?: boolean;
   /** When true, ranking table returns zero rows with emptyReason. */
   emptyRanking?: boolean;
+  /**
+   * When true, exact Middle stats use sub-ranking-floor sample (detail-visible).
+   * Visibility floor is 1; ranking/confidence floor remains 30.
+   */
+  limitedSample?: boolean;
 };
 
 export type ChampionRequestLog = {
@@ -72,8 +71,7 @@ function isChampionStatsTablePath(pathname: string): boolean {
 
 function isChampionStatsFiltersPath(pathname: string): boolean {
   return (
-    pathname === '/api/champion-stats/filters' ||
-    pathname.endsWith('/api/champion-stats/filters')
+    pathname === '/api/champion-stats/filters' || pathname.endsWith('/api/champion-stats/filters')
   );
 }
 
@@ -130,18 +128,25 @@ function baseDimensions(overrides: {
   };
 }
 
-function metrics(overrides: Partial<{
-  sampleSize: number;
-  wins: number;
-  winRate: number | null;
-  sampleConfidence: 'INSUFFICIENT' | 'LOW' | 'MEDIUM' | 'HIGH';
-}> = {}) {
+function metrics(
+  overrides: Partial<{
+    sampleSize: number;
+    wins: number;
+    winRate: number | null;
+    sampleConfidence: 'INSUFFICIENT' | 'LOW' | 'MEDIUM' | 'HIGH';
+    aggregateKdaRatio: number;
+    averageCsPerMinute: number;
+    averageDamagePerMinute: number;
+    averageVisionScorePerMinute: number;
+    averageGoldDifferenceAt10: number | null;
+    averageGoldDifferenceAt15: number | null;
+    averageCsDifferenceAt10: number | null;
+    averageCsDifferenceAt15: number | null;
+  }> = {},
+) {
   const sampleSize = overrides.sampleSize ?? 80;
   const wins = overrides.wins ?? 44;
-  const winRate =
-    overrides.winRate === undefined
-      ? wins / sampleSize
-      : overrides.winRate;
+  const winRate = overrides.winRate === undefined ? wins / sampleSize : overrides.winRate;
   return {
     sampleSize,
     wins,
@@ -155,14 +160,18 @@ function metrics(overrides: Partial<{
             confidenceLevel: 0.95,
           },
     sampleConfidence: overrides.sampleConfidence ?? ('MEDIUM' as const),
-    aggregateKdaRatio: 3.1,
-    averageCsPerMinute: 7.4,
-    averageDamagePerMinute: 620,
-    averageVisionScorePerMinute: 1.1,
-    averageGoldDifferenceAt10: 90,
-    averageGoldDifferenceAt15: 150,
-    averageCsDifferenceAt10: 4,
-    averageCsDifferenceAt15: 7,
+    aggregateKdaRatio: overrides.aggregateKdaRatio ?? 3.1,
+    averageCsPerMinute: overrides.averageCsPerMinute ?? 7.4,
+    averageDamagePerMinute: overrides.averageDamagePerMinute ?? 620,
+    averageVisionScorePerMinute: overrides.averageVisionScorePerMinute ?? 1.1,
+    averageGoldDifferenceAt10:
+      overrides.averageGoldDifferenceAt10 === undefined ? 90 : overrides.averageGoldDifferenceAt10,
+    averageGoldDifferenceAt15:
+      overrides.averageGoldDifferenceAt15 === undefined ? 150 : overrides.averageGoldDifferenceAt15,
+    averageCsDifferenceAt10:
+      overrides.averageCsDifferenceAt10 === undefined ? 4 : overrides.averageCsDifferenceAt10,
+    averageCsDifferenceAt15:
+      overrides.averageCsDifferenceAt15 === undefined ? 7 : overrides.averageCsDifferenceAt15,
     latestEligibleMatchAt: '2026-08-01T12:00:00.000Z',
     calculatedAt: '2026-08-05T18:00:00.000Z',
   };
@@ -342,6 +351,7 @@ function positionBreakdown(
 
 export function buildChampionStatsResponse(options: {
   emptyStats?: boolean;
+  limitedSample?: boolean;
   position?: ChampionRankingPosition | null;
   platform?: 'na1' | 'euw1';
   patch?: string;
@@ -354,6 +364,7 @@ export function buildChampionStatsResponse(options: {
   const tier = options.tier ?? 'ALL';
   const position = options.position ?? null;
   const emptyStats = options.emptyStats ?? false;
+  const limitedSample = options.limitedSample ?? false;
 
   const champion = ahriDetail().champion;
 
@@ -378,6 +389,20 @@ export function buildChampionStatsResponse(options: {
     });
   }
 
+  const exactMetrics = limitedSample
+    ? metrics({
+        sampleSize: 18,
+        wins: 10,
+        winRate: 10 / 18,
+        sampleConfidence: 'INSUFFICIENT',
+        // Keep timeline honesty exercisable in limited-sample UI.
+        averageGoldDifferenceAt10: -115,
+        averageGoldDifferenceAt15: null,
+        averageCsDifferenceAt10: null,
+        averageCsDifferenceAt15: null,
+      })
+    : metrics({ sampleSize: 80, wins: 44 });
+
   const exactStats =
     position === null
       ? null
@@ -390,15 +415,39 @@ export function buildChampionStatsResponse(options: {
             queueId,
             rankTier: tier,
           }),
-          metrics: metrics({ sampleSize: 80, wins: 44 }),
+          metrics: exactMetrics,
         };
+
+  const breakdown = limitedSample
+    ? POSITIONS.map((role) => {
+        if (role !== 'MIDDLE') {
+          return {
+            position: role,
+            dimensions: null,
+            metrics: null,
+          };
+        }
+        return {
+          position: role,
+          dimensions: baseDimensions({
+            championId: 103,
+            position: role,
+            platform,
+            patch,
+            queueId,
+            rankTier: tier,
+          }),
+          metrics: exactMetrics,
+        };
+      })
+    : positionBreakdown(platform, patch, queueId, tier);
 
   return ChampionStatsResponseSchema.parse({
     ...envelopeMeta({ platform, patch, queueId, tier, position }),
     champion,
     stats: exactStats,
     ...(exactStats ? {} : { emptyReason: undefined }),
-    positionBreakdown: positionBreakdown(platform, patch, queueId, tier),
+    positionBreakdown: breakdown,
   });
 }
 
@@ -463,6 +512,7 @@ export type InstalledChampionMocks = {
   hasRankingTableRequest: () => boolean;
   setEmptyStats: (value: boolean) => void;
   setEmptyRanking: (value: boolean) => void;
+  setLimitedSample: (value: boolean) => void;
   dispose: () => Promise<void>;
 };
 
@@ -482,6 +532,7 @@ export async function installChampionApiMocks(
 ): Promise<InstalledChampionMocks> {
   let emptyStats = options.emptyStats ?? false;
   let emptyRanking = options.emptyRanking ?? false;
+  let limitedSample = options.limitedSample ?? false;
   const requests: ChampionRequestLog[] = [];
   const rankingRequests: ChampionRequestLog[] = [];
   const statsRequests: ChampionRequestLog[] = [];
@@ -569,6 +620,7 @@ export async function installChampionApiMocks(
         200,
         buildChampionStatsResponse({
           emptyStats,
+          limitedSample,
           position,
           platform: (searchParams.get('platform') as 'na1' | 'euw1') ?? 'na1',
           patch: searchParams.get('patch') ?? '14.11',
@@ -654,6 +706,9 @@ export async function installChampionApiMocks(
     },
     setEmptyRanking: (value: boolean) => {
       emptyRanking = value;
+    },
+    setLimitedSample: (value: boolean) => {
+      limitedSample = value;
     },
     dispose: async () => {
       await page.unroute('**/api/champion-stats**', handler);

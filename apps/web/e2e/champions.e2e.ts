@@ -39,8 +39,15 @@ async function assertNoPuuidOrDeferredSections(page: Page): Promise<void> {
   expect(body).not.toMatch(/puuid/i);
   expect(body).not.toMatch(/\bPUUID\b/);
   expect(body.toLowerCase()).not.toContain('matchup');
+  expect(body.toLowerCase()).not.toContain('strong against');
+  expect(body.toLowerCase()).not.toContain('weak against');
   expect(body.toLowerCase()).not.toContain('ai coaching');
   expect(body.toLowerCase()).not.toContain('counter pick');
+  expect(body.toLowerCase()).not.toContain('pick rate');
+  expect(body.toLowerCase()).not.toContain('ban rate');
+  expect(body.toLowerCase()).not.toContain('collectorrun');
+  expect(body.toLowerCase()).not.toContain('discoverydepth');
+  expect(body.toLowerCase()).not.toContain('externalaccountid');
 }
 
 async function assertNoChampionFilterLocalStorage(page: Page): Promise<void> {
@@ -51,7 +58,10 @@ async function assertNoChampionFilterLocalStorage(page: Page): Promise<void> {
   expect(championFilterKeys).toEqual([]);
 }
 
-async function selectPositionMid(page: Page, scope: 'directory' | 'detail' = 'directory'): Promise<void> {
+async function selectPositionMid(
+  page: Page,
+  scope: 'directory' | 'detail' = 'directory',
+): Promise<void> {
   const labelledBy = scope === 'directory' ? 'position-label' : 'detail-position-label';
   const group = page.locator(`[role="radiogroup"][aria-labelledby="${labelledBy}"]`);
   await group.getByRole('radio', { name: 'Mid' }).click();
@@ -82,9 +92,9 @@ test.describe('champions directory and detail', () => {
 
     // Filters + directory list only — no ranking table request yet.
     expect(mocks.hasRankingTableRequest()).toBe(false);
-    expect(
-      mocks.requests.some((r) => r.pathname.includes('/api/champion-stats/filters')),
-    ).toBe(true);
+    expect(mocks.requests.some((r) => r.pathname.includes('/api/champion-stats/filters'))).toBe(
+      true,
+    );
     expect(mocks.requests.some((r) => r.pathname.endsWith('/api/champions'))).toBe(true);
 
     await assertNoPuuidOrDeferredSections(page);
@@ -110,9 +120,7 @@ test.describe('champions directory and detail', () => {
       timeout: 15_000,
     });
 
-    await expect
-      .poll(() => mocks.hasRankingTableRequest(), { timeout: 10_000 })
-      .toBe(true);
+    await expect.poll(() => mocks.hasRankingTableRequest(), { timeout: 10_000 }).toBe(true);
     expect(mocks.rankingRequests.some((r) => r.searchParams.get('position') === 'MIDDLE')).toBe(
       true,
     );
@@ -138,7 +146,9 @@ test.describe('champions directory and detail', () => {
     await expect(page).toHaveURL(/position=MIDDLE/, { timeout: 15_000 });
 
     const rankingSection = page.locator('[aria-labelledby="collected-sample-ranking-heading"]');
-    await expect(rankingSection.getByRole('heading', { name: 'Collected sample ranking' })).toBeVisible({
+    await expect(
+      rankingSection.getByRole('heading', { name: 'Collected sample ranking' }),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await expect(rankingSection.getByRole('link', { name: /Ahri/i })).toHaveCount(0);
@@ -211,37 +221,84 @@ test.describe('champions directory and detail', () => {
       'src',
       MOCK_ICON_AHRI,
     );
+    await expect(page.locator('img[alt=""]').first()).toHaveAttribute('src', /Ahri_0/);
 
     // Stats load for breakdown without requiring position (no invented ALL-position exact metrics).
-    await expect
-      .poll(() => mocks.statsRequests.length, { timeout: 10_000 })
-      .toBeGreaterThan(0);
+    await expect.poll(() => mocks.statsRequests.length, { timeout: 10_000 }).toBeGreaterThan(0);
     const initialStats = mocks.statsRequests[mocks.statsRequests.length - 1];
     expect(initialStats?.searchParams.get('position')).toBeNull();
 
-    await expect(page.getByRole('heading', { name: 'Sample overview' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Primary stats' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Position breakdown' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Data limitations' })).toBeVisible();
     await expect(
       page.getByText(/Select a position to load exact-position collected-sample statistics/i),
     ).toBeVisible();
+    // Performance panel mounts only after a position is selected.
+    await expect(page.getByRole('heading', { name: 'Performance' })).toHaveCount(0);
 
     const rankingBefore = mocks.rankingRequests.length;
     await selectPositionMid(page, 'detail');
 
     await expect(page).toHaveURL(/position=MIDDLE/);
     await expect
-      .poll(
-        () =>
-          mocks.statsRequests.some((r) => r.searchParams.get('position') === 'MIDDLE'),
-        { timeout: 10_000 },
-      )
+      .poll(() => mocks.statsRequests.some((r) => r.searchParams.get('position') === 'MIDDLE'), {
+        timeout: 10_000,
+      })
       .toBe(true);
 
     // Detail must not request directory ranking table.
     expect(mocks.rankingRequests.length).toBe(rankingBefore);
 
-    await expect(page.getByText('Sample size')).toBeVisible();
-    await expect(page.getByText('80').first()).toBeVisible();
+    const primary = page.locator('[aria-labelledby="primary-stats-heading"]');
+    await expect(primary.getByText('55.0%')).toBeVisible();
+    await expect(primary.getByText(/80\s*games/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Performance' })).toBeVisible();
+    await expect(page.getByText('KDA')).toBeVisible();
+
+    await assertNoPuuidOrDeferredSections(page);
+
+    // Filter-preserving directory back link.
+    const back = page.getByRole('link', { name: /Back to champions directory/i });
+    await expect(back).toHaveAttribute('href', /\/champions\?/);
+    await expect(back).toHaveAttribute('href', /platform=na1/);
+    await expect(back).toHaveAttribute('href', /position=MIDDLE/);
+  });
+
+  test('limited sample (n=18) shows win rate, games, and Limited sample without empty shell', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+
+    mocks.setLimitedSample(true);
+    await gotoApp(
+      page,
+      '/champions/Ahri?platform=na1&queue=420&tier=ALL&patch=14.11&position=MIDDLE',
+    );
+
+    await expect(page.getByRole('heading', { name: 'Ahri', level: 1 })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const primary = page.locator('[aria-labelledby="primary-stats-heading"]');
+    await expect(primary.getByTestId('primary-stats-metrics')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(primary.getByText(/55\.6%/)).toBeVisible();
+    await expect(primary.getByText(/18\s*games/i)).toBeVisible();
+    await expect(primary.getByText(/10\s*[–-]\s*8/)).toBeVisible();
+    await expect(primary.getByText(/Limited sample/i)).toBeVisible();
+    await expect(
+      primary.getByText(/Not enough collected matches meet the minimum sample size/i),
+    ).toHaveCount(0);
+    await expect(
+      primary.getByText(/No collected-sample statistics for this champion/i),
+    ).toHaveCount(0);
+
+    const performance = page.locator('[aria-labelledby="performance-cards-heading"]');
+    await expect(performance.getByText('KDA')).toBeVisible();
+    await expect(performance.getByText('-115')).toBeVisible();
+    await expect(performance.getByText('Unavailable').first()).toBeVisible();
 
     await assertNoPuuidOrDeferredSections(page);
   });
@@ -258,13 +315,14 @@ test.describe('champions directory and detail', () => {
     await expect(page.getByRole('heading', { name: 'Ahri', level: 1 })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(
-      page.getByText(/No collected-sample statistics for this champion/i),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/No collected-sample statistics for this champion/i)).toBeVisible({
+      timeout: 10_000,
+    });
 
-    const overview = page.locator('[aria-labelledby="sample-overview-heading"]');
+    const overview = page.locator('[aria-labelledby="primary-stats-heading"]');
     await expect(overview.getByText('0%')).toHaveCount(0);
     await expect(overview.getByText(/^0$/)).toHaveCount(0);
+    await expect(overview.getByTestId('primary-stats-metrics')).toHaveCount(0);
 
     const performance = page.locator('[aria-labelledby="performance-cards-heading"]');
     await expect(performance.getByText(/appear when a position is selected/i)).toBeVisible();

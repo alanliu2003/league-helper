@@ -1,10 +1,8 @@
 <template>
-  <aside
-    class="lh-surface-raised space-y-3 p-4 md:p-5"
-    aria-labelledby="limitations-heading"
-    role="note"
-  >
-    <h2 id="limitations-heading" class="font-display text-lg">Limitations</h2>
+  <aside class="space-y-3 p-1 md:p-0" aria-labelledby="limitations-heading" role="note">
+    <h2 id="limitations-heading" class="font-display text-base text-[var(--lh-muted)]">
+      Data limitations
+    </h2>
     <ul class="list-disc space-y-2 pl-5 text-sm text-[var(--lh-text-secondary)]">
       <li>{{ disclaimer }}</li>
       <li>
