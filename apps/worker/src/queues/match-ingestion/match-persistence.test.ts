@@ -543,6 +543,52 @@ describe('persistNormalizedMatch rankTierAtIngestion', () => {
     expect(participant?.rankTierAtIngestion).toBe('SILVER');
   });
 
+  it('forceOverwrite rewrites participants on completed same-version match', async () => {
+    const externalMatchId = 'NA1_FORCE_OVERWRITE';
+    const stalePuuid = 'b'.repeat(78);
+    store.matches.set(`RIOT:${externalMatchId}`, {
+      id: 'match-stale',
+      provider: 'RIOT',
+      externalMatchId,
+      queueId: RANKED_SOLO_QUEUE_ID,
+      ingestionStatus: MatchIngestionStatus.COMPLETED,
+      normalizationVersion: '1',
+      normalizedPatch: '14.1',
+      platformRoute: 'na1',
+      regionalRoute: 'americas',
+      mapId: 11,
+      gameMode: 'CLASSIC',
+      remake: false,
+      ingestedAt: new Date('2024-06-15T12:00:00.000Z'),
+      createdAt: new Date('2024-06-15T11:00:00.000Z'),
+    });
+    store.participants.push({
+      id: 'part-stale',
+      matchId: 'match-stale',
+      participantId: 1,
+      playerAccountId: null,
+      externalAccountId: stalePuuid,
+      rankTierAtIngestion: null,
+      championId: 1,
+      teamPosition: 'TOP',
+      individualPosition: 'TOP',
+      lane: 'TOP',
+      role: 'SOLO',
+    });
+
+    const match = buildNormalized(RANKED_SOLO_QUEUE_ID);
+    match.externalMatchId = externalMatchId;
+    const links = new Map([[FAKE_PUUID, accountId]]);
+    const result = await persistNormalizedMatch(prisma as never, match, links, {
+      forceOverwrite: true,
+    });
+
+    expect(result.skippedComplete).toBe(false);
+    const participant = store.participants.find((row) => row.participantId === 1);
+    expect(participant?.externalAccountId).toBe(FAKE_PUUID);
+    expect(participant?.playerAccountId).toBe(accountId);
+  });
+
   it('captures previous participant snapshots before overwrite for aggregation keys', async () => {
     const externalMatchId = 'NA1_RANK_PERSIST_420';
     store.matches.set(`RIOT:${externalMatchId}`, {

@@ -216,6 +216,20 @@ function createPrismaMock(store: Store) {
       ),
     },
     matchParticipant: {
+      findFirst: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { matchId: string; externalAccountId: string };
+          select?: { id?: boolean };
+        }) => {
+          const participant = store.participants.find(
+            (row) =>
+              row.matchId === where.matchId && row.externalAccountId === where.externalAccountId,
+          );
+          return participant ? { id: participant.id } : null;
+        },
+      ),
       update: vi.fn(
         async ({
           where,
@@ -241,6 +255,9 @@ function createPrismaMock(store: Store) {
       ),
     },
     playerAccount: {
+      findUnique: vi.fn(async ({ where }: { where: { id: string }; select?: unknown }) => {
+        return store.accounts.find((account) => account.id === where.id) ?? null;
+      }),
       findMany: vi.fn(
         async ({
           where,
@@ -554,6 +571,39 @@ describe('processMatchIngestionJob', () => {
     expect(store.participants[0]?.playerAccountId).toBe('11111111-1111-1111-1111-111111111111');
     // Marker absent → enqueue aggregation for lost-enqueue repair.
     expect(championAggregationQueue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches completed match when requesting player PUUID is absent from participants', async () => {
+    const payload = validPayload();
+    const existingMatchId = '33333333-3333-4333-8333-333333333333';
+    store.matches.set(`RIOT:${payload.externalMatchId}`, {
+      id: existingMatchId,
+      provider: 'RIOT',
+      externalMatchId: payload.externalMatchId,
+      ingestionStatus: MatchIngestionStatus.COMPLETED,
+      normalizationVersion: '1',
+    });
+    store.participants.push({
+      id: 'part-wrong-puuid',
+      matchId: existingMatchId,
+      participantId: 1,
+      playerAccountId: null,
+      externalAccountId: 'a'.repeat(78),
+    });
+
+    const result = await processMatchIngestionJob(
+      makeJob(payload),
+      'token',
+      makeDeps({ prisma, provider, redis, championAggregationQueue }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(provider.getMatch).toHaveBeenCalledTimes(1);
+    // forceOverwrite must replace stale PUUIDs so progress can link the account.
+    expect(store.participants.some((row) => row.externalAccountId === FAKE_PUUID)).toBe(true);
+    expect(store.participants.some((row) => row.externalAccountId === 'a'.repeat(78))).toBe(
+      false,
+    );
   });
 
   it('dedupes participants on duplicate retry', async () => {

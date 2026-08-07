@@ -151,6 +151,7 @@ export async function persistNormalizedMatch(
   prisma: PrismaClient,
   match: NormalizedMatch,
   accountLinks: AccountLinkMap,
+  options?: { forceOverwrite?: boolean },
 ): Promise<PersistNormalizedMatchResult> {
   const existing = await prisma.match.findUnique({
     where: {
@@ -177,8 +178,11 @@ export async function persistNormalizedMatch(
     },
   });
 
+  // forceOverwrite: processor detected corrupt/stale participants (e.g. requesting
+  // player PUUID absent) and intentionally refetched — do not short-circuit.
   if (
     existing &&
+    !options?.forceOverwrite &&
     isCompleteOrNewer(
       existing.normalizationVersion,
       match.normalizationVersion,
