@@ -45,10 +45,11 @@ export async function enqueueDiscoveredMatches(
     account: PlayerAccount;
     discoveredMatchIds: string[];
     correlationId: string;
+    sourceCollectorRunId?: string;
   },
 ): Promise<EnqueueDiscoveredMatchesResult> {
   const warnings: PlayerSafeWarning[] = [];
-  const { account, discoveredMatchIds, correlationId } = input;
+  const { account, discoveredMatchIds, correlationId, sourceCollectorRunId } = input;
   if (discoveredMatchIds.length === 0) {
     return { warnings, enqueuedCount: 0, skippedAlreadyCompleteCount: 0 };
   }
@@ -156,6 +157,7 @@ export async function enqueueDiscoveredMatches(
       correlationId,
       normalizationVersion: MATCH_INGESTION_NORMALIZATION_VERSION,
       discoveredAt,
+      ...(sourceCollectorRunId !== undefined ? { sourceCollectorRunId } : {}),
     };
 
     const idempotencyKey = buildMatchIngestionIdempotencyKey({

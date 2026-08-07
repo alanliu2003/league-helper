@@ -31,7 +31,10 @@
     "collector:set-player-status": "tsx src/features/collector/cli/set-player-status.ts",
     "collector:run": "tsx src/features/collector/cli/run.ts",
     "collector:status": "tsx src/features/collector/cli/status.ts",
-    "collector:audit": "tsx src/features/collector/cli/audit.ts"
+    "collector:audit": "tsx src/features/collector/cli/audit.ts",
+    "collector:scheduler": "tsx src/features/collector/cli/scheduler.ts",
+    "collector:scheduler-status": "tsx src/features/collector/cli/scheduler-status.ts",
+    "collector:scheduler-trigger": "tsx src/features/collector/cli/scheduler-trigger.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

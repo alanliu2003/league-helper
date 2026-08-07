@@ -82,11 +82,16 @@ export class CollectorEnrollmentService {
     // Preserve first enrollmentSource on re-enroll; only used for INSERT path.
     const enrollmentSource = existing?.enrollmentSource ?? input.source;
 
+    // Explicit seed/search/bootstrap paths always propose depth 0 (root).
+    // Does not consume or consult CollectorPopulationBudget.
+    const discoveryDepth = input.discoveryDepth ?? 0;
+
     const result = await this.trackedPlayers.upsertEnrollment({
       playerAccountId: input.account.id,
       provider: input.account.provider,
       platformRoute: normalizedPlatform,
       enrollmentSource,
+      discoveryDepth,
       priority,
       reactivate,
     });

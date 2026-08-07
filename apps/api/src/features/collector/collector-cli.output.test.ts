@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest';
+import type { CollectorSchedulerState } from '@prisma/client';
+import { loadCollectorConfig } from './collector.config';
 import type {
   CollectorCoverageSnapshot,
   CollectorRunOnceResult,
   CoverageSnapshotStatus,
+  SchedulerTickOutcome,
 } from './collector.types';
 import {
   buildCollectorApplyReport,
+  buildCollectorSchedulerStatusReport,
+  buildSchedulerTriggerReport,
+  formatSchedulerStatusText,
+  isSchedulerCooldownActive,
+  isSchedulerLeaseOwnerPresent,
   resolveCollectorRunExitCode,
+  resolveSchedulerTriggerExitCode,
 } from './collector-cli.output';
 
 function zeroCounters(): CollectorRunOnceResult['counters'] {
@@ -97,5 +106,108 @@ describe('buildCollectorApplyReport', () => {
     expect(report.ok).toBe(false);
     expect(report.coverage.status).toBe('available');
     expect(report.coverageWarning).toBeUndefined();
+  });
+});
+
+describe('resolveSchedulerTriggerExitCode', () => {
+  it('maps skip/trigger outcomes to 0 and FAILED_TO_START to 1', () => {
+    const zeroOutcomes: SchedulerTickOutcome[] = [
+      'TRIGGERED',
+      'SKIPPED_DISABLED',
+      'SKIPPED_OVERLAP',
+      'SKIPPED_BACKPRESSURE',
+      'SKIPPED_COOLDOWN',
+    ];
+    for (const outcome of zeroOutcomes) {
+      expect(resolveSchedulerTriggerExitCode(outcome)).toBe(0);
+    }
+    expect(resolveSchedulerTriggerExitCode('FAILED_TO_START')).toBe(1);
+  });
+});
+
+describe('buildSchedulerTriggerReport', () => {
+  it('marks FAILED_TO_START as not ok', () => {
+    expect(buildSchedulerTriggerReport({ outcome: 'TRIGGERED', collectorRunId: 'run-1' })).toEqual(
+      {
+        ok: true,
+        mode: 'scheduler-trigger',
+        outcome: 'TRIGGERED',
+        collectorRunId: 'run-1',
+      },
+    );
+    expect(
+      buildSchedulerTriggerReport({
+        outcome: 'FAILED_TO_START',
+        errorCode: 'RUN_ONCE_START_FAILED',
+      }),
+    ).toEqual({
+      ok: false,
+      mode: 'scheduler-trigger',
+      outcome: 'FAILED_TO_START',
+      errorCode: 'RUN_ONCE_START_FAILED',
+    });
+  });
+});
+
+describe('scheduler status formatting helpers', () => {
+  it('treats empty/null lease owner as ABSENT', () => {
+    expect(isSchedulerLeaseOwnerPresent(null)).toBe(false);
+    expect(isSchedulerLeaseOwnerPresent(undefined)).toBe(false);
+    expect(isSchedulerLeaseOwnerPresent('')).toBe(false);
+    expect(isSchedulerLeaseOwnerPresent('owner-uuid')).toBe(true);
+  });
+
+  it('computes cooldownActive against now', () => {
+    const now = new Date('2026-08-07T12:00:00.000Z');
+    expect(isSchedulerCooldownActive(null, now)).toBe(false);
+    expect(isSchedulerCooldownActive(new Date('2026-08-07T11:59:59.000Z'), now)).toBe(false);
+    expect(isSchedulerCooldownActive(new Date('2026-08-07T12:00:01.000Z'), now)).toBe(true);
+  });
+
+  it('builds status with PRESENT/ABSENT and no raw owner UUID', () => {
+    const now = new Date('2026-08-07T12:00:00.000Z');
+    const config = loadCollectorConfig({});
+    const state = {
+      id: 'singleton',
+      leaseOwner: 'secret-owner-uuid',
+      leaseExpiresAt: new Date('2026-08-07T13:00:00.000Z'),
+      lastTriggerAt: new Date('2026-08-07T11:00:00.000Z'),
+      lastOutcome: 'TRIGGERED',
+      lastCollectorRunId: 'run-abc',
+      lastErrorCode: null,
+      cooldownUntil: new Date('2026-08-07T12:30:00.000Z'),
+      createdAt: now,
+      updatedAt: now,
+    } as CollectorSchedulerState;
+
+    const report = buildCollectorSchedulerStatusReport({
+      config,
+      enabled: false,
+      state,
+      now,
+    });
+
+    expect(report.enabled).toBe(false);
+    expect(report.leaseOwnerPresent).toBe(true);
+    expect(report.cooldownActive).toBe(true);
+    expect(report.lastOutcome).toBe('TRIGGERED');
+    expect(JSON.stringify(report)).not.toContain('secret-owner-uuid');
+
+    const lines = formatSchedulerStatusText(report);
+    expect(lines.some((line) => line.includes('leaseOwner=PRESENT'))).toBe(true);
+    expect(lines.some((line) => line.includes('cooldownActive=true'))).toBe(true);
+    expect(lines.join('\n')).not.toContain('secret-owner-uuid');
+  });
+
+  it('formats ABSENT when lease owner missing', () => {
+    const report = buildCollectorSchedulerStatusReport({
+      config: loadCollectorConfig({}),
+      enabled: true,
+      state: null,
+      now: new Date('2026-08-07T12:00:00.000Z'),
+    });
+    expect(report.leaseOwnerPresent).toBe(false);
+    expect(report.cooldownActive).toBe(false);
+    expect(formatSchedulerStatusText(report).join('\n')).toContain('leaseOwner=ABSENT');
   });
 });

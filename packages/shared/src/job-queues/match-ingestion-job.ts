@@ -17,6 +17,8 @@ export const MatchIngestionJobPayloadSchema = z.object({
   correlationId: z.string().min(1).max(128),
   normalizationVersion: z.number().int().positive().default(MATCH_INGESTION_NORMALIZATION_VERSION),
   discoveredAt: z.string().datetime(),
+  /** Set when discovery originates from a population collector run. */
+  sourceCollectorRunId: z.string().uuid().optional(),
 });
 
 export type MatchIngestionJobPayload = z.infer<typeof MatchIngestionJobPayloadSchema>;

@@ -60,6 +60,7 @@ export type PlayerMatchDiscoveryRuntimeDeps = {
       account: Parameters<typeof defaultEnqueueDiscoveredMatches>[1]['account'];
       discoveredMatchIds: string[];
       correlationId: string;
+      sourceCollectorRunId?: string;
     },
   ) => Promise<EnqueueDiscoveredMatchesResult>;
   enqueueDeps: EnqueueDiscoveredMatchesDeps;
@@ -342,6 +343,9 @@ async function discoverAccountMode(
     account,
     discoveredMatchIds,
     correlationId: input.correlationId,
+    ...(input.sourceCollectorRunId !== undefined
+      ? { sourceCollectorRunId: input.sourceCollectorRunId }
+      : {}),
   });
 
   return {

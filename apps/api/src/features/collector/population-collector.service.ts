@@ -295,6 +295,7 @@ export class PopulationCollectorService {
         const { outcomes, rateLimited } = await this.processWaveParallel({
           assignments,
           ownerToken,
+          collectorRunId: run.id,
           input,
           runtime,
           effectivePlatforms,
@@ -428,6 +429,7 @@ export class PopulationCollectorService {
   private async processWaveParallel(input: {
     assignments: WaveAssignment[];
     ownerToken: string;
+    collectorRunId: string;
     input: CollectorRunOnceInput;
     runtime: RuntimeConfig;
     effectivePlatforms: string[];
@@ -472,6 +474,7 @@ export class PopulationCollectorService {
           player: assignment.player,
           maxMatches: assignment.maxMatches,
           ownerToken: input.ownerToken,
+          collectorRunId: input.collectorRunId,
           input: input.input,
           runtime: input.runtime,
           effectivePlatforms: input.effectivePlatforms,
@@ -497,6 +500,7 @@ export class PopulationCollectorService {
     player: TrackedPlayer;
     maxMatches: number;
     ownerToken: string;
+    collectorRunId: string;
     input: CollectorRunOnceInput;
     runtime: RuntimeConfig;
     effectivePlatforms: string[];
@@ -524,6 +528,7 @@ export class PopulationCollectorService {
           maxMatches: input.maxMatches,
           dryRun: false,
           correlationId: `collector-${input.ownerToken}-${input.player.id}`,
+          sourceCollectorRunId: input.collectorRunId,
         }),
         input.runtime.playerTimeoutMs,
         `trackedPlayer:${input.player.id}`,

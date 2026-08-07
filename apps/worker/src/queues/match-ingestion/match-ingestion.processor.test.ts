@@ -13,12 +13,19 @@ import type {
   ChampionAggregationWorkerConfig,
   MatchIngestionWorkerConfig,
 } from '../../config.js';
+import { expandMatchParticipantsSafe } from '../../collector/expand-match-participants-safe.js';
 import { processMatchIngestionJob } from './match-ingestion.processor.js';
 import {
   buildPuuid,
   buildRankedMatchDto,
   buildRichTimelineDto,
 } from './test-utils/ranked-match-fixture.js';
+
+vi.mock('../../collector/expand-match-participants-safe.js', () => ({
+  expandMatchParticipantsSafe: vi.fn().mockResolvedValue({ skipped: true, reason: 'disabled' }),
+}));
+
+const expandMatchParticipantsSafeMock = vi.mocked(expandMatchParticipantsSafe);
 
 function baseConfig(
   overrides: Partial<MatchIngestionWorkerConfig> = {},
@@ -452,6 +459,11 @@ describe('processMatchIngestionJob', () => {
   let championAggregationQueue: ReturnType<typeof createChampionAggregationQueueMock>;
 
   beforeEach(() => {
+    expandMatchParticipantsSafeMock.mockReset();
+    expandMatchParticipantsSafeMock.mockResolvedValue({
+      skipped: true,
+      reason: 'disabled',
+    } as never);
     store = {
       jobs: new Map(),
       matches: new Map(),
@@ -540,6 +552,82 @@ describe('processMatchIngestionJob', () => {
         makeDeps({ prisma, provider, redis, championAggregationQueue }),
       ),
     ).resolves.toMatchObject({ status: 'completed' });
+  });
+
+  it('invokes participant expansion after newly completed match', async () => {
+    const payload = validPayload({
+      sourceCollectorRunId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    });
+    const result = await processMatchIngestionJob(
+      makeJob(payload),
+      'token',
+      makeDeps({ prisma, provider, redis, championAggregationQueue }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(expandMatchParticipantsSafeMock).toHaveBeenCalledTimes(1);
+    expect(expandMatchParticipantsSafeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        matchId: expect.any(String),
+        requestedByPlayerAccountId: payload.requestedByPlayerAccountId,
+        sourceCollectorRunId: payload.sourceCollectorRunId,
+      }),
+    );
+  });
+
+  it('invokes participant expansion on already_complete path', async () => {
+    const payload = validPayload({
+      sourceCollectorRunId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    });
+    const existingMatchId = '22222222-2222-4222-8222-222222222222';
+    store.matches.set(`RIOT:${payload.externalMatchId}`, {
+      id: existingMatchId,
+      provider: 'RIOT',
+      externalMatchId: payload.externalMatchId,
+      ingestionStatus: MatchIngestionStatus.COMPLETED,
+      normalizationVersion: '1',
+    });
+    store.participants.push({
+      id: 'part-existing',
+      matchId: existingMatchId,
+      participantId: 1,
+      playerAccountId: null,
+      externalAccountId: FAKE_PUUID,
+    });
+
+    const result = await processMatchIngestionJob(
+      makeJob(payload),
+      'token',
+      makeDeps({ prisma, provider, redis, championAggregationQueue }),
+    );
+
+    expect(result.status).toBe('already_complete');
+    expect(expandMatchParticipantsSafeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        matchId: existingMatchId,
+        sourceCollectorRunId: payload.sourceCollectorRunId,
+      }),
+    );
+  });
+
+  it('does not fail ingestion when participant expansion reports error', async () => {
+    expandMatchParticipantsSafeMock.mockResolvedValue({
+      skipped: true,
+      reason: 'error',
+    } as never);
+    await expect(
+      processMatchIngestionJob(
+        makeJob(validPayload()),
+        'token',
+        makeDeps({ prisma, provider, redis, championAggregationQueue }),
+      ),
+    ).resolves.toMatchObject({ status: 'completed' });
+
+    const durable = [...store.jobs.values()][0];
+    expect(durable?.status).toBe(IngestionJobStatus.COMPLETED);
+    const match = [...store.matches.values()][0];
+    expect(match?.ingestionStatus).toBe(MatchIngestionStatus.COMPLETED);
+    expect(championAggregationQueue.add).toHaveBeenCalled();
   });
 
   it('does not refetch when match already completed at same normalization version', async () => {

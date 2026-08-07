@@ -64,6 +64,7 @@ export type BootstrapLowLevelCoreDeps = BootstrapCoreShared & {
       account: Parameters<typeof defaultEnqueueDiscoveredMatches>[1]['account'];
       discoveredMatchIds: string[];
       correlationId: string;
+      sourceCollectorRunId?: string;
     },
   ) => Promise<EnqueueDiscoveredMatchesResult>;
   enqueueDeps: EnqueueDiscoveredMatchesDeps;

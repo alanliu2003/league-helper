@@ -4,6 +4,9 @@ import { loadCollectorConfig, type CollectorConfig } from './collector.config';
 import type {
   CollectorAuditCliArgs,
   CollectorRunCliArgs,
+  CollectorSchedulerCliArgs,
+  CollectorSchedulerStatusCliArgs,
+  CollectorSchedulerTriggerCliArgs,
   CollectorSeedCliArgs,
   CollectorSeedPlayerTarget,
   CollectorSetStatusCliArgs,
@@ -59,6 +62,12 @@ const RUN_KNOWN_FLAGS = new Set([
 const STATUS_KNOWN_FLAGS = new Set(['--platform', '--queue', '--json', '--help']);
 
 const AUDIT_KNOWN_FLAGS = new Set(['--json', '--help']);
+
+const SCHEDULER_KNOWN_FLAGS = new Set(['--help']);
+
+const SCHEDULER_TRIGGER_KNOWN_FLAGS = new Set(['--json', '--help']);
+
+const SCHEDULER_STATUS_KNOWN_FLAGS = new Set(['--json', '--help']);
 
 const STATUS_VALUES = new Set(['ACTIVE', 'PAUSED', 'SUSPENDED']);
 
@@ -363,6 +372,52 @@ export function parseCollectorAuditArgs(argv: string[]): CollectorAuditCliArgs {
   }
 
   assertKnownFlags(argv, AUDIT_KNOWN_FLAGS);
+
+  return {
+    help: false,
+    json: hasFlag(argv, '--json'),
+  };
+}
+
+export function parseCollectorSchedulerArgs(argv: string[]): CollectorSchedulerCliArgs {
+  if (hasFlag(argv, '--help')) {
+    return { help: true };
+  }
+
+  assertKnownFlags(argv, SCHEDULER_KNOWN_FLAGS);
+
+  return { help: false };
+}
+
+export function parseCollectorSchedulerTriggerArgs(
+  argv: string[],
+): CollectorSchedulerTriggerCliArgs {
+  if (hasFlag(argv, '--help')) {
+    return {
+      help: true,
+      json: hasFlag(argv, '--json'),
+    };
+  }
+
+  assertKnownFlags(argv, SCHEDULER_TRIGGER_KNOWN_FLAGS);
+
+  return {
+    help: false,
+    json: hasFlag(argv, '--json'),
+  };
+}
+
+export function parseCollectorSchedulerStatusArgs(
+  argv: string[],
+): CollectorSchedulerStatusCliArgs {
+  if (hasFlag(argv, '--help')) {
+    return {
+      help: true,
+      json: hasFlag(argv, '--json'),
+    };
+  }
+
+  assertKnownFlags(argv, SCHEDULER_STATUS_KNOWN_FLAGS);
 
   return {
     help: false,

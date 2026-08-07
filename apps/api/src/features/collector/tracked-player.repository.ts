@@ -36,6 +36,8 @@ export type UpsertTrackedPlayerEnrollmentInput = {
   provider: string;
   platformRoute: string;
   enrollmentSource: TrackedPlayerEnrollmentSource;
+  /** Proposed discovery depth; INSERT uses it, UPDATE applies LEAST(existing, proposed). */
+  discoveryDepth: number;
   priority: number;
   /** When true, PAUSED/SUSPENDED become ACTIVE with nextEligibleAt = now(). */
   reactivate: boolean;
@@ -98,12 +100,18 @@ export class TrackedPlayerRepository {
   /**
    * Idempotent enrollment keyed by playerAccountId.
    * Preserves first enrollmentSource; repairs denormalized provider/platform;
+   * applies discoveryDepth via LEAST on update (never increases depth);
    * does not silently reactivate PAUSED/SUSPENDED unless reactivate=true.
    * Uses DB now() for initial / reactivation eligibility.
+   * Does not read or mutate CollectorPopulationBudget.
    */
   async upsertEnrollment(
     input: UpsertTrackedPlayerEnrollmentInput,
   ): Promise<UpsertTrackedPlayerEnrollmentResult> {
+    if (!Number.isInteger(input.discoveryDepth) || input.discoveryDepth < 0) {
+      throw new Error(`Invalid discoveryDepth: ${input.discoveryDepth}`);
+    }
+
     const existing = await this.findByPlayerAccountId(input.playerAccountId);
 
     if (!existing) {
@@ -115,6 +123,7 @@ export class TrackedPlayerRepository {
           provider,
           "platformRoute",
           "enrollmentSource",
+          "discoveryDepth",
           status,
           priority,
           "nextEligibleAt",
@@ -128,8 +137,9 @@ export class TrackedPlayerRepository {
           $3::text,
           $4::text,
           $5::"TrackedPlayerEnrollmentSource",
-          'ACTIVE'::"TrackedPlayerStatus",
           $6::int,
+          'ACTIVE'::"TrackedPlayerStatus",
+          $7::int,
           now(),
           0,
           now(),
@@ -142,6 +152,7 @@ export class TrackedPlayerRepository {
         input.provider,
         input.platformRoute,
         input.enrollmentSource,
+        input.discoveryDepth,
         input.priority,
       );
       const created = rows[0];
@@ -162,21 +173,23 @@ export class TrackedPlayerRepository {
         provider = $1::text,
         "platformRoute" = $2::text,
         priority = $3::int,
+        "discoveryDepth" = LEAST("discoveryDepth", $4::int),
         status = CASE
-          WHEN $4::boolean THEN 'ACTIVE'::"TrackedPlayerStatus"
+          WHEN $5::boolean THEN 'ACTIVE'::"TrackedPlayerStatus"
           ELSE status
         END,
         "nextEligibleAt" = CASE
-          WHEN $4::boolean THEN now()
+          WHEN $5::boolean THEN now()
           ELSE "nextEligibleAt"
         END,
         "updatedAt" = now()
-      WHERE id = $5::text
+      WHERE id = $6::text
       RETURNING *
       `,
       input.provider,
       input.platformRoute,
       input.priority,
+      input.discoveryDepth,
       shouldReactivate,
       existing.id,
     );

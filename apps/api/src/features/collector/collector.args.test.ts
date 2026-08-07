@@ -2,35 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { ValidationFailureError } from '@league-helper/shared';
 import {
   parseCollectorRunArgs,
+  parseCollectorSchedulerArgs,
+  parseCollectorSchedulerStatusArgs,
+  parseCollectorSchedulerTriggerArgs,
   parseCollectorSeedArgs,
   parseCollectorSeedPlayersFile,
   parseCollectorSetStatusArgs,
   SEED_FILE_MAX_PLAYERS,
 } from './collector.args';
-import type { CollectorConfig } from './collector.config';
+import { loadCollectorConfig, type CollectorConfig } from './collector.config';
 
 function config(overrides: Partial<CollectorConfig> = {}): CollectorConfig {
-  return {
-    batchSize: 10,
-    concurrency: 2,
-    matchesPerPlayer: 20,
-    maxMatchIdsPerRun: 200,
-    maxEnqueuePerRun: 200,
-    minRefreshIntervalMs: 6 * 60 * 60_000,
-    baseBackoffMs: 15 * 60_000,
-    maxBackoffMs: 24 * 60 * 60_000,
-    maxBackoffExponent: 8,
-    playerTimeoutMs: 10 * 60_000,
-    leaseDurationMs: 15 * 60_000,
-    staleRunAfterMs: 2 * 60 * 60_000,
-    platformAllowlist: ['na1'],
-    estimatedRequestsPerEnqueuedMatch: 2,
-    priorityMin: 0,
-    priorityMax: 1000,
-    enrollFromBootstrap: false,
-    enrollFromSearch: false,
-    ...overrides,
-  };
+  return { ...loadCollectorConfig({}), ...overrides };
 }
 
 describe('collector.args', () => {
@@ -127,6 +110,57 @@ describe('collector.args', () => {
 
     it('rejects platform outside allowlist', () => {
       expect(() => parseCollectorRunArgs(['--platform', 'euw1'], config())).toThrow(
+        ValidationFailureError,
+      );
+    });
+  });
+
+  describe('parseCollectorSchedulerArgs', () => {
+    it('parses empty argv and --help', () => {
+      expect(parseCollectorSchedulerArgs([])).toEqual({ help: false });
+      expect(parseCollectorSchedulerArgs(['--help'])).toEqual({ help: true });
+    });
+
+    it('rejects unknown flags', () => {
+      expect(() => parseCollectorSchedulerArgs(['--json'])).toThrow(ValidationFailureError);
+    });
+  });
+
+  describe('parseCollectorSchedulerTriggerArgs', () => {
+    it('parses --json and --help', () => {
+      expect(parseCollectorSchedulerTriggerArgs([])).toEqual({ help: false, json: false });
+      expect(parseCollectorSchedulerTriggerArgs(['--json'])).toEqual({
+        help: false,
+        json: true,
+      });
+      expect(parseCollectorSchedulerTriggerArgs(['--help', '--json'])).toEqual({
+        help: true,
+        json: true,
+      });
+    });
+
+    it('rejects unknown flags', () => {
+      expect(() => parseCollectorSchedulerTriggerArgs(['--platform', 'na1'])).toThrow(
+        ValidationFailureError,
+      );
+    });
+  });
+
+  describe('parseCollectorSchedulerStatusArgs', () => {
+    it('parses --json and --help', () => {
+      expect(parseCollectorSchedulerStatusArgs([])).toEqual({ help: false, json: false });
+      expect(parseCollectorSchedulerStatusArgs(['--json'])).toEqual({
+        help: false,
+        json: true,
+      });
+      expect(parseCollectorSchedulerStatusArgs(['--help'])).toEqual({
+        help: true,
+        json: false,
+      });
+    });
+
+    it('rejects unknown flags', () => {
+      expect(() => parseCollectorSchedulerStatusArgs(['--queue', '420'])).toThrow(
         ValidationFailureError,
       );
     });

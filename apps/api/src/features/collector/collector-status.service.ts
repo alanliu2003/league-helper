@@ -2,6 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { CollectorRunStatus, type CollectorRun } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { loadCollectorConfig, type CollectorConfig } from './collector.config';
+import { isSchedulerLeaseOwnerPresent } from './collector-cli.output';
 import { CollectorCoverageService } from './collector-coverage.service';
 import { computeEffectivePlatforms } from './collector-eligibility.service';
 import { COLLECTOR_CONFIG } from './collector-enrollment.service';
@@ -47,6 +48,16 @@ function toCounters(run: CollectorRun): CollectorRunCounters {
   };
 }
 
+function toExpansionCounters(run: CollectorRun): CollectorStatusRunSummary['expansionCounters'] {
+  return {
+    participantsConsidered: run.participantsConsidered,
+    playersEnrolledFromParticipants: run.playersEnrolledFromParticipants,
+    playersAlreadyTrackedFromParticipants: run.playersAlreadyTrackedFromParticipants,
+    playersSkippedDepthLimit: run.playersSkippedDepthLimit,
+    playersSkippedPopulationCap: run.playersSkippedPopulationCap,
+  };
+}
+
 function toRunSummary(run: CollectorRun): CollectorStatusRunSummary {
   return {
     runId: run.id,
@@ -57,6 +68,8 @@ function toRunSummary(run: CollectorRun): CollectorStatusRunSummary {
     queueId: run.queueId,
     counters: toCounters(run),
     failureCode: run.failureCode,
+    expansionCounters: toExpansionCounters(run),
+    expansionCountersLabel: 'ASYNC_POST_FINALIZATION_EXPANSION_METRICS',
   };
 }
 
@@ -124,11 +137,15 @@ export class CollectorStatusService {
       byStatusRows,
       byPlatformRows,
       bySourceRows,
+      byDepthRows,
+      totalTrackedPlayers,
       eligibleNow,
       activelyLeased,
       expiredLeases,
       nextEligibleAgg,
       failureCodeRows,
+      populationBudget,
+      schedulerState,
     ] = await Promise.all([
       this.prisma.collectorRun.findMany({
         where: { status: CollectorRunStatus.RUNNING },
@@ -154,6 +171,11 @@ export class CollectorStatusService {
         by: ['enrollmentSource'],
         _count: { _all: true },
       }),
+      this.prisma.trackedPlayer.groupBy({
+        by: ['discoveryDepth'],
+        _count: { _all: true },
+      }),
+      this.prisma.trackedPlayer.count(),
       this.trackedPlayers.countEligible({
         platformRoutes: effectivePlatforms,
         provider: COLLECTOR_PROVIDER,
@@ -180,6 +202,12 @@ export class CollectorStatusService {
         _count: { _all: true },
         orderBy: { _count: { lastFailureCode: 'desc' } },
         take: FAILURE_CODE_LIMIT,
+      }),
+      this.prisma.collectorPopulationBudget.findUnique({
+        where: { id: 'singleton' },
+      }),
+      this.prisma.collectorSchedulerState.findUnique({
+        where: { id: 'singleton' },
       }),
     ]);
 
@@ -208,6 +236,9 @@ export class CollectorStatusService {
       }
     }
 
+    const budgetUsed = populationBudget?.matchParticipantEnrolledCount ?? 0;
+    const budgetCap = this.config.expansionMaxTrackedPlayers;
+
     return {
       ok: true,
       mode: 'status',
@@ -217,6 +248,10 @@ export class CollectorStatusService {
         staleRunAfterMs: this.config.staleRunAfterMs,
         leaseDurationMs: this.config.leaseDurationMs,
         platformAllowlist: [...this.config.platformAllowlist],
+        schedulerEnabled: this.config.schedulerEnabled,
+        expandFromParticipants: this.config.expandFromParticipants,
+        expansionMaxTrackedPlayers: budgetCap,
+        expansionMaxDepth: this.config.expansionMaxDepth,
       },
       runState: {
         activeRunning,
@@ -239,6 +274,18 @@ export class CollectorStatusService {
             count: row._count._all,
           })),
         ),
+        byDiscoveryDepth: countsByKey(
+          byDepthRows.map((row) => ({
+            key: String(row.discoveryDepth),
+            count: row._count._all,
+          })),
+        ),
+        totalTrackedPlayers,
+        autonomousParticipantBudget: {
+          matchParticipantEnrolledCount: budgetUsed,
+          expansionMaxTrackedPlayers: budgetCap,
+          remainingAutonomousSlots: Math.max(0, budgetCap - budgetUsed),
+        },
         eligibleNow,
         activelyLeased,
         expiredLeases,
@@ -249,6 +296,16 @@ export class CollectorStatusService {
             code: row.lastFailureCode,
             count: row._count._all,
           })),
+      },
+      scheduler: {
+        enabled: this.config.schedulerEnabled,
+        leaseOwnerPresent: isSchedulerLeaseOwnerPresent(schedulerState?.leaseOwner),
+        leaseExpiresAt: schedulerState?.leaseExpiresAt?.toISOString() ?? null,
+        lastTriggerAt: schedulerState?.lastTriggerAt?.toISOString() ?? null,
+        lastOutcome: schedulerState?.lastOutcome ?? null,
+        lastCollectorRunId: schedulerState?.lastCollectorRunId ?? null,
+        lastErrorCode: schedulerState?.lastErrorCode ?? null,
+        cooldownUntil: schedulerState?.cooldownUntil?.toISOString() ?? null,
       },
       coverage,
       warnings,

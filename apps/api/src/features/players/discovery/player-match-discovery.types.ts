@@ -16,6 +16,8 @@ export type PlayerMatchDiscoveryAccountInput = {
   maxMatches: number;
   dryRun: boolean;
   correlationId: string;
+  /** Population collector run attribution; omitted for bootstrap/search. */
+  sourceCollectorRunId?: string;
 };
 
 export type PlayerMatchDiscoveryInput =

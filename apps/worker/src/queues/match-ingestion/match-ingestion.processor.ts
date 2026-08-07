@@ -35,6 +35,7 @@ import {
   persistTimelineAndMetrics,
   resolvePlayerAccountLinks,
 } from './match-persistence.js';
+import { expandMatchParticipantsSafe } from '../../collector/expand-match-participants-safe.js';
 import { calculateTimelineMetrics } from './timeline-metrics.service.js';
 import { normalizeTimeline } from './timeline-normalizer.js';
 
@@ -331,6 +332,15 @@ export async function processMatchIngestionJob(
           });
         }
 
+        // Post-COMPLETED only; non-fatal. Uses persisted MatchParticipant rows.
+        await expandMatchParticipantsSafe({
+          prisma: deps.prisma,
+          matchId: existing.id,
+          requestedByPlayerAccountId: payload.requestedByPlayerAccountId,
+          sourceCollectorRunId: payload.sourceCollectorRunId,
+          correlationId,
+        });
+
         await invalidatePlayerProfileCaches({
           prisma: deps.prisma,
           redis: deps.redis,
@@ -537,6 +547,15 @@ export async function processMatchIngestionJob(
       deps,
       matchId: persisted.matchId,
       previousSnapshots: persisted.previousParticipantSnapshots,
+      correlationId,
+    });
+
+    // Post-COMPLETED only; non-fatal. Never rolls back Match persistence.
+    await expandMatchParticipantsSafe({
+      prisma: deps.prisma,
+      matchId: persisted.matchId,
+      requestedByPlayerAccountId: payload.requestedByPlayerAccountId,
+      sourceCollectorRunId: payload.sourceCollectorRunId,
       correlationId,
     });
 

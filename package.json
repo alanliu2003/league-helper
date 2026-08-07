@@ -48,6 +48,9 @@
     "collector:run": "pnpm --filter @league-helper/api collector:run",
     "collector:status": "pnpm --filter @league-helper/api collector:status",
     "collector:audit": "pnpm --filter @league-helper/api collector:audit",
+    "collector:scheduler": "pnpm --filter @league-helper/api collector:scheduler",
+    "collector:scheduler-status": "pnpm --filter @league-helper/api collector:scheduler-status",
+    "collector:scheduler-trigger": "pnpm --filter @league-helper/api collector:scheduler-trigger",
     "test:e2e": "pnpm --filter @league-helper/web test:e2e"
   },
   "devDependencies": {
