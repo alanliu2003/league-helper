@@ -143,6 +143,8 @@ describe('players search integration', () => {
         "MatchTimeline",
         "Match",
         "PlayerAccountAlias",
+        "CollectorRun",
+        "TrackedPlayer",
         "PlayerAccount",
         "Player"
       CASCADE

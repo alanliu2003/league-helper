@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { correlationIdMiddleware } from './common/correlation-id.middleware';
 import { ChampionsModule } from './features/champions/champions.module';
+import { CollectorModule } from './features/collector/collector.module';
 import { PlayersModule } from './features/players/players.module';
 import { HealthModule } from './health/health.module';
 import { RiotModule } from './integrations/riot/riot.module';
@@ -17,6 +18,7 @@ import { QueuesModule } from './queues/queues.module';
     HealthModule,
     PlayersModule,
     ChampionsModule,
+    CollectorModule,
   ],
 })
 export class AppModule implements NestModule {

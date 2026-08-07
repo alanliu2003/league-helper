@@ -63,6 +63,25 @@ enum ChampionAggregationProcessingStatus {
   FAILED
 }
 
+enum TrackedPlayerStatus {
+  ACTIVE
+  PAUSED
+  SUSPENDED
+}
+
+enum TrackedPlayerEnrollmentSource {
+  ADMIN_SEED
+  PRODUCT_SEARCH
+  BOOTSTRAP
+}
+
+enum CollectorRunStatus {
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
 // ---------------------------------------------------------------------------
 // Players / accounts
 // ---------------------------------------------------------------------------
@@ -108,6 +127,7 @@ model PlayerAccount {
   matchParticipants     MatchParticipant[]
   playerMetricSnapshots PlayerMetricSnapshot[]
   playerAnalysisReports PlayerAnalysisReport[]
+  trackedPlayer         TrackedPlayer?
 
   @@unique([provider, externalAccountId])
   @@index([playerId])
@@ -640,4 +660,65 @@ model IngestionJobRecord {
   @@unique([jobType, idempotencyKey])
   @@index([status, priority, scheduledAt])
   @@index([provider, externalResourceId])
+}
+
+// ---------------------------------------------------------------------------
+// Population collector (TrackedPlayer enrollment + CollectorRun audit)
+// ---------------------------------------------------------------------------
+
+model TrackedPlayer {
+  id                      String                        @id @default(uuid())
+  playerAccountId         String                        @unique
+  provider                String
+  platformRoute           String
+  enrollmentSource        TrackedPlayerEnrollmentSource
+  status                  TrackedPlayerStatus           @default(ACTIVE)
+  priority                Int                           @default(0)
+  nextEligibleAt          DateTime                      @db.Timestamptz(3)
+  lastSuccessfulRefreshAt DateTime?                     @db.Timestamptz(3)
+  lastClaimedAt           DateTime?                     @db.Timestamptz(3)
+  leaseOwner              String?
+  leaseExpiresAt          DateTime?                     @db.Timestamptz(3)
+  consecutiveFailureCount Int                           @default(0)
+  lastFailureCode         String?
+  createdAt               DateTime                      @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                      @updatedAt @db.Timestamptz(3)
+
+  playerAccount PlayerAccount @relation(fields: [playerAccountId], references: [id], onDelete: Restrict)
+
+  @@index([status, nextEligibleAt, priority, leaseExpiresAt])
+  @@index([platformRoute, status])
+  /// Claim EXPLAIN preferred platform+status lead; short map avoids PG 63-char truncation drift.
+  @@index([platformRoute, status, nextEligibleAt, priority, leaseExpiresAt], map: "TrackedPlayer_claim_eligibility_idx")
+  @@index([leaseOwner])
+}
+
+model CollectorRun {
+  id                      String             @id @default(uuid())
+  ownerToken              String             @unique
+  status                  CollectorRunStatus
+  startedAt               DateTime           @db.Timestamptz(3)
+  finishedAt              DateTime?          @db.Timestamptz(3)
+  platformFilter          String?
+  /// JSON string array of platforms used for this run's claims
+  effectivePlatforms      Json
+  queueId                 Int
+  batchLimit              Int
+  concurrency             Int
+  playersClaimed          Int                @default(0)
+  playersAttempted        Int                @default(0)
+  playersSucceeded        Int                @default(0)
+  playersFailed           Int                @default(0)
+  ownershipLost           Int                @default(0)
+  matchIdsDiscovered      Int                @default(0)
+  matchesEnqueued         Int                @default(0)
+  matchesSkippedComplete  Int                @default(0)
+  rateLimitStops          Int                @default(0)
+  budgetExhausted         Boolean            @default(false)
+  failureCode             String?
+  createdAt               DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@index([status, startedAt])
+  @@index([finishedAt])
 }

@@ -5,9 +5,12 @@ import {
   parseBootstrapPlayersFile,
 } from './bootstrap-player.args';
 import type { BootstrapCliArgs, BootstrapPlayerTarget } from './bootstrap-player.types';
+import type { PlayerMatchDiscoveryService } from '../discovery/player-match-discovery.service';
 import {
   bootstrapPlayers,
   type BootstrapCoreDeps,
+  type BootstrapCoreLogger,
+  type BootstrapDiscoveryCoreDeps,
 } from './bootstrap-player-core';
 import {
   finalizeBootstrapReport,
@@ -75,6 +78,29 @@ export type BootstrapCliRunDeps = {
   checkSmoke: () => Promise<AggregateSmokeLookup>;
   now?: () => number;
 };
+
+/**
+ * Nest-only bootstrap core deps for the live CLI path.
+ * Unit tests may still compose low-level `BootstrapCoreDeps` without Nest discovery.
+ */
+export function createDiscoveryBootstrapCoreDeps(input: {
+  config: MatchBootstrapConfig;
+  logger: BootstrapCoreLogger;
+  discovery: Pick<PlayerMatchDiscoveryService, 'discoverAndEnqueue'>;
+  afterSuccessfulUpsert?: BootstrapDiscoveryCoreDeps['afterSuccessfulUpsert'];
+}): BootstrapDiscoveryCoreDeps {
+  return {
+    config: input.config,
+    logger: input.logger,
+    discoverAndEnqueue: (discoveryInput) =>
+      input.discovery.discoverAndEnqueue(discoveryInput, {
+        pageSize: input.config.pageSize,
+      }),
+    ...(input.afterSuccessfulUpsert
+      ? { afterSuccessfulUpsert: input.afterSuccessfulUpsert }
+      : {}),
+  };
+}
 
 /**
  * Orchestrate bootstrap CLI: parse → validate file → core → optional wait/smoke → report.

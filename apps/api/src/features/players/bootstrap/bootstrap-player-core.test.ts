@@ -55,6 +55,7 @@ function createDeps(overrides: {
   upsertPlayerAccount?: ReturnType<typeof vi.fn>;
   insertRankIfChanged?: ReturnType<typeof vi.fn>;
   enqueueDiscoveredMatches?: ReturnType<typeof vi.fn>;
+  afterSuccessfulUpsert?: ReturnType<typeof vi.fn>;
 } = {}) {
   const resolvePlayer =
     overrides.resolvePlayer ??
@@ -107,6 +108,9 @@ function createDeps(overrides: {
       enqueueDeps,
       config,
       logger: { log: vi.fn(), warn: vi.fn() },
+      ...(overrides.afterSuccessfulUpsert
+        ? { afterSuccessfulUpsert: overrides.afterSuccessfulUpsert }
+        : {}),
     },
     spies: {
       resolvePlayer,
@@ -116,6 +120,7 @@ function createDeps(overrides: {
       insertRankIfChanged,
       enqueueDiscoveredMatches,
       producerEnqueue: enqueueDeps.producer.enqueueMatch as ReturnType<typeof vi.fn>,
+      afterSuccessfulUpsert: overrides.afterSuccessfulUpsert,
     },
   };
 }
@@ -250,6 +255,83 @@ describe('bootstrapPlayer (single)', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/not found/i);
     expect(result.discoveredMatchCount).toBe(0);
+  });
+
+  it('dry-run never calls afterSuccessfulUpsert enrollment hook', async () => {
+    const afterSuccessfulUpsert = vi.fn(async () => undefined);
+    const { deps } = createDeps({ afterSuccessfulUpsert });
+
+    const result = await bootstrapPlayer(deps, {
+      target: { gameName: 'PlayerOne', tagLine: 'NA1', platform: 'na1' },
+      queueId: 420,
+      maxMatches: 100,
+      dryRun: true,
+      correlationId: 'corr-dry-enroll',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(afterSuccessfulUpsert).not.toHaveBeenCalled();
+  });
+
+  it('apply calls afterSuccessfulUpsert with account fields', async () => {
+    const afterSuccessfulUpsert = vi.fn(async () => undefined);
+    const { deps } = createDeps({ afterSuccessfulUpsert });
+
+    const result = await bootstrapPlayer(deps, {
+      target: { gameName: 'PlayerOne', tagLine: 'NA1', platform: 'na1' },
+      queueId: 420,
+      maxMatches: 100,
+      dryRun: false,
+      correlationId: 'corr-enroll',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(afterSuccessfulUpsert).toHaveBeenCalledWith({
+      id: 'acct-1',
+      provider: 'RIOT',
+      platformRoute: 'na1',
+    });
+  });
+
+  it('afterSuccessfulUpsert throw does not fail bootstrap', async () => {
+    const afterSuccessfulUpsert = vi.fn(async () => {
+      throw new Error('enrollment exploded');
+    });
+    const { deps } = createDeps({ afterSuccessfulUpsert });
+
+    const result = await bootstrapPlayer(deps, {
+      target: { gameName: 'PlayerOne', tagLine: 'NA1', platform: 'na1' },
+      queueId: 420,
+      maxMatches: 100,
+      dryRun: false,
+      correlationId: 'corr-enroll-fail',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.enqueuedCount).toBe(3);
+    expect(afterSuccessfulUpsert).toHaveBeenCalled();
+    expect(deps.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Bootstrap afterSuccessfulUpsert failed',
+        playerAccountId: 'acct-1',
+        error: 'enrollment exploded',
+      }),
+    );
+  });
+
+  it('omitted afterSuccessfulUpsert still bootstraps (flag-off / low-level path)', async () => {
+    const { deps, spies } = createDeps();
+
+    const result = await bootstrapPlayer(deps, {
+      target: { gameName: 'PlayerOne', tagLine: 'NA1', platform: 'na1' },
+      queueId: 420,
+      maxMatches: 100,
+      dryRun: false,
+      correlationId: 'corr-no-hook',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(spies.afterSuccessfulUpsert).toBeUndefined();
   });
 });
 

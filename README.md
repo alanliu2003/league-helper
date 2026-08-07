@@ -88,6 +88,8 @@ pnpm db:test:prepare         # apply migrations to TEST_DATABASE_URL schema
 pnpm test:api:integration
 ```
 
+Population-collector schema rollback (manual ops): drop additive objects — `DROP TABLE IF EXISTS "CollectorRun"; DROP TABLE IF EXISTS "TrackedPlayer";` (indexes including `TrackedPlayer_claim_eligibility_idx` drop with the tables), then drop enums `CollectorRunStatus`, `TrackedPlayerEnrollmentSource`, `TrackedPlayerStatus`. No PlayerAccount backfill was performed, so rollback does not rewrite account rows.
+
 Safe local reset (destroys local Docker volumes):
 
 ```bash
@@ -258,6 +260,81 @@ Example `players.json`:
 Ops env (CLI only — not used by the public UI): `MATCH_BOOTSTRAP_DEFAULT_QUEUE_ID`, `MATCH_BOOTSTRAP_DEFAULT_MAX_MATCHES`, `MATCH_BOOTSTRAP_HARD_MAX_MATCHES`, `MATCH_BOOTSTRAP_PAGE_SIZE`, `MATCH_BOOTSTRAP_FILE_MAX_PLAYERS`, `MATCH_BOOTSTRAP_MAX_CONCURRENCY`, `MATCH_BOOTSTRAP_WAIT_TIMEOUT_MS`, `MATCH_BOOTSTRAP_WAIT_POLL_INTERVAL_MS`.
 
 Pipeline smoke after apply+`--wait` checks for ≥1 `ChampionAggregate` with `queueId=420`, known position, and `sampleSize > 0`. The public champion UI still hides stats below `sampleSize ≥ 30` — that floor remains best-effort for bootstrap sessions.
+
+### Population collector (Milestone 9 Task 3 — manual one-shot)
+
+Task 3 adds a **bounded, manually triggered** population collector that selects known ranked players and feeds the existing Task 2 discovery → match-ingestion → champion-aggregation pipeline. It does **not** schedule itself, crawl ladders, or auto-enroll match participants (those are Task 4+).
+
+**Architecture (one-shot only):**
+
+```text
+collector:seed-player / optional flag enrollment
+  → TrackedPlayer rows
+collector:run (manual)
+  → claim wave (PostgreSQL FOR UPDATE SKIP LOCKED)
+  → shared PlayerMatchDiscoveryService (PlayerAccount mode)
+  → MatchIngestionProducer (durable jobs)
+  → worker match-ingestion → champion-aggregation
+collector:status / collector:audit (read-only)
+```
+
+Collector success means **discovery/enqueue orchestration succeeded**, not that downstream ingestion or aggregation has finished. Coverage reporting is an asynchronous **current DB snapshot**, not “this run added N samples.” The public ranking floor (`CHAMPION_AGGREGATION_MIN_SAMPLE`) is unchanged. A player-timeout wrapper does **not** cancel an already-started underlying Riot provider operation.
+
+**Migration / setup:** apply Prisma migrations (`pnpm db:migrate` / `pnpm db:migrate:deploy`). Schema rollback note is under Database commands above (drop `CollectorRun` / `TrackedPlayer` + enums; no PlayerAccount backfill).
+
+**Commands (root or `apps/api`):**
+
+```bash
+# Admin seed (enrollmentSource=ADMIN_SEED on first insert; idempotent)
+pnpm collector:seed-player --game-name "Example" --tag-line "NA1" --platform na1
+pnpm collector:seed-player --file tracked-players.json --concurrency 1
+
+# Operator status transitions (optional --force clears lease; --reset-failures)
+pnpm collector:set-player-status --tracked-player-id <uuid> --status PAUSED
+
+# Read-only eligibility preview (no CollectorRun, no leases, no jobs, no Riot unless sample-discovery)
+pnpm collector:run --dry-run --platform na1 --queue 420
+
+# Read-only sample discovery (Riot match-ID list only; no upsert/rank/enqueue/lease)
+pnpm collector:run --dry-run --sample-discovery 1 --platform na1 --queue 420 --max-matches 5 --json
+
+# Mutating one-shot run (claim → discover/enqueue → finalize; then coverage snapshot)
+pnpm collector:run \
+  --platform na1 \
+  --queue 420 \
+  --batch-size 10 \
+  --concurrency 2 \
+  --max-matches 20 \
+  --max-match-ids 200 \
+  --max-enqueue 200 \
+  --json
+
+# Read-only ops
+pnpm collector:status --json
+pnpm collector:audit --json
+```
+
+Example seed file (`tracked-players.json`):
+
+```json
+[
+  { "gameName": "ExampleOne", "tagLine": "NA1", "platform": "na1", "priority": 10 },
+  { "gameName": "ExampleTwo", "tagLine": "NA1", "platform": "na1" }
+]
+```
+
+**Exit codes (`collector:run`):** dry-run valid preview → `0`; mutating `COMPLETED` → `0`; `PARTIAL` / `FAILED` → `1`. Coverage unavailable after `COMPLETED` is a warning only (still exit `0`).
+
+**Enrollment flags (default false):**
+
+| Env | Default | Effect when true |
+| --- | ------- | ---------------- |
+| `COLLECTOR_ENROLL_FROM_BOOTSTRAP` | `false` | Soft-enroll after successful non-dry-run bootstrap account upsert (`BOOTSTRAP`) |
+| `COLLECTOR_ENROLL_FROM_SEARCH` | `false` | Soft-enroll after successful product search upsert (`PRODUCT_SEARCH`) |
+
+When false, enrollment is short-circuited before any collector enrollment DB work or extra Riot calls. Enrollment failures never change bootstrap/search success. Unsupported platforms are informational only. `enrollmentSource` is first-source only.
+
+**Task 3 does not include:** recurring scheduler, BullMQ repeatable collector jobs, cron, in-process collector loops, participant auto-enrollment, ladder crawling, public collector HTTP endpoints, or Nuxt collector UI. Reaching `sampleSize >=` configured floor for a ranking key is an ops validation target, not a merge gate.
 
 Set `RIOT_PROVIDER_MODE=real` and a valid `RIOT_API_KEY` in `apps/api/.env` before using live Riot data. Champion static sync uses the public Data Dragon CDN only (`DATA_DRAGON_VERSION`, `DATA_DRAGON_SYNC_MIN_CHAMPIONS`, `DATA_DRAGON_SYNC_MAX_RETRIES`).
 

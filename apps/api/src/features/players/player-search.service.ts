@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { type ChampionMasterySnapshot, type PlayerAccount } from '@prisma/client';
 import {
   PlayerSearchRequestSchema,
@@ -23,6 +23,12 @@ import { MatchRepository, type PlayerMatchListRow } from '../../persistence/matc
 import { PlayerAccountRepository } from '../../persistence/player-account.repository';
 import { RankSnapshotRepository } from '../../persistence/rank-snapshot.repository';
 import { MatchIngestionProducer } from '../../queues/match-ingestion.producer';
+import { maybeEnrollFromSearch } from '../collector/collector-enrollment.hooks';
+import {
+  COLLECTOR_CONFIG,
+  CollectorEnrollmentService,
+} from '../collector/collector-enrollment.service';
+import type { CollectorConfig } from '../collector/collector.config';
 import { enqueueDiscoveredMatches } from './bootstrap/enqueue-discovered-matches';
 import { providerFailureToWarning } from './player.errors';
 import { PlayerCacheService } from './player-cache.service';
@@ -62,6 +68,12 @@ export class PlayerSearchService {
     private readonly refreshStatus: PlayerRefreshStatusService,
     @Inject(PlayerCacheService) private readonly cache: PlayerCacheService,
     @Inject(DataDragonChampionService) private readonly dataDragon: DataDragonChampionService,
+    @Optional()
+    @Inject(COLLECTOR_CONFIG)
+    private readonly collectorConfig?: CollectorConfig,
+    @Optional()
+    @Inject(CollectorEnrollmentService)
+    private readonly collectorEnrollment?: CollectorEnrollmentService,
   ) {}
 
   async search(request: PlayerSearchRequest, correlationId: string): Promise<PlayerSearchResponse> {
@@ -94,6 +106,20 @@ export class PlayerSearchService {
       playerId: account.playerId,
       platform: account.platformRoute,
     });
+
+    // Flag-gated: short-circuit before any enrollment when disabled / unavailable.
+    if (this.collectorConfig?.enrollFromSearch === true && this.collectorEnrollment) {
+      await maybeEnrollFromSearch({
+        enabled: true,
+        enroll: (input) => this.collectorEnrollment!.enroll(input),
+        account: {
+          id: account.id,
+          provider: account.provider,
+          platformRoute: account.platformRoute,
+        },
+        warn: (message) => this.logger.warn(message),
+      });
+    }
 
     const response = await this.syncPlayerData({
       account,

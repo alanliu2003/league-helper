@@ -260,6 +260,9 @@ export async function processMatchIngestionJob(
       },
     });
 
+    // When COMPLETED rows omit the requesting player's PUUID, refetch + force
+    // overwrite (persist otherwise short-circuits on complete-or-newer).
+    let forcePersistOverwrite = false;
     const existingVersion = existing ? Number(existing.normalizationVersion) : -1;
     if (
       existing &&
@@ -267,61 +270,87 @@ export async function processMatchIngestionJob(
       Number.isFinite(existingVersion) &&
       existingVersion >= payload.normalizationVersion
     ) {
-      logger.info('Match already complete', {
-        correlationId,
-        jobId: safeJobId(job.id),
-        matchId: truncatedMatchId,
-        regionalRoute: payload.regionalRoute,
+      // COMPLETED rows whose participants omit the requesting player's PUUID are
+      // corrupt/stale vs Riot. Fall through to refetch; do not short-circuit.
+      const requestingAccount = await deps.prisma.playerAccount.findUnique({
+        where: { id: payload.requestedByPlayerAccountId },
+        select: { externalAccountId: true },
       });
+      const requestingPuuidPresent =
+        requestingAccount?.externalAccountId != null &&
+        (await deps.prisma.matchParticipant.findFirst({
+          where: {
+            matchId: existing.id,
+            externalAccountId: requestingAccount.externalAccountId,
+          },
+          select: { id: true },
+        })) != null;
 
-      const linkedIds = await ensurePlayerLinkageForCompletedMatch({
-        prisma: deps.prisma,
-        provider: payload.provider,
-        externalMatchId: payload.externalMatchId,
-        requestedByPlayerAccountId: payload.requestedByPlayerAccountId,
-      });
-
-      await markDurableJobStatus({
-        prisma: deps.prisma,
-        durableJobId,
-        status: IngestionJobStatus.COMPLETED,
-      });
-
-      // Post-commit only: enqueue agg when marker absent/stale (lost enqueue repair).
-      if (
-        await shouldEnqueueChampionAggregation({
-          prisma: deps.prisma,
-          matchId: existing.id,
-          config: deps.championAggregationConfig,
-        })
-      ) {
-        await enqueueAggregationSafe({
-          deps,
-          matchId: existing.id,
-          previousSnapshots: [],
+      if (!requestingPuuidPresent) {
+        forcePersistOverwrite = true;
+        logger.warn('Completed match missing requesting player; refetching', {
           correlationId,
+          jobId: safeJobId(job.id),
+          matchId: truncatedMatchId,
+          regionalRoute: payload.regionalRoute,
         });
+      } else {
+        logger.info('Match already complete', {
+          correlationId,
+          jobId: safeJobId(job.id),
+          matchId: truncatedMatchId,
+          regionalRoute: payload.regionalRoute,
+        });
+
+        const linkedIds = await ensurePlayerLinkageForCompletedMatch({
+          prisma: deps.prisma,
+          provider: payload.provider,
+          externalMatchId: payload.externalMatchId,
+          requestedByPlayerAccountId: payload.requestedByPlayerAccountId,
+        });
+
+        await markDurableJobStatus({
+          prisma: deps.prisma,
+          durableJobId,
+          status: IngestionJobStatus.COMPLETED,
+        });
+
+        // Post-commit only: enqueue agg when marker absent/stale (lost enqueue repair).
+        if (
+          await shouldEnqueueChampionAggregation({
+            prisma: deps.prisma,
+            matchId: existing.id,
+            config: deps.championAggregationConfig,
+          })
+        ) {
+          await enqueueAggregationSafe({
+            deps,
+            matchId: existing.id,
+            previousSnapshots: [],
+            correlationId,
+          });
+        }
+
+        await invalidatePlayerProfileCaches({
+          prisma: deps.prisma,
+          redis: deps.redis,
+          playerAccountIds: linkedIds,
+          correlationId,
+          jobId: safeJobId(job.id),
+        });
+
+        logger.info('Completed', {
+          correlationId,
+          jobId: safeJobId(job.id),
+          matchId: truncatedMatchId,
+          regionalRoute: payload.regionalRoute,
+          attempt: job.attemptsMade + 1,
+          durationMs: Date.now() - startedAt,
+          alreadyComplete: true,
+        });
+
+        return { status: 'already_complete' };
       }
-
-      await invalidatePlayerProfileCaches({
-        prisma: deps.prisma,
-        redis: deps.redis,
-        playerAccountIds: linkedIds,
-        correlationId,
-        jobId: safeJobId(job.id),
-      });
-
-      logger.info('Completed', {
-        correlationId,
-        jobId: safeJobId(job.id),
-        matchId: truncatedMatchId,
-        regionalRoute: payload.regionalRoute,
-        attempt: job.attemptsMade + 1,
-        durationMs: Date.now() - startedAt,
-        alreadyComplete: true,
-      });
-
-      return { status: 'already_complete' };
     }
 
     logger.info('Match fetch start', {
@@ -361,13 +390,17 @@ export async function processMatchIngestionJob(
       externalIds,
     );
 
-    const persisted = await persistNormalizedMatch(deps.prisma, normalized, accountLinks);
+    const persisted = await persistNormalizedMatch(deps.prisma, normalized, accountLinks, {
+      forceOverwrite: forcePersistOverwrite,
+    });
 
     logger.info('Persistence committed', {
       correlationId,
       jobId: safeJobId(job.id),
       matchId: truncatedMatchId,
       created: persisted.created,
+      skippedComplete: persisted.skippedComplete,
+      forceOverwrite: forcePersistOverwrite,
       participantCount: normalized.participants.length,
       teamCount: normalized.teams.length,
     });

@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { PlayerMatchDiscoveryService } from '../discovery/player-match-discovery.service';
 import { loadMatchBootstrapConfig } from './bootstrap-player.config';
 import {
+  createDiscoveryBootstrapCoreDeps,
   executeBootstrapCli,
   resolveBootstrapPlayers,
 } from './bootstrap-player-cli';
-import type { BootstrapCoreDeps } from './bootstrap-player-core';
+import { bootstrapPlayer, type BootstrapCoreDeps } from './bootstrap-player-core';
 import { collectStdoutJson } from './cli-output';
+import type { EnqueueDiscoveredMatchesDeps } from './enqueue-discovered-matches';
 
 const config = loadMatchBootstrapConfig({});
 
@@ -275,6 +278,61 @@ describe('executeBootstrapCli', () => {
     expect(report.waitSummary?.timedOut).toBe(true);
     expect(report.aggregateSmoke?.status).toBe('inconclusive');
     expect(exitCode).toBe(0);
+  });
+});
+
+describe('createDiscoveryBootstrapCoreDeps', () => {
+  it('passes config.pageSize into Nest discovery (not the Nest default 100)', async () => {
+    const pageSize = 25;
+    expect(pageSize).not.toBe(100);
+
+    const getRecentMatchIds = vi.fn(async () => ['m-0']);
+    const discovery = PlayerMatchDiscoveryService.fromRuntimeDeps({
+      resolvePlayer: vi.fn(async () => ({
+        provider: 'RIOT',
+        externalAccountId: 'puuid-secret',
+        platform: 'na1',
+        regionalRoute: 'americas',
+        riotId: { gameName: 'PlayerOne', tagLine: 'NA1' },
+      })),
+      getRankedEntries: vi.fn(async () => []),
+      getRecentMatchIds,
+      upsertPlayerAccount: vi.fn(),
+      findPlayerAccountById: vi.fn(),
+      insertRankIfChanged: vi.fn(),
+      enqueueDeps: {
+        matches: {} as EnqueueDiscoveredMatchesDeps['matches'],
+        ingestionJobs: {} as EnqueueDiscoveredMatchesDeps['ingestionJobs'],
+        producer: {
+          enqueueMatch: vi.fn(),
+          getJobStates: vi.fn(),
+        } as EnqueueDiscoveredMatchesDeps['producer'],
+        matchIngestionJobAttempts: 5,
+        logger: { log: vi.fn() },
+        invalidatePlayerCache: vi.fn(async () => undefined),
+      },
+      pageSize: 100, // Nest default — must be overridden by CLI config
+      logger: { log: vi.fn(), warn: vi.fn() },
+    });
+
+    const coreDeps = createDiscoveryBootstrapCoreDeps({
+      config: { ...config, pageSize },
+      logger: { log: vi.fn(), warn: vi.fn() },
+      discovery,
+    });
+
+    await bootstrapPlayer(coreDeps, {
+      target: { gameName: 'PlayerOne', tagLine: 'NA1', platform: 'na1' },
+      queueId: 420,
+      maxMatches: 100,
+      dryRun: true,
+      correlationId: 'corr-cli-page',
+    });
+
+    expect(getRecentMatchIds).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ queue: 420, start: 0, count: pageSize }),
+    );
   });
 });
 
