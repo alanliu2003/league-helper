@@ -219,11 +219,14 @@ describe('ChampionStatsService', () => {
     expect(response.pagination.totalCount).toBe(0);
   });
 
-  it('returns BELOW_MINIMUM_SAMPLE when unfiltered rows exist', async () => {
+  it('hides ranking rows below configured minimum sample with BELOW_MINIMUM_SAMPLE', async () => {
     const { service, aggregates } = createService({ tableRows: [], totalCount: 0 });
     aggregates.findTableRows
       .mockResolvedValueOnce({ rows: [], totalCount: 0 })
-      .mockResolvedValueOnce({ rows: [baseAggregate({ sampleSize: 5 })], totalCount: 1 });
+      .mockResolvedValueOnce({
+        rows: [baseAggregate({ sampleSize: config.minimumSample - 1 })],
+        totalCount: 1,
+      });
 
     const response = await service.getTable({
       position: 'MIDDLE',
@@ -233,7 +236,106 @@ describe('ChampionStatsService', () => {
       limit: 50,
     } as ChampionStatsTableQuery);
 
+    expect(response.rows).toEqual([]);
     expect(response.emptyReason).toBe('BELOW_MINIMUM_SAMPLE');
+    expect(response.effectiveMinimumSample).toBe(config.minimumSample);
+  });
+
+  it('shows ranking rows at exactly configured minimum sample', async () => {
+    const { service } = createService({
+      tableRows: [
+        baseAggregate({
+          sampleSize: config.minimumSample,
+          teamPosition: 'MIDDLE',
+          rankTier: 'ALL',
+        }),
+      ],
+      totalCount: 1,
+    });
+
+    const response = await service.getTable({
+      position: 'MIDDLE',
+      tier: 'ALL',
+      sortBy: 'winRate',
+      sortDirection: 'desc',
+      limit: 50,
+    } as ChampionStatsTableQuery);
+
+    expect(response.rows).toHaveLength(1);
+    expect(response.rows[0]?.metrics.sampleSize).toBe(config.minimumSample);
+    expect(response.emptyReason).toBeUndefined();
+  });
+
+  it('queries ALL-tier materialized rows for tier=ALL (does not sum tiers in service)', async () => {
+    const { service, aggregates } = createService({
+      tableRows: [baseAggregate({ sampleSize: 40, rankTier: 'ALL' })],
+      totalCount: 1,
+    });
+
+    await service.getTable({
+      position: 'SUPPORT',
+      tier: 'ALL',
+      sortBy: 'winRate',
+      sortDirection: 'desc',
+      limit: 50,
+    } as ChampionStatsTableQuery);
+
+    expect(aggregates.findTableRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({
+          tier: 'ALL',
+          position: 'SUPPORT',
+        }),
+      }),
+    );
+  });
+
+  it('returns non-empty table after cache generation advances past an empty generation', async () => {
+    const tableQuery = {
+      position: 'TOP',
+      tier: 'ALL',
+      sortBy: 'winRate',
+      sortDirection: 'desc',
+      limit: 50,
+    } as ChampionStatsTableQuery;
+
+    const { service, cache, aggregates } = createService({
+      tableRows: [],
+      totalCount: 0,
+      generation: 1,
+    });
+    aggregates.findTableRows
+      .mockResolvedValueOnce({ rows: [], totalCount: 0 })
+      .mockResolvedValueOnce({ rows: [], totalCount: 0 }); // unfiltered emptyReason probe
+
+    const empty = await service.getTable(tableQuery);
+    expect(empty.rows).toEqual([]);
+    expect(empty.emptyReason).toBe('NO_MATCHING_AGGREGATES');
+    expect(cache.tableKey).toHaveBeenCalledWith(expect.objectContaining({ generation: 1 }));
+
+    // Seed gen-1 cache hit so stale empty would keep being served without generation advance.
+    cache.getParsed.mockImplementation(async (key: string) => {
+      if (key === 'table:1') {
+        return empty;
+      }
+      return null;
+    });
+
+    aggregates.findTableRows.mockClear();
+    const cachedEmpty = await service.getTable(tableQuery);
+    expect(cachedEmpty.rows).toEqual([]);
+    expect(aggregates.findTableRows).not.toHaveBeenCalled();
+
+    cache.getGeneration.mockResolvedValue(2);
+    aggregates.findTableRows.mockResolvedValue({
+      rows: [baseAggregate({ sampleSize: 40, teamPosition: 'TOP' })],
+      totalCount: 1,
+    });
+
+    const filled = await service.getTable(tableQuery);
+    expect(filled.rows).toHaveLength(1);
+    expect(cache.tableKey).toHaveBeenCalledWith(expect.objectContaining({ generation: 2 }));
+    expect(aggregates.findTableRows).toHaveBeenCalled();
   });
 
   it('returns known champion with stats null and CHAMPION_HAS_NO_STATS', async () => {

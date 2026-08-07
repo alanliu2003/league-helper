@@ -1,25 +1,19 @@
 import 'dotenv/config';
 import { ConsoleLogger, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import type { GameDataProvider } from '@league-helper/shared';
 import { AppModule } from '../../../app.module';
-import { PLAYER_REFRESH_CONFIG } from '../../../config/player-refresh.config';
-import type { PlayerRefreshConfig } from '../../../config/player-refresh.config';
-import { GAME_DATA_PROVIDER } from '../../../integrations/riot/riot.tokens';
-import { IngestionJobRepository } from '../../../persistence/ingestion-job.repository';
-import { MatchRepository } from '../../../persistence/match.repository';
-import { PlayerAccountRepository } from '../../../persistence/player-account.repository';
-import { RankSnapshotRepository } from '../../../persistence/rank-snapshot.repository';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { MatchIngestionProducer } from '../../../queues/match-ingestion.producer';
-import { PlayerCacheService } from '../player-cache.service';
+import { loadCollectorConfig } from '../../collector/collector.config';
+import { maybeEnrollFromBootstrap } from '../../collector/collector-enrollment.hooks';
+import { CollectorEnrollmentService } from '../../collector/collector-enrollment.service';
 import { loadMatchBootstrapConfig } from '../bootstrap/bootstrap-player.config';
 import {
   checkAggregateSmoke,
+  createDiscoveryBootstrapCoreDeps,
   createWaitDepsFromPrisma,
   runBootstrapCliMain,
 } from '../bootstrap/bootstrap-player-cli';
-import type { BootstrapCoreDeps } from '../bootstrap/bootstrap-player-core';
+import { PlayerMatchDiscoveryService } from '../discovery/player-match-discovery.service';
 
 /** Keep Nest boot/ops logs off stdout so `--json` remains JSON-only. */
 class StderrConsoleLogger extends ConsoleLogger {
@@ -43,34 +37,34 @@ async function main(): Promise<void> {
         logger: new StderrConsoleLogger('BootstrapPlayerCli'),
       });
 
-      const gameData = app.get<GameDataProvider>(GAME_DATA_PROVIDER);
-      const playerAccounts = app.get(PlayerAccountRepository);
-      const rankSnapshots = app.get(RankSnapshotRepository);
-      const matches = app.get(MatchRepository);
-      const ingestionJobs = app.get(IngestionJobRepository);
-      const producer = app.get(MatchIngestionProducer);
-      const cache = app.get(PlayerCacheService);
-      const refreshConfig = app.get<PlayerRefreshConfig>(PLAYER_REFRESH_CONFIG);
+      const discovery = app.get(PlayerMatchDiscoveryService);
       const prisma = app.get(PrismaService);
       const logger = new Logger('matches:bootstrap-player');
+      const collectorConfig = loadCollectorConfig(process.env);
+      const enrollment = app.get(CollectorEnrollmentService);
 
-      const coreDeps: BootstrapCoreDeps = {
-        resolvePlayer: (input) => gameData.resolvePlayer(input),
-        getRankedEntries: (account) => gameData.getRankedEntries(account),
-        getRecentMatchIds: (account, options) => gameData.getRecentMatchIds(account, options),
-        upsertPlayerAccount: (input) => playerAccounts.upsertPlayerAccount(input),
-        insertRankIfChanged: (input) => rankSnapshots.insertIfChanged(input),
-        enqueueDeps: {
-          matches,
-          ingestionJobs,
-          producer,
-          matchIngestionJobAttempts: refreshConfig.matchIngestionJobAttempts,
-          logger,
-          invalidatePlayerCache: (playerId) => cache.invalidate(playerId),
-        },
+      const coreDeps = createDiscoveryBootstrapCoreDeps({
         config,
         logger,
-      };
+        discovery,
+        // Flag-gated: omit hook entirely when disabled (zero enrollment work).
+        ...(collectorConfig.enrollFromBootstrap
+          ? {
+              afterSuccessfulUpsert: async (account: {
+                id: string;
+                provider: string;
+                platformRoute: string;
+              }) => {
+                await maybeEnrollFromBootstrap({
+                  enabled: true,
+                  enroll: (input) => enrollment.enroll(input),
+                  account,
+                  warn: (message) => logger.warn(message),
+                });
+              },
+            }
+          : {}),
+      });
 
       return {
         deps: {

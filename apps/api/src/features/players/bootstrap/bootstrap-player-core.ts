@@ -1,10 +1,14 @@
-import {
-  ValidationFailureError,
-  parsePlatformRoute,
-  type GameDataProvider,
-} from '@league-helper/shared';
+import { ValidationFailureError, type GameDataProvider } from '@league-helper/shared';
 import type { PlayerAccountRepository } from '../../../persistence/player-account.repository';
 import type { RankSnapshotRepository } from '../../../persistence/rank-snapshot.repository';
+import {
+  runPlayerMatchDiscovery,
+  type PlayerMatchDiscoveryRuntimeDeps,
+} from '../discovery/player-match-discovery.service';
+import type {
+  PlayerMatchDiscoveryInput,
+  PlayerMatchDiscoveryResult,
+} from '../discovery/player-match-discovery.types';
 import type { MatchBootstrapConfig } from './bootstrap-player.config';
 import type {
   BootstrapPlayerResult,
@@ -16,9 +20,38 @@ import {
   type EnqueueDiscoveredMatchesDeps,
   type EnqueueDiscoveredMatchesResult,
 } from './enqueue-discovered-matches';
-import { paginateRecentMatchIds } from './paginate-match-ids';
 
-export type BootstrapCoreDeps = {
+export type BootstrapCoreLogger = {
+  log: (message: unknown) => void;
+  warn?: (message: unknown) => void;
+};
+
+export type BootstrapEnrollmentAccount = {
+  id: string;
+  provider: string;
+  platformRoute: string;
+};
+
+type BootstrapCoreShared = {
+  config: MatchBootstrapConfig;
+  logger: BootstrapCoreLogger;
+  /**
+   * Optional post-upsert hook (e.g. collector enrollment).
+   * Called only after successful non-dry-run discovery with an upserted account.
+   * Must not throw into bootstrap result handling — callers should soft-fail.
+   */
+  afterSuccessfulUpsert?: (account: BootstrapEnrollmentAccount) => Promise<void>;
+};
+
+/** Live CLI / Nest path: discovery service is the single source of truth. */
+export type BootstrapDiscoveryCoreDeps = BootstrapCoreShared & {
+  discoverAndEnqueue: (
+    input: PlayerMatchDiscoveryInput,
+  ) => Promise<PlayerMatchDiscoveryResult>;
+};
+
+/** Unit-test composition path: low-level Riot/DB deps without Nest discovery. */
+export type BootstrapLowLevelCoreDeps = BootstrapCoreShared & {
   resolvePlayer: GameDataProvider['resolvePlayer'];
   getRankedEntries: GameDataProvider['getRankedEntries'];
   getRecentMatchIds: GameDataProvider['getRecentMatchIds'];
@@ -34,12 +67,9 @@ export type BootstrapCoreDeps = {
     },
   ) => Promise<EnqueueDiscoveredMatchesResult>;
   enqueueDeps: EnqueueDiscoveredMatchesDeps;
-  config: MatchBootstrapConfig;
-  logger: {
-    log: (message: unknown) => void;
-    warn?: (message: unknown) => void;
-  };
 };
+
+export type BootstrapCoreDeps = BootstrapDiscoveryCoreDeps | BootstrapLowLevelCoreDeps;
 
 export type BootstrapPlayerInput = {
   target: BootstrapPlayerTarget;
@@ -77,6 +107,61 @@ function emptyPlayerResult(
   };
 }
 
+function hasDiscoveryEntrypoint(
+  deps: BootstrapCoreDeps,
+): deps is BootstrapDiscoveryCoreDeps {
+  return (
+    'discoverAndEnqueue' in deps &&
+    typeof (deps as BootstrapDiscoveryCoreDeps).discoverAndEnqueue === 'function'
+  );
+}
+
+function toDiscoveryRuntimeDeps(deps: BootstrapLowLevelCoreDeps): PlayerMatchDiscoveryRuntimeDeps {
+  return {
+    resolvePlayer: deps.resolvePlayer,
+    getRankedEntries: deps.getRankedEntries,
+    getRecentMatchIds: deps.getRecentMatchIds,
+    upsertPlayerAccount: deps.upsertPlayerAccount,
+    findPlayerAccountById: async () => {
+      throw new Error(
+        'Riot-ID bootstrap path must not load PlayerAccount by id; use PLAYER_ACCOUNT discovery mode.',
+      );
+    },
+    insertRankIfChanged: deps.insertRankIfChanged,
+    enqueueDiscoveredMatches: deps.enqueueDiscoveredMatches,
+    enqueueDeps: deps.enqueueDeps,
+    pageSize: deps.config.pageSize,
+    logger: deps.logger,
+  };
+}
+
+function mapDiscoveryToBootstrapResult(
+  target: BootstrapPlayerTarget,
+  dryRun: boolean,
+  discovery: PlayerMatchDiscoveryResult,
+): BootstrapPlayerResult {
+  if (!discovery.ok) {
+    const message =
+      discovery.warnings[0]?.message ??
+      discovery.normalizedFailureCode ??
+      'Bootstrap player failed';
+    return emptyPlayerResult(target, dryRun, message);
+  }
+
+  return {
+    ok: true,
+    gameName: target.gameName,
+    tagLine: target.tagLine,
+    platform: target.platform,
+    dryRun,
+    discoveredMatchCount: discovery.discoveredMatchCount,
+    ...(dryRun ? { wouldEnqueueCount: discovery.discoveredMatchCount } : {}),
+    enqueuedCount: discovery.enqueuedCount,
+    skippedAlreadyCompleteCount: discovery.skippedAlreadyCompleteCount,
+    externalMatchIds: discovery.externalMatchIds,
+  };
+}
+
 async function mapPool<T, R>(
   items: T[],
   concurrency: number,
@@ -102,7 +187,7 @@ async function mapPool<T, R>(
 }
 
 /**
- * Bootstrap a single player: resolve → (apply: upsert + ranks) → paginate → enqueue.
+ * Bootstrap a single player via shared discovery/enqueue (Riot-ID mode).
  * Dry-run may call Riot for resolve + discovery; it must not write DB or enqueue.
  */
 export async function bootstrapPlayer(
@@ -110,114 +195,48 @@ export async function bootstrapPlayer(
   input: BootstrapPlayerInput,
 ): Promise<BootstrapPlayerResult> {
   const { target, queueId, maxMatches, dryRun, correlationId } = input;
-  const enqueue = deps.enqueueDiscoveredMatches ?? defaultEnqueueDiscoveredMatches;
 
-  try {
-    const platform = parsePlatformRoute(target.platform);
-    const resolved = await deps.resolvePlayer({
-      gameName: target.gameName,
-      tagLine: target.tagLine,
-      platform,
-    });
+  const discoveryInput: PlayerMatchDiscoveryInput = {
+    mode: 'RIOT_ID',
+    gameName: target.gameName,
+    tagLine: target.tagLine,
+    platform: target.platform,
+    queueId,
+    maxMatches,
+    dryRun,
+    correlationId,
+  };
 
-    if (dryRun) {
-      const discoveredMatchIds = await paginateRecentMatchIds({
-        getRecentMatchIds: deps.getRecentMatchIds,
-        account: resolved,
-        queueId,
-        maxMatches,
-        pageSize: deps.config.pageSize,
-      });
-      return {
-        ok: true,
-        gameName: target.gameName,
-        tagLine: target.tagLine,
-        platform: target.platform,
-        dryRun: true,
-        discoveredMatchCount: discoveredMatchIds.length,
-        wouldEnqueueCount: discoveredMatchIds.length,
-        enqueuedCount: 0,
-        skippedAlreadyCompleteCount: 0,
-        externalMatchIds: discoveredMatchIds,
-      };
-    }
+  const discovery = hasDiscoveryEntrypoint(deps)
+    ? await deps.discoverAndEnqueue(discoveryInput)
+    : await runPlayerMatchDiscovery(toDiscoveryRuntimeDeps(deps), discoveryInput);
 
-    const account = await deps.upsertPlayerAccount({
-      provider: resolved.provider,
-      externalAccountId: resolved.externalAccountId,
-      platformRoute: resolved.platform,
-      regionalRoute: resolved.regionalRoute,
-      gameName: resolved.riotId.gameName,
-      tagLine: resolved.riotId.tagLine,
-      summonerId: resolved.summonerId ?? null,
-      accountId: resolved.accountId ?? null,
-      profileIconId: resolved.profileIconId ?? null,
-      summonerLevel: resolved.summonerLevel ?? null,
-      lastResolvedAt: new Date(),
-    });
+  const result = mapDiscoveryToBootstrapResult(target, dryRun, discovery);
 
-    deps.logger.log({
-      message: 'Bootstrap player account upserted',
-      correlationId,
-      playerId: account.playerId,
-      platform: account.platformRoute,
-    });
-
+  if (
+    !dryRun &&
+    discovery.ok &&
+    discovery.playerAccountId &&
+    discovery.provider &&
+    discovery.platformRoute &&
+    deps.afterSuccessfulUpsert
+  ) {
     try {
-      const ranks = await deps.getRankedEntries(resolved);
-      for (const entry of ranks) {
-        await deps.insertRankIfChanged({
-          playerAccountId: account.id,
-          queueType: entry.queueType,
-          tier: entry.tier,
-          division: entry.division,
-          leaguePoints: entry.leaguePoints,
-          wins: entry.wins,
-          losses: entry.losses,
-          veteran: entry.veteran,
-          inactive: entry.inactive,
-          freshBlood: entry.freshBlood,
-          hotStreak: entry.hotStreak,
-        });
-      }
+      await deps.afterSuccessfulUpsert({
+        id: discovery.playerAccountId,
+        provider: discovery.provider,
+        platformRoute: discovery.platformRoute,
+      });
     } catch (error: unknown) {
       deps.logger.warn?.({
-        message: 'Bootstrap rank sync failed; continuing with match enqueue',
-        correlationId,
-        playerId: account.playerId,
+        message: 'Bootstrap afterSuccessfulUpsert failed',
+        playerAccountId: discovery.playerAccountId,
         error: error instanceof Error ? error.message : 'unknown',
       });
     }
-
-    const discoveredMatchIds = await paginateRecentMatchIds({
-      getRecentMatchIds: deps.getRecentMatchIds,
-      account: resolved,
-      queueId,
-      maxMatches,
-      pageSize: deps.config.pageSize,
-    });
-
-    const enqueueResult = await enqueue(deps.enqueueDeps, {
-      account,
-      discoveredMatchIds,
-      correlationId,
-    });
-
-    return {
-      ok: true,
-      gameName: target.gameName,
-      tagLine: target.tagLine,
-      platform: target.platform,
-      dryRun: false,
-      discoveredMatchCount: discoveredMatchIds.length,
-      enqueuedCount: enqueueResult.enqueuedCount,
-      skippedAlreadyCompleteCount: enqueueResult.skippedAlreadyCompleteCount,
-      externalMatchIds: discoveredMatchIds,
-    };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Bootstrap player failed';
-    return emptyPlayerResult(target, dryRun, message);
   }
+
+  return result;
 }
 
 /**

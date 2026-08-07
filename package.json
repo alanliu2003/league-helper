@@ -43,6 +43,11 @@
     "player:search:mock": "pnpm --filter @league-helper/api player:search:mock",
     "matches:bootstrap-player": "pnpm --filter @league-helper/api matches:bootstrap-player",
     "matches:recompute-positions": "pnpm --filter @league-helper/api matches:recompute-positions",
+    "collector:seed-player": "pnpm --filter @league-helper/api collector:seed-player",
+    "collector:set-player-status": "pnpm --filter @league-helper/api collector:set-player-status",
+    "collector:run": "pnpm --filter @league-helper/api collector:run",
+    "collector:status": "pnpm --filter @league-helper/api collector:status",
+    "collector:audit": "pnpm --filter @league-helper/api collector:audit",
     "test:e2e": "pnpm --filter @league-helper/web test:e2e"
   },
   "devDependencies": {

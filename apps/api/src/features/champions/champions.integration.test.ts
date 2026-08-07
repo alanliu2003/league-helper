@@ -58,6 +58,8 @@ async function resetTestData(): Promise<void> {
       "Match",
       "RankSnapshot",
       "PlayerAccountAlias",
+      "CollectorRun",
+      "TrackedPlayer",
       "PlayerAccount",
       "Player",
       "ChampionStaticData",
