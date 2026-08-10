@@ -42,6 +42,8 @@ export {
   RiotMiniSeriesDtoSchema,
   RiotLeagueEntryDtoSchema,
   RiotLeagueEntryDtoArraySchema,
+  RiotLeagueItemDtoSchema,
+  RiotLeagueListDtoSchema,
   RiotMatchIdListSchema,
   RiotMatchMetadataDtoSchema,
   RiotMatchParticipantDtoSchema,
@@ -60,6 +62,8 @@ export {
   type RiotSummonerDto,
   type RiotMiniSeriesDto,
   type RiotLeagueEntryDto,
+  type RiotLeagueItemDto,
+  type RiotLeagueListDto,
   type RiotMatchMetadataDto,
   type RiotMatchParticipantDto,
   type RiotMatchObjectiveDto,
@@ -72,6 +76,25 @@ export {
   type RiotMatchTimelineDto,
   type RiotChampionMasteryDto,
 } from './riot-api.schemas';
+
+export {
+  RIOT_LEAGUE_QUEUE_RANKED_SOLO,
+  RiotLeagueQueueTypeSchema,
+  RiotPaginatedLeagueTierSchema,
+  buildApexLeaguePath,
+  buildLeagueEntriesByTierDivisionPath,
+  mapLeagueEntriesToLadderCandidates,
+  mapLeagueListToLadderCandidates,
+  mapRiotLeagueQueueTypeToMatchQueueId,
+  parseRiotLeagueQueueType,
+  type ApexLeagueKind,
+  type LadderAcquisitionMode,
+  type LadderCandidate,
+  type LadderCandidatesResult,
+  type LadderEntriesPageResult,
+  type RiotLeagueQueueType,
+  type RiotPaginatedLeagueTier,
+} from './riot-league-ladder';
 
 export {
   isRetryableHttpStatus,
@@ -89,6 +112,23 @@ export {
   parseRiotRateLimitSnapshot,
 } from './riot-rate-limit';
 
+export {
+  RIOT_SHARED_429_COOLDOWN_REDIS_KEY,
+  DEFAULT_RIOT_SHARED_429_COOLDOWN_MIN_MS,
+  RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV,
+  EXTEND_SHARED_COOLDOWN_LUA,
+  computeEffectiveCooldownDurationMs,
+  computeProposedCooldownUntil,
+  isSharedCooldownActive,
+  sharedCooldownRemainingMs,
+  RiotSharedCooldownStore,
+  type SharedCooldownRedisClient,
+  type RiotSharedCooldownState,
+  type ExtendSharedCooldownInput,
+  type ExtendSharedCooldownResult,
+  type RiotSharedCooldownStoreOptions,
+} from './riot-shared-cooldown';
+
 export { createRiotResponseMetadata } from './riot-response-metadata';
 
 export {
@@ -101,6 +141,10 @@ export {
   mockSummonerDtoWithoutIds,
   mockLeagueEntriesDto,
   mockEmptyLeagueEntriesDto,
+  mockChallengerLeagueListDto,
+  mockGrandmasterLeagueListDto,
+  mockMasterLeagueListDto,
+  mockLeagueEntriesPageDto,
   mockMatchIdList,
   mockMatchDto,
   mockTimelineDto,

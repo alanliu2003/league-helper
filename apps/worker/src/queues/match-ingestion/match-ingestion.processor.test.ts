@@ -36,6 +36,7 @@ function baseConfig(
     jobAttempts: 5,
     backoffBaseMs: 2000,
     backoffMaxMs: 60_000,
+    riotShared429CooldownMinMs: 15 * 60_000,
     timelineFetchEnabled: true,
     storeRawPayloads: false,
     timelineRequiredForComplete: false,
@@ -71,6 +72,12 @@ function makeDeps(input: {
   redis: unknown;
   config?: MatchIngestionWorkerConfig;
   championAggregationQueue?: ReturnType<typeof createChampionAggregationQueueMock>;
+  sharedCooldown?: {
+    isCoolingDown: ReturnType<typeof vi.fn>;
+    remainingMs: ReturnType<typeof vi.fn>;
+    extendCooldown: ReturnType<typeof vi.fn>;
+    getCooldownState?: ReturnType<typeof vi.fn>;
+  } | null;
 }) {
   return {
     prisma: input.prisma as never,
@@ -80,6 +87,28 @@ function makeDeps(input: {
     championAggregationQueue: (input.championAggregationQueue ??
       createChampionAggregationQueueMock()) as never,
     championAggregationConfig: aggregationConfig(),
+    sharedCooldown: input.sharedCooldown as never,
+  };
+}
+
+function mockSharedCooldown(
+  overrides: {
+    remainingMs?: number;
+    coolingDown?: boolean;
+  } = {},
+) {
+  const remainingMs = overrides.remainingMs ?? 0;
+  return {
+    isCoolingDown: vi.fn().mockResolvedValue(overrides.coolingDown ?? remainingMs > 0),
+    remainingMs: vi.fn().mockResolvedValue(remainingMs),
+    extendCooldown: vi.fn().mockImplementation(async (input: { now: number; configuredFloorMs: number; retryAfterMs?: number | null }) => {
+      const until =
+        input.now + Math.max(input.configuredFloorMs, input.retryAfterMs ?? 0);
+      return { cooldownUntil: until, extended: true, previousCooldownUntil: null };
+    }),
+    getCooldownState: vi.fn().mockResolvedValue({
+      cooldownUntil: remainingMs > 0 ? Date.now() + remainingMs : null,
+    }),
   };
 }
 
@@ -722,17 +751,87 @@ describe('processMatchIngestionJob', () => {
       new ProviderRateLimitedError('slow down', { retryAfterSeconds: 5 }),
     );
     const job = makeJob(validPayload());
+    const sharedCooldown = mockSharedCooldown();
 
     await expect(
       processMatchIngestionJob(
         job,
         'token-1',
-        makeDeps({ prisma, provider, redis, championAggregationQueue }),
+        makeDeps({ prisma, provider, redis, championAggregationQueue, sharedCooldown }),
       ),
     ).rejects.toBeInstanceOf(DelayedError);
 
     expect(job.moveToDelayed).toHaveBeenCalled();
+    expect(sharedCooldown.extendCooldown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        configuredFloorMs: 15 * 60_000,
+        retryAfterMs: 5_000,
+        source: 'worker',
+      }),
+    );
     expect(championAggregationQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('shared cooldown precheck delays before getMatch', async () => {
+    const sharedCooldown = mockSharedCooldown({ remainingMs: 40_000 });
+    const job = makeJob(validPayload());
+
+    await expect(
+      processMatchIngestionJob(
+        job,
+        'token-1',
+        makeDeps({ prisma, provider, redis, championAggregationQueue, sharedCooldown }),
+      ),
+    ).rejects.toBeInstanceOf(DelayedError);
+
+    expect(provider.getMatch).not.toHaveBeenCalled();
+    expect(sharedCooldown.extendCooldown).not.toHaveBeenCalled();
+    const delayedAt = (job.moveToDelayed as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as number;
+    expect(delayedAt - Date.now()).toBeGreaterThanOrEqual(35_000);
+  });
+
+  it('timeline 429 soft-fail still publishes shared cooldown', async () => {
+    provider.getMatch.mockResolvedValue(mockMatchDto({ matchId: 'NA1_FAKE_MATCH_1001' }));
+    provider.getTimeline.mockRejectedValue(
+      new ProviderRateLimitedError('timeline limited', { retryAfterSeconds: 12 }),
+    );
+    const sharedCooldown = mockSharedCooldown();
+
+    const result = await processMatchIngestionJob(
+      makeJob(validPayload({ externalMatchId: 'NA1_FAKE_MATCH_1001' })),
+      'token',
+      makeDeps({
+        prisma,
+        provider,
+        redis,
+        championAggregationQueue,
+        sharedCooldown,
+        config: baseConfig({ timelineRequiredForComplete: false }),
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(sharedCooldown.extendCooldown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        retryAfterMs: 12_000,
+        source: 'worker',
+      }),
+    );
+    const match = [...store.matches.values()][0];
+    expect(match?.ingestionStatus).toBe(MatchIngestionStatus.COMPLETED);
+  });
+
+  it('non-429 errors do not publish shared cooldown', async () => {
+    provider.getMatch.mockRejectedValue(new ProviderUnavailableError());
+    const sharedCooldown = mockSharedCooldown();
+    await expect(
+      processMatchIngestionJob(
+        makeJob(validPayload()),
+        'token',
+        makeDeps({ prisma, provider, redis, championAggregationQueue, sharedCooldown }),
+      ),
+    ).rejects.toBeInstanceOf(ProviderUnavailableError);
+    expect(sharedCooldown.extendCooldown).not.toHaveBeenCalled();
   });
 
   it('retries on provider unavailable', async () => {

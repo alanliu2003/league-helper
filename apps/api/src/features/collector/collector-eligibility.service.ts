@@ -119,6 +119,7 @@ export class CollectorEligibilityService {
       priority: row.priority,
       nextEligibleAt: row.nextEligibleAt,
       lastSuccessfulRefreshAt: row.lastSuccessfulRefreshAt,
+      consecutiveZeroNewMatchRuns: row.consecutiveZeroNewMatchRuns,
     }));
 
     const result: CollectorPreviewResult = {

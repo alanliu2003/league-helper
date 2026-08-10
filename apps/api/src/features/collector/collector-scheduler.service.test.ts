@@ -67,12 +67,22 @@ describe('CollectorSchedulerService', () => {
   let config: CollectorConfig;
   let service: CollectorSchedulerService;
 
-  function buildService(cfg: CollectorConfig = config): CollectorSchedulerService {
+  let sharedCooldown: {
+    getCooldownState: ReturnType<typeof vi.fn>;
+    isCoolingDown: ReturnType<typeof vi.fn>;
+    extendCooldown: ReturnType<typeof vi.fn>;
+  } | null;
+
+  function buildService(
+    cfg: CollectorConfig = config,
+    cooldown: typeof sharedCooldown = sharedCooldown,
+  ): CollectorSchedulerService {
     return new CollectorSchedulerService(
       schedulerState as unknown as CollectorSchedulerStateRepository,
       populationCollector as unknown as PopulationCollectorService,
       matchIngestion as unknown as MatchIngestionProducer,
       cfg,
+      cooldown as never,
     );
   }
 
@@ -110,6 +120,15 @@ describe('CollectorSchedulerService', () => {
         delayed: 0,
         failed: 0,
         completed: 0,
+      }),
+    };
+    sharedCooldown = {
+      getCooldownState: vi.fn().mockResolvedValue({ cooldownUntil: null }),
+      isCoolingDown: vi.fn().mockResolvedValue(false),
+      extendCooldown: vi.fn().mockResolvedValue({
+        cooldownUntil: Date.now() + 15 * 60_000,
+        extended: true,
+        previousCooldownUntil: null,
       }),
     };
     service = buildService();
@@ -200,6 +219,17 @@ describe('CollectorSchedulerService', () => {
       expect.any(String),
       'SKIPPED_COOLDOWN',
     );
+    expect(schedulerState.releaseLease).toHaveBeenCalledTimes(1);
+  });
+
+  it('shared Riot cooldown takes precedence over local cooldown check', async () => {
+    const sharedUntil = Date.now() + 120_000;
+    sharedCooldown!.getCooldownState.mockResolvedValue({ cooldownUntil: sharedUntil });
+    const result = await service.tick();
+    expect(result).toEqual({ outcome: 'SKIPPED_COOLDOWN' });
+    expect(schedulerState.readState).not.toHaveBeenCalled();
+    expect(matchIngestion.getQueueCounts).not.toHaveBeenCalled();
+    expect(populationCollector.runOnce).not.toHaveBeenCalled();
     expect(schedulerState.releaseLease).toHaveBeenCalledTimes(1);
   });
 
@@ -338,17 +368,46 @@ describe('CollectorSchedulerService', () => {
         },
       }),
     );
-    const before = Date.now();
+    // Collector already published a longer shared cooldown; local mirrors max(local, shared).
+    const sharedUntil = Date.now() + 30 * 60_000;
+    sharedCooldown!.getCooldownState
+      .mockResolvedValueOnce({ cooldownUntil: null }) // preflight inactive
+      .mockResolvedValueOnce({ cooldownUntil: sharedUntil }); // after rate-limited run
     const result = await service.tick();
     expect(result.outcome).toBe('TRIGGERED');
     expect(schedulerState.setCooldown).toHaveBeenCalledTimes(1);
     const [, until] = schedulerState.setCooldown.mock.calls[0] as [string, Date];
-    expect(until.getTime()).toBeGreaterThanOrEqual(
-      before + config.schedulerRateLimitCooldownMs - 50,
+    expect(until.getTime()).toBe(sharedUntil);
+    expect(sharedCooldown!.extendCooldown).not.toHaveBeenCalled();
+  });
+
+  it('rate-limited run extends shared when inactive then mirrors local', async () => {
+    populationCollector.runOnce.mockResolvedValue(
+      runResult({
+        status: CollectorRunStatus.PARTIAL,
+        counters: {
+          ...runResult().counters,
+          rateLimitStops: 1,
+        },
+      }),
     );
-    expect(until.getTime()).toBeLessThanOrEqual(
-      Date.now() + config.schedulerRateLimitCooldownMs + 50,
+    sharedCooldown!.getCooldownState.mockResolvedValue({ cooldownUntil: null });
+    // Longer than local schedulerRateLimitCooldownMs so max() selects shared.
+    const extendedUntil = Date.now() + config.riotShared429CooldownMinMs + 60_000;
+    sharedCooldown!.extendCooldown.mockResolvedValue({
+      cooldownUntil: extendedUntil,
+      extended: true,
+      previousCooldownUntil: null,
+    });
+    await service.tick();
+    expect(sharedCooldown!.extendCooldown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        configuredFloorMs: config.riotShared429CooldownMinMs,
+        source: 'scheduler',
+      }),
     );
+    const [, until] = schedulerState.setCooldown.mock.calls[0] as [string, Date];
+    expect(until.getTime()).toBe(extendedUntil);
   });
 
   it('rate-limited via failure code sets cooldown', async () => {

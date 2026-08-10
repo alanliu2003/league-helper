@@ -69,6 +69,7 @@ async function main(): Promise<void> {
           priority: c.priority,
           nextEligibleAt: c.nextEligibleAt.toISOString(),
           lastSuccessfulRefreshAt: c.lastSuccessfulRefreshAt?.toISOString() ?? null,
+          consecutiveZeroNewMatchRuns: c.consecutiveZeroNewMatchRuns,
         })),
       };
 

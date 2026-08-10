@@ -25,6 +25,7 @@ function tracked(overrides: Partial<TrackedPlayer> = {}): TrackedPlayer {
     leaseOwner: null,
     leaseExpiresAt: null,
     consecutiveFailureCount: 0,
+    consecutiveZeroNewMatchRuns: 0,
     lastFailureCode: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),

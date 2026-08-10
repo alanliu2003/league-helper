@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ValidationFailureError } from '@league-helper/shared';
 import {
+  parseCollectorCoverageArgs,
+  parseCollectorLadderSeedArgs,
   parseCollectorRunArgs,
   parseCollectorSchedulerArgs,
   parseCollectorSchedulerStatusArgs,
@@ -161,6 +163,141 @@ describe('collector.args', () => {
 
     it('rejects unknown flags', () => {
       expect(() => parseCollectorSchedulerStatusArgs(['--queue', '420'])).toThrow(
+        ValidationFailureError,
+      );
+    });
+  });
+
+  describe('parseCollectorLadderSeedArgs', () => {
+    it('parses apex dry-run with default tiers', () => {
+      const args = parseCollectorLadderSeedArgs(
+        ['--platform', 'na1', '--mode', 'apex', '--dry-run'],
+        config(),
+      );
+      expect(args).toMatchObject({
+        help: false,
+        platform: 'na1',
+        mode: 'apex',
+        tiers: ['CHALLENGER', 'GRANDMASTER'],
+        dryRun: true,
+        json: false,
+      });
+    });
+
+    it('allows explicit MASTER in apex --tiers', () => {
+      const args = parseCollectorLadderSeedArgs(
+        ['--platform', 'na1', '--tiers', 'CHALLENGER,MASTER'],
+        config(),
+      );
+      expect(args.tiers).toEqual(['CHALLENGER', 'MASTER']);
+    });
+
+    it('parses representative page selection', () => {
+      const args = parseCollectorLadderSeedArgs(
+        [
+          '--platform',
+          'na1',
+          '--mode',
+          'representative',
+          '--tiers',
+          'DIAMOND,EMERALD',
+          '--division',
+          'I',
+          '--page',
+          '1',
+          '--dry-run',
+        ],
+        config(),
+      );
+      expect(args).toMatchObject({
+        mode: 'representative',
+        tiers: ['DIAMOND', 'EMERALD'],
+        division: 'I',
+        page: 1,
+        dryRun: true,
+      });
+    });
+
+    it('defaults division to I for max-pages mode', () => {
+      const args = parseCollectorLadderSeedArgs(
+        [
+          '--platform',
+          'na1',
+          '--mode',
+          'representative',
+          '--tiers',
+          'DIAMOND',
+          '--max-pages-per-division',
+          '1',
+        ],
+        config(),
+      );
+      expect(args.division).toBe('I');
+      expect(args.maxPagesPerDivision).toBe(1);
+    });
+
+    it('rejects representative mode without page bounds', () => {
+      expect(() =>
+        parseCollectorLadderSeedArgs(
+          ['--platform', 'na1', '--mode', 'representative', '--tiers', 'DIAMOND'],
+          config(),
+        ),
+      ).toThrow(ValidationFailureError);
+    });
+
+    it('rejects unsupported representative tiers', () => {
+      expect(() =>
+        parseCollectorLadderSeedArgs(
+          [
+            '--platform',
+            'na1',
+            '--mode',
+            'representative',
+            '--tiers',
+            'SILVER',
+            '--max-pages-per-division',
+            '1',
+          ],
+          config(),
+        ),
+      ).toThrow(ValidationFailureError);
+    });
+  });
+
+  describe('parseCollectorCoverageArgs', () => {
+    it('parses platform queue and json flags', () => {
+      const args = parseCollectorCoverageArgs(
+        ['--platform', 'na1', '--queue', '420', '--json'],
+        config({ platformAllowlist: ['na1'] }),
+      );
+      expect(args).toEqual({
+        help: false,
+        platformFilter: 'na1',
+        queueId: 420,
+        json: true,
+      });
+    });
+
+    it('defaults queue to 420 and supports help', () => {
+      expect(parseCollectorCoverageArgs(['--help'], config())).toMatchObject({
+        help: true,
+        queueId: 420,
+      });
+      expect(parseCollectorCoverageArgs([], config())).toMatchObject({
+        help: false,
+        queueId: 420,
+        json: false,
+      });
+    });
+
+    it('rejects platforms outside allowlist', () => {
+      expect(() =>
+        parseCollectorCoverageArgs(['--platform', 'kr'], config({ platformAllowlist: ['na1'] })),
+      ).toThrow(ValidationFailureError);
+    });
+
+    it('rejects unknown flags', () => {
+      expect(() => parseCollectorCoverageArgs(['--enqueue'], config())).toThrow(
         ValidationFailureError,
       );
     });

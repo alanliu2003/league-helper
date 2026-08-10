@@ -32,6 +32,12 @@ export const RiotMiniSeriesDtoSchema = z.object({
 export type RiotMiniSeriesDto = z.infer<typeof RiotMiniSeriesDtoSchema>;
 
 /** League-v4 LeagueEntryDto */
+/**
+ * League-v4 LeagueEntryDTO.
+ * Official current identity field is `puuid` (Player's encrypted puuid).
+ * summonerId / summonerName / riotId* are not present on the current documented DTO;
+ * optional summonerId retained for transitional payloads only.
+ */
 export const RiotLeagueEntryDtoSchema = z.object({
   leagueId: z.string().optional(),
   queueType: z.string().min(1),
@@ -52,6 +58,37 @@ export const RiotLeagueEntryDtoSchema = z.object({
 export type RiotLeagueEntryDto = z.infer<typeof RiotLeagueEntryDtoSchema>;
 
 export const RiotLeagueEntryDtoArraySchema = z.array(RiotLeagueEntryDtoSchema);
+
+/**
+ * League-v4 LeagueItemDTO (entries inside apex LeagueListDTO).
+ * Official current identity field is `puuid`. No riotIdGameName / riotIdTagLine / summonerId
+ * on the current developer.riotgames.com league-v4 contract.
+ */
+export const RiotLeagueItemDtoSchema = z.object({
+  puuid: z.string().optional(),
+  rank: z.string().optional(),
+  leaguePoints: z.number().int().optional(),
+  wins: z.number().int().nonnegative().optional(),
+  losses: z.number().int().nonnegative().optional(),
+  hotStreak: z.boolean().optional(),
+  veteran: z.boolean().optional(),
+  freshBlood: z.boolean().optional(),
+  inactive: z.boolean().optional(),
+  miniSeries: RiotMiniSeriesDtoSchema.optional(),
+});
+
+export type RiotLeagueItemDto = z.infer<typeof RiotLeagueItemDtoSchema>;
+
+/** League-v4 LeagueListDTO (challenger / grandmaster / master by-queue responses). */
+export const RiotLeagueListDtoSchema = z.object({
+  leagueId: z.string().optional(),
+  entries: z.array(RiotLeagueItemDtoSchema),
+  tier: z.string().min(1),
+  name: z.string().optional(),
+  queue: z.string().min(1),
+});
+
+export type RiotLeagueListDto = z.infer<typeof RiotLeagueListDtoSchema>;
 
 export const RiotMatchIdListSchema = z.array(z.string().min(1));
 

@@ -21,6 +21,8 @@ const API_VECTORS = {
   maxTrackedPlayersDefault: 500,
   maxTrackedPlayersHardMax: 5000,
   expansionQueueIdDefault: 420,
+  totalTrackedPlayersHardCapDefault: 5000,
+  totalTrackedPlayersHardCapHardMax: 50_000,
 } as const;
 
 describe('participant expansion config drift guard', () => {
@@ -39,6 +41,7 @@ describe('participant expansion config drift guard', () => {
     expect(config.expansionMaxNewPlayersPerRun).toBe(API_VECTORS.maxNewPlayersPerRunDefault);
     expect(config.expansionMaxTrackedPlayers).toBe(API_VECTORS.maxTrackedPlayersDefault);
     expect(config.expansionQueueId).toBe(API_VECTORS.expansionQueueIdDefault);
+    expect(config.totalTrackedPlayersHardCap).toBe(API_VECTORS.totalTrackedPlayersHardCapDefault);
   });
 
   it('clamps budget knobs to hard maxima', () => {
@@ -54,5 +57,13 @@ describe('participant expansion config drift guard', () => {
     );
     expect(config.expansionMaxNewPlayersPerRun).toBe(API_VECTORS.maxNewPlayersPerRunHardMax);
     expect(config.expansionMaxTrackedPlayers).toBe(API_VECTORS.maxTrackedPlayersHardMax);
+  });
+
+  it('rejects total tracked hard cap above approved maximum', () => {
+    expect(() =>
+      loadParticipantExpansionConfig({
+        COLLECTOR_TOTAL_TRACKED_PLAYERS_HARD_CAP: '50001',
+      }),
+    ).toThrow(/COLLECTOR_TOTAL_TRACKED_PLAYERS_HARD_CAP/);
   });
 });

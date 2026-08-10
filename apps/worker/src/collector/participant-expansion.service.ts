@@ -32,6 +32,7 @@ export type ExpansionCandidateOutcome =
   | 'created'
   | 'already_tracked'
   | 'skipped_depth_limit'
+  | 'skipped_total_cap'
   | 'skipped_population_cap'
   | 'skipped_run_cap'
   | 'skipped_source_cap'
@@ -224,6 +225,7 @@ export async function expandFromCompletedMatch(
       discoveryDepth: proposedChildDepth,
       sourceCollectorRunId: input.sourceCollectorRunId,
       sourceTrackedPlayerId: sourceTracked.id,
+      totalCap: config.totalTrackedPlayersHardCap,
       globalCap: config.expansionMaxTrackedPlayers,
       runCap: config.expansionMaxNewPlayersPerRun,
       sourceCap: config.expansionMaxNewPlayersPerSourcePlayer,

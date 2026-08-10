@@ -24,6 +24,7 @@ function tracked(overrides: Partial<TrackedPlayer> = {}): TrackedPlayer {
     leaseOwner: null,
     leaseExpiresAt: null,
     consecutiveFailureCount: 0,
+    consecutiveZeroNewMatchRuns: 0,
     lastFailureCode: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -95,6 +96,53 @@ describe('CollectorEnrollmentService', () => {
 
     expect(repo.upsertEnrollment).toHaveBeenCalledWith(
       expect.objectContaining({ discoveryDepth: 0, enrollmentSource: 'BOOTSTRAP' }),
+    );
+  });
+
+  it('assigns product-root initial priority for ADMIN_SEED/PRODUCT_SEARCH/BOOTSTRAP creates', async () => {
+    repo.findByPlayerAccountId.mockResolvedValue(null);
+    repo.upsertEnrollment.mockResolvedValue({
+      trackedPlayer: tracked({ priority: baseConfig().productRootInitialPriority }),
+      created: true,
+      reactivated: false,
+    });
+
+    await service.enroll({
+      account: { id: 'acc-1', provider: 'RIOT', platformRoute: 'na1' },
+      source: 'PRODUCT_SEARCH',
+    });
+
+    expect(repo.upsertEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priority: baseConfig().productRootInitialPriority,
+        enrollmentSource: 'PRODUCT_SEARCH',
+      }),
+    );
+  });
+
+  it('assigns warm priority for MATCH_PARTICIPANT creates without explicit priority', async () => {
+    repo.findByPlayerAccountId.mockResolvedValue(null);
+    repo.upsertEnrollment.mockResolvedValue({
+      trackedPlayer: tracked({
+        discoveryDepth: 1,
+        enrollmentSource: 'MATCH_PARTICIPANT',
+        priority: baseConfig().warmPriority,
+      }),
+      created: true,
+      reactivated: false,
+    });
+
+    await service.enroll({
+      account: { id: 'acc-1', provider: 'RIOT', platformRoute: 'na1' },
+      source: 'MATCH_PARTICIPANT',
+      discoveryDepth: 1,
+    });
+
+    expect(repo.upsertEnrollment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priority: baseConfig().warmPriority,
+        enrollmentSource: 'MATCH_PARTICIPANT',
+      }),
     );
   });
 
@@ -233,6 +281,65 @@ describe('CollectorEnrollmentService', () => {
       }),
     );
     expect(repo.findByPlayerAccountId).not.toHaveBeenCalled();
+  });
+
+  it('returns TOTAL_TRACKED_CAP when global hard cap rejects a new create', async () => {
+    repo.findByPlayerAccountId.mockResolvedValue(null);
+    const prisma = {
+      collectorTrackedPlayerBudget: {
+        findUnique: vi.fn().mockResolvedValue({
+          trackedPlayerCount: 0,
+          ladderEnrolledCount: 0,
+        }),
+      },
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([]), // reserveTotalTrackedCreate → skipped
+          trackedPlayer: { create: vi.fn() },
+        };
+        return fn(tx);
+      }),
+    };
+
+    const capped = CollectorEnrollmentService.create(
+      repo as unknown as TrackedPlayerRepository,
+      baseConfig({ totalTrackedPlayersHardCap: 1 }),
+      prisma as never,
+    );
+
+    const result = await capped.enroll({
+      account: { id: 'acc-1', provider: 'RIOT', platformRoute: 'na1' },
+      source: 'PRODUCT_SEARCH',
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: false,
+        code: 'TOTAL_TRACKED_CAP',
+        playerAccountId: 'acc-1',
+      }),
+    );
+    expect(repo.upsertEnrollment).not.toHaveBeenCalled();
+  });
+
+  it('existing rediscovery path does not require prisma hard-cap TX', async () => {
+    repo.findByPlayerAccountId.mockResolvedValue(tracked({ enrollmentSource: 'ADMIN_SEED' }));
+    repo.upsertEnrollment.mockResolvedValue({
+      trackedPlayer: tracked({ enrollmentSource: 'ADMIN_SEED' }),
+      created: false,
+      reactivated: false,
+    });
+
+    const result = await service.enroll({
+      account: { id: 'acc-1', provider: 'RIOT', platformRoute: 'na1' },
+      source: 'PRODUCT_SEARCH',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.created).toBe(false);
+    expect(repo.upsertEnrollment).toHaveBeenCalled();
   });
 
   it('setPlayerStatus ACTIVE with force + reset-failures', async () => {

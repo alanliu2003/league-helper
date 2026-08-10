@@ -231,7 +231,9 @@ describe('TrackedPlayerRepository + CollectorRunRepository (integration)', () =>
     const staleSuccess = await trackedPlayers.finalizeSuccess({
       trackedPlayerId: row.id,
       ownerToken: 'stale-owner',
-      minRefreshIntervalMs: MIN_REFRESH_MS,
+      nextEligibleDelayMs: MIN_REFRESH_MS,
+      priority: 50,
+      consecutiveZeroNewMatchRuns: 0,
     });
     expect(staleSuccess.updated).toBe(false);
 
@@ -248,7 +250,9 @@ describe('TrackedPlayerRepository + CollectorRunRepository (integration)', () =>
     const ok = await trackedPlayers.finalizeSuccess({
       trackedPlayerId: row.id,
       ownerToken: 'new-owner',
-      minRefreshIntervalMs: MIN_REFRESH_MS,
+      nextEligibleDelayMs: MIN_REFRESH_MS,
+      priority: 50,
+      consecutiveZeroNewMatchRuns: 0,
     });
     expect(ok.updated).toBe(true);
   });
@@ -307,7 +311,9 @@ describe('TrackedPlayerRepository + CollectorRunRepository (integration)', () =>
     const result = await trackedPlayers.finalizeSuccess({
       trackedPlayerId: row.id,
       ownerToken: 'owner-a',
-      minRefreshIntervalMs: MIN_REFRESH_MS,
+      nextEligibleDelayMs: MIN_REFRESH_MS,
+      priority: 100,
+      consecutiveZeroNewMatchRuns: 0,
     });
     expect(result.updated).toBe(true);
     expect(result.status).toBe(TrackedPlayerStatus.ACTIVE);
@@ -318,6 +324,8 @@ describe('TrackedPlayerRepository + CollectorRunRepository (integration)', () =>
     expect(updated.leaseOwner).toBeNull();
     expect(updated.leaseExpiresAt).toBeNull();
     expect(updated.lastSuccessfulRefreshAt).not.toBeNull();
+    expect(updated.priority).toBe(100);
+    expect(updated.consecutiveZeroNewMatchRuns).toBe(0);
     expect(updated.nextEligibleAt.getTime()).toBeGreaterThanOrEqual(before + MIN_REFRESH_MS - 2_000);
   });
 
@@ -339,7 +347,9 @@ describe('TrackedPlayerRepository + CollectorRunRepository (integration)', () =>
       const result = await trackedPlayers.finalizeSuccess({
         trackedPlayerId: row.id,
         ownerToken: 'owner-a',
-        minRefreshIntervalMs: MIN_REFRESH_MS,
+        nextEligibleDelayMs: MIN_REFRESH_MS,
+        priority: 50,
+        consecutiveZeroNewMatchRuns: 1,
       });
       expect(result.updated).toBe(true);
       expect(result.status).toBe(status);
@@ -350,7 +360,47 @@ describe('TrackedPlayerRepository + CollectorRunRepository (integration)', () =>
       expect(updated.lastFailureCode).toBe('ENQUEUE_TRANSIENT');
       expect(updated.leaseOwner).toBeNull();
       expect(updated.lastSuccessfulRefreshAt).not.toBeNull();
+      expect(updated.priority).toBe(50);
+      expect(updated.consecutiveZeroNewMatchRuns).toBe(1);
     }
+  });
+
+  it('HOT player not yet eligible loses claim to eligible WARM player (fairness)', async () => {
+    const due = new Date(Date.now() - 60_000);
+    const hotFuture = new Date(Date.now() + 60 * 60_000);
+    const hot = await seedTrackedPlayer({
+      suffix: 'fair-hot',
+      priority: 100,
+      nextEligibleAt: hotFuture,
+      lastSuccessfulRefreshAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    const warm = await seedTrackedPlayer({
+      suffix: 'fair-warm',
+      priority: 50,
+      nextEligibleAt: due,
+      lastSuccessfulRefreshAt: new Date('2026-01-02T00:00:00.000Z'),
+    });
+
+    const claimed = await trackedPlayers.claimEligibleWave(claimDefaults({ limit: 10 }));
+    expect(claimed.map((row) => row.id)).toEqual([warm.id]);
+    expect(claimed.map((row) => row.id)).not.toContain(hot.id);
+  });
+
+  it('when both eligible, higher priority (HOT) is claimed first', async () => {
+    const due = new Date(Date.now() - 60_000);
+    const hot = await seedTrackedPlayer({
+      suffix: 'both-hot',
+      priority: 100,
+      nextEligibleAt: due,
+    });
+    const warm = await seedTrackedPlayer({
+      suffix: 'both-warm',
+      priority: 50,
+      nextEligibleAt: due,
+    });
+
+    const claimed = await trackedPlayers.claimEligibleWave(claimDefaults({ limit: 2 }));
+    expect(claimed.map((row) => row.id)).toEqual([hot.id, warm.id]);
   });
 
   it('failure finalize increments count and sets backoff atomically; first failure uses base backoff', async () => {

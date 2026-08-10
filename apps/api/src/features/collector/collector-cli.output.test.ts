@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CollectorSchedulerState } from '@prisma/client';
 import { loadCollectorConfig } from './collector.config';
 import type {
+  CollectorCoverageReport,
   CollectorCoverageSnapshot,
   CollectorRunOnceResult,
   CoverageSnapshotStatus,
@@ -11,6 +12,7 @@ import {
   buildCollectorApplyReport,
   buildCollectorSchedulerStatusReport,
   buildSchedulerTriggerReport,
+  formatCoverageReportText,
   formatSchedulerStatusText,
   isSchedulerCooldownActive,
   isSchedulerLeaseOwnerPresent,
@@ -209,5 +211,117 @@ describe('scheduler status formatting helpers', () => {
     expect(report.leaseOwnerPresent).toBe(false);
     expect(report.cooldownActive).toBe(false);
     expect(formatSchedulerStatusText(report).join('\n')).toContain('leaseOwner=ABSENT');
+  });
+});
+
+describe('formatCoverageReportText', () => {
+  function coverageReport(): CollectorCoverageReport {
+    return {
+      ok: true,
+      mode: 'coverage',
+      generatedAt: '2026-08-10T00:00:00.000Z',
+      label: 'population_coverage_observability',
+      queueId: 420,
+      effectivePlatforms: ['na1'],
+      trackedPlayers: {
+        total: 5,
+        byEnrollmentSource: {
+          ADMIN_SEED: 2,
+          PRODUCT_SEARCH: 0,
+          BOOTSTRAP: 0,
+          LADDER: 0,
+          MATCH_PARTICIPANT: 3,
+        },
+        byPlatformRoute: { na1: 5 },
+        byDiscoveryDepth: { '0': 2, '1': 3 },
+        byStatus: { ACTIVE: 5 },
+      },
+      capUsage: {
+        matchParticipant: { used: 3, cap: 500, remaining: 497 },
+        ladder: { used: 0, cap: 1500, remaining: 1500 },
+        totalTracked: { used: 5, cap: 5000, remaining: 4995 },
+      },
+      activitySignals: {
+        status: 'partial',
+        note: 'test note',
+        coldAfterZeroNewRuns: 3,
+        activePlayers: 5,
+        neverSuccessfulRefresh: 1,
+        zeroNewStreakAtOrAboveCold: 0,
+        byConsecutiveZeroNewMatchRuns: { '0': 4, '1': 1 },
+      },
+      championCoverage: {
+        densityThresholds: { gte1: 1, gte30: 30, gte100: 100 },
+        minimumSampleRankingFloor: 30,
+        nearFloorBand: { min: 20, max: 29 },
+        sourceNormalizationVersion: 'norm-v1',
+        aggregationVersion: 'agg-v1',
+        positions: ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'SUPPORT'],
+        platforms: [
+          {
+            platform: 'na1',
+            semanticPatch: '15.14',
+            matchCounts: { queueTotal: 10, currentPatchNormalized: 2 },
+            density: {
+              championPositionKeysGte1: 19,
+              championPositionKeysGte30: 0,
+              championPositionKeysGte100: 0,
+            },
+            byPosition: [
+              { position: 'TOP', gte1: 4, gte30: 0, gte100: 0, maxSampleSize: 6 },
+              { position: 'JUNGLE', gte1: 4, gte30: 0, gte100: 0, maxSampleSize: 5 },
+              { position: 'MIDDLE', gte1: 4, gte30: 0, gte100: 0, maxSampleSize: 7 },
+              { position: 'BOTTOM', gte1: 4, gte30: 0, gte100: 0, maxSampleSize: 4 },
+              { position: 'SUPPORT', gte1: 3, gte30: 0, gte100: 0, maxSampleSize: 3 },
+            ],
+            sampleSizeHistogram: [
+              { bucket: '1-2', count: 10 },
+              { bucket: '3-9', count: 9 },
+              { bucket: '10-29', count: 0 },
+              { bucket: '30-99', count: 0 },
+              { bucket: '100+', count: 0 },
+            ],
+            classicZero: {
+              rosterSource: 'ChampionStaticData_public',
+              rosterNote: 'public roster',
+              status: 'available',
+              staticDataPatchVersion: '15.14.1',
+              totalRosterChampions: 170,
+              championsWithZeroQualifyingCoverage: 151,
+            },
+            ladderRepresentation: {
+              status: 'partial',
+              ladderPlayersByTier: {},
+              ladderPlayersMissingRankSnapshot: 0,
+              currentPatchQueueParticipantObservationsByTier: null,
+              currentPatchQueueMatchesByTier: {
+                status: 'unavailable',
+                reason: 'ambiguous',
+              },
+              championPositionKeysByExactTierGte1: null,
+              reviewFlags: [],
+            },
+          },
+        ],
+      },
+      densitySnapshot: coverageSnapshot('available'),
+      reviewFlags: [],
+      warnings: [],
+    };
+  }
+
+  it('renders human-readable coverage lines and round-trips JSON shape', () => {
+    const report = coverageReport();
+    const json = JSON.parse(JSON.stringify(report)) as CollectorCoverageReport;
+    expect(json.mode).toBe('coverage');
+    expect(json.trackedPlayers.total).toBe(5);
+    expect(json.championCoverage.platforms[0]?.density.championPositionKeysGte1).toBe(19);
+
+    const text = formatCoverageReportText(report).join('\n');
+    expect(text).toContain('collector:coverage');
+    expect(text).toContain('density gte1=19 gte30=0 gte100=0');
+    expect(text).toContain('byEnrollmentSource=');
+    expect(text).not.toMatch(/puuid/i);
+    expect(text).not.toContain('RIOT_API_KEY');
   });
 });

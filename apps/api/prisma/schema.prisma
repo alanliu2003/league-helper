@@ -74,6 +74,7 @@ enum TrackedPlayerEnrollmentSource {
   PRODUCT_SEARCH
   BOOTSTRAP
   MATCH_PARTICIPANT
+  LADDER
 }
 
 enum CollectorRunStatus {
@@ -691,6 +692,8 @@ model TrackedPlayer {
   leaseOwner              String?
   leaseExpiresAt          DateTime?                     @db.Timestamptz(3)
   consecutiveFailureCount Int                           @default(0)
+  /// Successful collector runs that enqueued 0 new matches in a row (activity cold streak).
+  consecutiveZeroNewMatchRuns Int                       @default(0)
   lastFailureCode         String?
   createdAt               DateTime                      @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime                      @updatedAt @db.Timestamptz(3)
@@ -751,6 +754,17 @@ model CollectorPopulationBudget {
   matchParticipantEnrolledCount Int      @default(0)
   createdAt                     DateTime @default(now()) @db.Timestamptz(3)
   updatedAt                     DateTime @updatedAt @db.Timestamptz(3)
+}
+
+/// Singleton total TrackedPlayer + LADDER-root ceilings (id = 'singleton').
+/// trackedPlayerCount = ALL TrackedPlayer rows; ladderEnrolledCount = enrollmentSource=LADDER only.
+/// Separate from CollectorPopulationBudget (MATCH_PARTICIPANT-only).
+model CollectorTrackedPlayerBudget {
+  id                  String   @id
+  trackedPlayerCount  Int      @default(0)
+  ladderEnrolledCount Int      @default(0)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
 }
 
 /// Singleton scheduler lease/outcome state (id = 'singleton').

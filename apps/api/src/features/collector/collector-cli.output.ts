@@ -1,6 +1,7 @@
 import type { CollectorRunStatus, CollectorSchedulerState } from '@prisma/client';
 import type { CollectorConfig } from './collector.config';
 import type {
+  CollectorCoverageReport,
   CollectorCoverageSnapshot,
   CollectorRunCounters,
   CollectorRunOnceResult,
@@ -80,6 +81,99 @@ export function formatCoverageTextLines(snapshot: CollectorCoverageSnapshot): st
   }
 
   lines.push(...formatCoverageWarningLines(snapshot));
+  return lines;
+}
+
+export function formatCoverageReportText(report: CollectorCoverageReport): string[] {
+  const pop = report.trackedPlayers;
+  const caps = report.capUsage;
+  const lines = [
+    'collector:coverage (read-only population / champion coverage observability)',
+    `generatedAt=${report.generatedAt}`,
+    `queue=${report.queueId} platforms=${report.effectivePlatforms.join(',') || 'none'}`,
+    '',
+    '## Tracked players',
+    `total=${pop.total}`,
+    `byEnrollmentSource=${JSON.stringify(pop.byEnrollmentSource)}`,
+    `byPlatformRoute=${JSON.stringify(pop.byPlatformRoute)}`,
+    `byDiscoveryDepth=${JSON.stringify(pop.byDiscoveryDepth)}`,
+    `byStatus=${JSON.stringify(pop.byStatus)}`,
+    '',
+    '## Cap usage',
+    `matchParticipant=${caps.matchParticipant.used}/${caps.matchParticipant.cap} remaining=${caps.matchParticipant.remaining}`,
+    `ladder=${caps.ladder.used}/${caps.ladder.cap} remaining=${caps.ladder.remaining}`,
+    `totalTracked=${caps.totalTracked.used}/${caps.totalTracked.cap} remaining=${caps.totalTracked.remaining}`,
+    '',
+    '## Activity signals (partial)',
+    `activePlayers=${report.activitySignals.activePlayers}`,
+    `neverSuccessfulRefresh=${report.activitySignals.neverSuccessfulRefresh}`,
+    `zeroNewStreakAtOrAboveCold=${report.activitySignals.zeroNewStreakAtOrAboveCold} (coldAfter=${report.activitySignals.coldAfterZeroNewRuns})`,
+    `byConsecutiveZeroNewMatchRuns=${JSON.stringify(report.activitySignals.byConsecutiveZeroNewMatchRuns)}`,
+    `note=${report.activitySignals.note}`,
+    '',
+    '## Champion coverage',
+    `densityThresholds=${JSON.stringify(report.championCoverage.densityThresholds)}`,
+    `minimumSampleRankingFloor=${report.championCoverage.minimumSampleRankingFloor}`,
+    `versions=${report.championCoverage.sourceNormalizationVersion}/${report.championCoverage.aggregationVersion}`,
+    `positions=${report.championCoverage.positions.join(',')}`,
+  ];
+
+  for (const platform of report.championCoverage.platforms) {
+    lines.push('');
+    lines.push(`### platform=${platform.platform} semanticPatch=${platform.semanticPatch ?? 'none'}`);
+    lines.push(
+      `matches queueTotal=${platform.matchCounts.queueTotal} currentPatchNormalized=${platform.matchCounts.currentPatchNormalized ?? 'n/a'}`,
+    );
+    lines.push(
+      `density gte1=${platform.density.championPositionKeysGte1} gte30=${platform.density.championPositionKeysGte30} gte100=${platform.density.championPositionKeysGte100}`,
+    );
+    for (const position of platform.byPosition) {
+      lines.push(
+        `position=${position.position} gte1=${position.gte1} gte30=${position.gte30} gte100=${position.gte100} maxSample=${position.maxSampleSize}`,
+      );
+    }
+    lines.push(`sampleSizeHistogram=${JSON.stringify(platform.sampleSizeHistogram)}`);
+    lines.push(
+      `classicZero status=${platform.classicZero.status} roster=${platform.classicZero.totalRosterChampions ?? 'n/a'} zeroCoverage=${platform.classicZero.championsWithZeroQualifyingCoverage ?? 'n/a'} staticPatch=${platform.classicZero.staticDataPatchVersion ?? 'n/a'}`,
+    );
+    lines.push(`classicZeroNote=${platform.classicZero.rosterNote}`);
+
+    const ladder = platform.ladderRepresentation;
+    lines.push(`ladderRepresentation status=${ladder.status}`);
+    lines.push(`ladderPlayersByTier=${JSON.stringify(ladder.ladderPlayersByTier)}`);
+    lines.push(
+      `ladderPlayersMissingRankSnapshot=${ladder.ladderPlayersMissingRankSnapshot ?? 'n/a'}`,
+    );
+    lines.push(
+      `participantObservationsByTier=${JSON.stringify(ladder.currentPatchQueueParticipantObservationsByTier)}`,
+    );
+    lines.push(
+      `matchesByTier=${ladder.currentPatchQueueMatchesByTier.status}: ${ladder.currentPatchQueueMatchesByTier.reason}`,
+    );
+    lines.push(
+      `exactTierAggregateKeysGte1=${JSON.stringify(ladder.championPositionKeysByExactTierGte1)}`,
+    );
+    for (const flag of ladder.reviewFlags) {
+      lines.push(`ladderReviewFlag ${flag}`);
+    }
+  }
+
+  if (report.reviewFlags.length > 0) {
+    lines.push('', '## Review flags');
+    for (const flag of report.reviewFlags) {
+      lines.push(`reviewFlag ${flag}`);
+    }
+  }
+
+  if (report.warnings.length > 0) {
+    lines.push('', '## Warnings');
+    for (const warning of report.warnings) {
+      lines.push(`warning ${warning}`);
+    }
+  }
+
+  lines.push('', '## Legacy density snapshot');
+  lines.push(...formatCoverageTextLines(report.densitySnapshot));
   return lines;
 }
 

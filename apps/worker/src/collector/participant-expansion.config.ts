@@ -18,6 +18,8 @@ export type ParticipantExpansionConfig = {
   expansionMaxTrackedPlayers: number;
   expansionQueueId: number;
   platformAllowlist: string[];
+  /** Global ceiling for ALL TrackedPlayer rows (mirrors API CollectorConfig). */
+  totalTrackedPlayersHardCap: number;
 };
 
 const DEFAULT_EXPANSION_MAX_DEPTH = 1;
@@ -32,6 +34,8 @@ const DEFAULT_EXPANSION_MAX_TRACKED_PLAYERS = 500;
 const HARD_MAX_EXPANSION_MAX_TRACKED_PLAYERS = 5000;
 const DEFAULT_EXPANSION_QUEUE_ID = 420;
 const DEFAULT_PLATFORM_ALLOWLIST = 'na1';
+const DEFAULT_TOTAL_TRACKED_PLAYERS_HARD_CAP = 5000;
+const HARD_MAX_TOTAL_TRACKED_PLAYERS_HARD_CAP = 50_000;
 
 /** Exported for API/worker drift tests. */
 export const PARTICIPANT_EXPANSION_CONFIG_VECTORS = {
@@ -47,6 +51,8 @@ export const PARTICIPANT_EXPANSION_CONFIG_VECTORS = {
   maxTrackedPlayersDefault: DEFAULT_EXPANSION_MAX_TRACKED_PLAYERS,
   maxTrackedPlayersHardMax: HARD_MAX_EXPANSION_MAX_TRACKED_PLAYERS,
   expansionQueueIdDefault: DEFAULT_EXPANSION_QUEUE_ID,
+  totalTrackedPlayersHardCapDefault: DEFAULT_TOTAL_TRACKED_PLAYERS_HARD_CAP,
+  totalTrackedPlayersHardCapHardMax: HARD_MAX_TOTAL_TRACKED_PLAYERS_HARD_CAP,
 } as const;
 
 function parseOptionalInt(
@@ -184,5 +190,14 @@ export function loadParticipantExpansionConfig(
       },
     ),
     platformAllowlist: parsePlatformAllowlist(env.COLLECTOR_PLATFORM_ALLOWLIST),
+    totalTrackedPlayersHardCap: parseOptionalInt(
+      env.COLLECTOR_TOTAL_TRACKED_PLAYERS_HARD_CAP,
+      DEFAULT_TOTAL_TRACKED_PLAYERS_HARD_CAP,
+      {
+        min: 0,
+        max: HARD_MAX_TOTAL_TRACKED_PLAYERS_HARD_CAP,
+        name: 'COLLECTOR_TOTAL_TRACKED_PLAYERS_HARD_CAP',
+      },
+    ),
   };
 }

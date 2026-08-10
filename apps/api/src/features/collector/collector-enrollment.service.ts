@@ -3,16 +3,45 @@ import {
   UnsupportedPlatformRouteError,
   parsePlatformRoute,
 } from '@league-helper/shared';
+import { Prisma, type TrackedPlayer } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
 import { loadCollectorConfig, type CollectorConfig } from './collector.config';
+import { COLLECTOR_CONFIG } from './collector.tokens';
 import type {
   CollectorEnrollmentInput,
   CollectorEnrollmentResult,
   CollectorSetStatusInput,
   CollectorSetStatusResult,
 } from './collector.types';
+import {
+  AlreadyTrackedRollbackError,
+  ensureTrackedPlayerBudgetSingleton,
+  reserveLadderTrackedCreate,
+  reserveTotalTrackedCreate,
+} from './ladder/ladder-enrollment.budget';
 import { TrackedPlayerRepository } from './tracked-player.repository';
 
-export const COLLECTOR_CONFIG = Symbol('COLLECTOR_CONFIG');
+export { COLLECTOR_CONFIG };
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
+  );
+}
+
+class TotalTrackedCapRejectedError extends Error {
+  constructor() {
+    super('TOTAL_TRACKED_CAP');
+    this.name = 'TotalTrackedCapRejectedError';
+  }
+}
+
+class LadderTrackedCapRejectedError extends Error {
+  constructor() {
+    super('LADDER_TRACKED_CAP');
+    this.name = 'LadderTrackedCapRejectedError';
+  }
+}
 
 @Injectable()
 export class CollectorEnrollmentService {
@@ -20,6 +49,7 @@ export class CollectorEnrollmentService {
 
   constructor(
     @Inject(TrackedPlayerRepository) private readonly trackedPlayers: TrackedPlayerRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Optional() @Inject(COLLECTOR_CONFIG) config?: CollectorConfig,
   ) {
     this.config = config ?? loadCollectorConfig(process.env);
@@ -29,14 +59,20 @@ export class CollectorEnrollmentService {
   static create(
     trackedPlayers: TrackedPlayerRepository,
     config: CollectorConfig,
+    prisma?: PrismaService,
   ): CollectorEnrollmentService {
-    return new CollectorEnrollmentService(trackedPlayers, config);
+    return new CollectorEnrollmentService(
+      trackedPlayers,
+      prisma ?? (null as unknown as PrismaService),
+      config,
+    );
   }
 
   /**
    * Idempotent enroll keyed by playerAccountId.
    * Preserves first enrollmentSource; repairs denormalized routes;
    * does not silently reactivate PAUSED/SUSPENDED.
+   * New creates reserve against the global TrackedPlayer hard cap (and LADDER cap when source=LADDER).
    */
   async enroll(input: CollectorEnrollmentInput): Promise<CollectorEnrollmentResult> {
     const platformRoute = input.account.platformRoute;
@@ -76,7 +112,15 @@ export class CollectorEnrollmentService {
     } else if (existing) {
       priority = existing.priority;
     } else {
-      priority = clampPriority(0, this.config.priorityMin, this.config.priorityMax);
+      // Fresh roots: product/admin/bootstrap start competitive; LADDER uses ladder initial.
+      // MATCH_PARTICIPANT (and other non-root paths) stay at warm baseline until activity policy runs.
+      const initial =
+        input.source === 'LADDER'
+          ? this.config.ladderInitialPriority
+          : input.source === 'MATCH_PARTICIPANT'
+            ? this.config.warmPriority
+            : this.config.productRootInitialPriority;
+      priority = clampPriority(initial, this.config.priorityMin, this.config.priorityMax);
     }
 
     // Preserve first enrollmentSource on re-enroll; only used for INSERT path.
@@ -86,26 +130,164 @@ export class CollectorEnrollmentService {
     // Does not consume or consult CollectorPopulationBudget.
     const discoveryDepth = input.discoveryDepth ?? 0;
 
-    const result = await this.trackedPlayers.upsertEnrollment({
-      playerAccountId: input.account.id,
-      provider: input.account.provider,
-      platformRoute: normalizedPlatform,
-      enrollmentSource,
-      discoveryDepth,
-      priority,
-      reactivate,
-    });
+    if (existing) {
+      const result = await this.trackedPlayers.upsertEnrollment({
+        playerAccountId: input.account.id,
+        provider: input.account.provider,
+        platformRoute: normalizedPlatform,
+        enrollmentSource,
+        discoveryDepth,
+        priority,
+        reactivate,
+      });
 
-    return {
-      ok: true,
-      trackedPlayerId: result.trackedPlayer.id,
-      playerAccountId: result.trackedPlayer.playerAccountId,
-      status: result.trackedPlayer.status,
-      enrollmentSource: result.trackedPlayer.enrollmentSource,
-      created: result.created,
-      reactivated: result.reactivated,
-      platformRoute: result.trackedPlayer.platformRoute,
-    };
+      return {
+        ok: true,
+        trackedPlayerId: result.trackedPlayer.id,
+        playerAccountId: result.trackedPlayer.playerAccountId,
+        status: result.trackedPlayer.status,
+        enrollmentSource: result.trackedPlayer.enrollmentSource,
+        created: result.created,
+        reactivated: result.reactivated,
+        platformRoute: result.trackedPlayer.platformRoute,
+      };
+    }
+
+    // Prefer LadderEnrollmentService for LADDER creates; if source=LADDER reaches here,
+    // still reserve ladder+total so ladderEnrolledCount stays accurate.
+    try {
+      const tracked = await this.createWithHardCapReservation({
+        playerAccountId: input.account.id,
+        provider: input.account.provider,
+        platformRoute: normalizedPlatform,
+        enrollmentSource: input.source,
+        discoveryDepth,
+        priority,
+      });
+
+      return {
+        ok: true,
+        trackedPlayerId: tracked.id,
+        playerAccountId: tracked.playerAccountId,
+        status: tracked.status,
+        enrollmentSource: tracked.enrollmentSource,
+        created: true,
+        reactivated: false,
+        platformRoute: tracked.platformRoute,
+      };
+    } catch (error: unknown) {
+      if (error instanceof TotalTrackedCapRejectedError) {
+        return {
+          ok: false,
+          playerAccountId: input.account.id,
+          code: 'TOTAL_TRACKED_CAP',
+          message: `Global TrackedPlayer hard cap reached (${this.config.totalTrackedPlayersHardCap}).`,
+          platformRoute: normalizedPlatform,
+        };
+      }
+      if (error instanceof LadderTrackedCapRejectedError) {
+        return {
+          ok: false,
+          playerAccountId: input.account.id,
+          code: 'LADDER_TRACKED_CAP',
+          message: `LADDER TrackedPlayer hard cap reached (${this.config.ladderMaxTotal}).`,
+          platformRoute: normalizedPlatform,
+        };
+      }
+      if (error instanceof AlreadyTrackedRollbackError) {
+        const result = await this.trackedPlayers.upsertEnrollment({
+          playerAccountId: input.account.id,
+          provider: input.account.provider,
+          platformRoute: normalizedPlatform,
+          enrollmentSource: input.source,
+          discoveryDepth,
+          priority,
+          reactivate,
+        });
+        return {
+          ok: true,
+          trackedPlayerId: result.trackedPlayer.id,
+          playerAccountId: result.trackedPlayer.playerAccountId,
+          status: result.trackedPlayer.status,
+          enrollmentSource: result.trackedPlayer.enrollmentSource,
+          created: result.created,
+          reactivated: result.reactivated,
+          platformRoute: result.trackedPlayer.platformRoute,
+        };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Reserve hard-cap slot(s) then INSERT. Unique conflict → AlreadyTrackedRollbackError (TX abort).
+   */
+  private async createWithHardCapReservation(input: {
+    playerAccountId: string;
+    provider: string;
+    platformRoute: string;
+    enrollmentSource: CollectorEnrollmentInput['source'];
+    discoveryDepth: number;
+    priority: number;
+  }): Promise<TrackedPlayer> {
+    if (!this.prisma) {
+      // Unit-test factory without prisma: fall back to legacy upsert (no hard-cap).
+      const result = await this.trackedPlayers.upsertEnrollment({
+        playerAccountId: input.playerAccountId,
+        provider: input.provider,
+        platformRoute: input.platformRoute,
+        enrollmentSource: input.enrollmentSource,
+        discoveryDepth: input.discoveryDepth,
+        priority: input.priority,
+        reactivate: false,
+      });
+      return result.trackedPlayer;
+    }
+
+    await ensureTrackedPlayerBudgetSingleton(this.prisma);
+
+    return this.prisma.$transaction(async (tx) => {
+      if (input.enrollmentSource === 'LADDER') {
+        const reserved = await reserveLadderTrackedCreate(tx, {
+          totalCap: this.config.totalTrackedPlayersHardCap,
+          ladderCap: this.config.ladderMaxTotal,
+        });
+        if (reserved.outcome === 'skipped_total_cap') {
+          throw new TotalTrackedCapRejectedError();
+        }
+        if (reserved.outcome === 'skipped_ladder_cap') {
+          throw new LadderTrackedCapRejectedError();
+        }
+      } else {
+        const reserved = await reserveTotalTrackedCreate(tx, {
+          totalCap: this.config.totalTrackedPlayersHardCap,
+        });
+        if (reserved.outcome === 'skipped_total_cap') {
+          throw new TotalTrackedCapRejectedError();
+        }
+      }
+
+      try {
+        return await tx.trackedPlayer.create({
+          data: {
+            playerAccountId: input.playerAccountId,
+            provider: input.provider,
+            platformRoute: input.platformRoute,
+            enrollmentSource: input.enrollmentSource,
+            discoveryDepth: input.discoveryDepth,
+            status: 'ACTIVE',
+            priority: input.priority,
+            nextEligibleAt: new Date(),
+            consecutiveFailureCount: 0,
+          },
+        });
+      } catch (error: unknown) {
+        if (isUniqueViolation(error)) {
+          throw new AlreadyTrackedRollbackError();
+        }
+        throw error;
+      }
+    });
   }
 
   async setPlayerStatus(input: CollectorSetStatusInput): Promise<CollectorSetStatusResult> {

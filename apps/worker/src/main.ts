@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { Queue } from 'bullmq';
+import { RiotSharedCooldownStore } from '@league-helper/server-riot';
 import {
   CHAMPION_AGGREGATION_JOB_NAME,
   MATCH_INGESTION_JOB_NAME,
@@ -70,6 +71,7 @@ async function main(): Promise<void> {
         config: matchIngestionConfig,
         championAggregationQueue,
         championAggregationConfig,
+        sharedCooldown: new RiotSharedCooldownStore(connection),
       },
     });
 

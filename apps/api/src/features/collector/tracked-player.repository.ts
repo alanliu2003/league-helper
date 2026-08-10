@@ -59,7 +59,12 @@ export type SetTrackedPlayerStatusInput = {
 export type FinalizeSuccessInput = {
   trackedPlayerId: string;
   ownerToken: string;
-  minRefreshIntervalMs: number;
+  /** Delay until next eligibility (from activity refresh policy). */
+  nextEligibleDelayMs: number;
+  /** Absolute activity-tier priority (bounded by caller/config). */
+  priority: number;
+  /** Persisted successful zero-new streak after this finalize. */
+  consecutiveZeroNewMatchRuns: number;
 };
 
 export type FinalizeFailureInput = {
@@ -350,10 +355,22 @@ export class TrackedPlayerRepository {
 
   /**
    * Owner-protected success finalize. ACTIVE resets failures; PAUSED/SUSPENDED preserve them.
-   * Always clears only the owned lease and advances cadence via min refresh interval.
+   * Always clears only the owned lease and advances cadence via activity policy delay.
+   * Atomically persists priority + consecutiveZeroNewMatchRuns with success cadence.
    */
   async finalizeSuccess(input: FinalizeSuccessInput): Promise<OwnerProtectedUpdateResult> {
-    const interval = msIntervalLiteral(input.minRefreshIntervalMs);
+    const interval = msIntervalLiteral(input.nextEligibleDelayMs);
+    if (!Number.isInteger(input.priority)) {
+      throw new Error(`Invalid priority: ${input.priority}`);
+    }
+    if (
+      !Number.isInteger(input.consecutiveZeroNewMatchRuns) ||
+      input.consecutiveZeroNewMatchRuns < 0
+    ) {
+      throw new Error(
+        `Invalid consecutiveZeroNewMatchRuns: ${input.consecutiveZeroNewMatchRuns}`,
+      );
+    }
 
     const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string; status: TrackedPlayer['status'] }>>(
       `
@@ -363,14 +380,18 @@ export class TrackedPlayerRepository {
         "leaseExpiresAt" = NULL,
         "lastSuccessfulRefreshAt" = now(),
         "nextEligibleAt" = now() + ($1::text)::interval,
+        priority = $2::int,
+        "consecutiveZeroNewMatchRuns" = $3::int,
         "consecutiveFailureCount" = CASE WHEN status = 'ACTIVE' THEN 0 ELSE "consecutiveFailureCount" END,
         "lastFailureCode" = CASE WHEN status = 'ACTIVE' THEN NULL ELSE "lastFailureCode" END,
         "updatedAt" = now()
-      WHERE id = $2::text
-        AND "leaseOwner" = $3::text
+      WHERE id = $4::text
+        AND "leaseOwner" = $5::text
       RETURNING id, status
       `,
       interval,
+      input.priority,
+      input.consecutiveZeroNewMatchRuns,
       input.trackedPlayerId,
       input.ownerToken,
     );

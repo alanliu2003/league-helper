@@ -50,6 +50,7 @@ function tracked(
     leaseOwner: 'owner',
     leaseExpiresAt: new Date('2026-01-01T01:00:00.000Z'),
     consecutiveFailureCount: 0,
+    consecutiveZeroNewMatchRuns: 0,
     lastFailureCode: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -368,7 +369,7 @@ describe('PopulationCollectorService.runOnce', () => {
     expect(discovery.discoverAndEnqueue).toHaveBeenCalledTimes(1);
   });
 
-  it('rate limit on first started player drains unstarted wave peers without Riot', async () => {
+  it('rate limit on first started player drains unstarted wave peers via cooldown_skip', async () => {
     const p1 = tracked('tp-rl-1');
     const p2 = tracked('tp-rl-2');
     const p3 = tracked('tp-rl-3');
@@ -406,7 +407,7 @@ describe('PopulationCollectorService.runOnce', () => {
       expect(discovery.discoverAndEnqueue).toHaveBeenCalledTimes(2);
     });
 
-    // Rate-limit resolves first so the free worker drains p3 without Riot.
+    // Rate-limit resolves first so the free worker drains p3 without Riot / without finalizeFailure.
     releaseFirst?.({
       ok: false,
       discoveredMatchCount: 0,
@@ -420,10 +421,9 @@ describe('PopulationCollectorService.runOnce', () => {
     });
 
     await vi.waitFor(() => {
-      expect(trackedPlayers.finalizeFailure).toHaveBeenCalledWith(
+      expect(trackedPlayers.releaseOwnedLease).toHaveBeenCalledWith(
         expect.objectContaining({
           trackedPlayerId: p3.id,
-          failureCode: 'RATE_LIMITED',
         }),
       );
     });
@@ -434,13 +434,121 @@ describe('PopulationCollectorService.runOnce', () => {
     const result = await runPromise;
     expect(result.status).toBe('PARTIAL');
     expect(result.counters.rateLimitStops).toBe(1);
-    expect(result.counters.playersFailed).toBeGreaterThanOrEqual(2);
+    // p1 rate-limited failure (+ optional p2 success); p3 is cooldown_skip (not attempted/failed).
+    expect(result.counters.playersClaimed).toBe(3);
+    expect(result.counters.playersAttempted).toBe(2);
+    expect(result.counters.playersFailed).toBe(1);
+    expect(trackedPlayers.finalizeFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trackedPlayerId: p1.id,
+        failureCode: 'RATE_LIMITED',
+      }),
+    );
+    expect(trackedPlayers.finalizeFailure).not.toHaveBeenCalledWith(
+      expect.objectContaining({ trackedPlayerId: p3.id }),
+    );
     expect(discovery.discoverAndEnqueue).toHaveBeenCalledTimes(2);
     expect(
       discovery.discoverAndEnqueue.mock.calls.map(
         (call) => (call[0] as { playerAccountId: string }).playerAccountId,
       ),
     ).not.toContain(p3.playerAccountId);
+  });
+
+  it('shared cooldown preflight skips claims without rateLimitStops', async () => {
+    const sharedCooldown = {
+      isCoolingDown: vi.fn().mockResolvedValue(true),
+      extendCooldown: vi.fn(),
+    };
+    service = PopulationCollectorService.create({
+      trackedPlayers: trackedPlayers as unknown as TrackedPlayerRepository,
+      runs: runs as unknown as CollectorRunRepository,
+      discovery: discovery as unknown as PlayerMatchDiscoveryService,
+      eligibility: eligibility as unknown as CollectorEligibilityService,
+      playerAccounts: playerAccounts as unknown as PlayerAccountRepository,
+      config: baseConfig(),
+      sharedCooldown: sharedCooldown as never,
+    });
+
+    const result = await service.runOnce(defaultInput);
+    expect(result.status).toBe('COMPLETED');
+    expect(result.counters.playersClaimed).toBe(0);
+    expect(result.counters.rateLimitStops).toBe(0);
+    expect(trackedPlayers.claimEligibleWave).not.toHaveBeenCalled();
+    expect(sharedCooldown.extendCooldown).not.toHaveBeenCalled();
+  });
+
+  it('discovery 429 publishes shared cooldown with retryAfterMs', async () => {
+    const sharedCooldown = {
+      isCoolingDown: vi.fn().mockResolvedValue(false),
+      extendCooldown: vi.fn().mockResolvedValue({
+        cooldownUntil: Date.now() + 60_000,
+        extended: true,
+        previousCooldownUntil: null,
+      }),
+    };
+    service = PopulationCollectorService.create({
+      trackedPlayers: trackedPlayers as unknown as TrackedPlayerRepository,
+      runs: runs as unknown as CollectorRunRepository,
+      discovery: discovery as unknown as PlayerMatchDiscoveryService,
+      eligibility: eligibility as unknown as CollectorEligibilityService,
+      playerAccounts: playerAccounts as unknown as PlayerAccountRepository,
+      config: baseConfig({ riotShared429CooldownMinMs: 15 * 60_000 }),
+      sharedCooldown: sharedCooldown as never,
+    });
+    trackedPlayers.claimEligibleWave
+      .mockResolvedValueOnce([tracked('tp-1')])
+      .mockResolvedValueOnce([]);
+    discovery.discoverAndEnqueue.mockResolvedValueOnce({
+      ok: false,
+      discoveredMatchCount: 0,
+      enqueuedCount: 0,
+      skippedAlreadyCompleteCount: 0,
+      externalMatchIds: [],
+      warnings: [],
+      normalizedFailureCode: 'RATE_LIMITED',
+      rateLimited: true,
+      retryAfterMs: 45_000,
+    });
+
+    const result = await service.runOnce({ ...defaultInput, concurrency: 1 });
+    expect(result.counters.rateLimitStops).toBe(1);
+    expect(sharedCooldown.extendCooldown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        configuredFloorMs: 15 * 60_000,
+        retryAfterMs: 45_000,
+        source: 'collector',
+      }),
+    );
+  });
+
+  it('resume after shared cooldown expires allows claims', async () => {
+    const sharedCooldown = {
+      isCoolingDown: vi
+        .fn()
+        .mockResolvedValueOnce(true)
+        .mockResolvedValue(false),
+      extendCooldown: vi.fn(),
+    };
+    service = PopulationCollectorService.create({
+      trackedPlayers: trackedPlayers as unknown as TrackedPlayerRepository,
+      runs: runs as unknown as CollectorRunRepository,
+      discovery: discovery as unknown as PlayerMatchDiscoveryService,
+      eligibility: eligibility as unknown as CollectorEligibilityService,
+      playerAccounts: playerAccounts as unknown as PlayerAccountRepository,
+      config: baseConfig(),
+      sharedCooldown: sharedCooldown as never,
+    });
+
+    const skipped = await service.runOnce(defaultInput);
+    expect(skipped.counters.playersClaimed).toBe(0);
+    expect(trackedPlayers.claimEligibleWave).not.toHaveBeenCalled();
+
+    trackedPlayers.claimEligibleWave.mockResolvedValueOnce([tracked('tp-resume')]).mockResolvedValueOnce([]);
+    discovery.discoverAndEnqueue.mockResolvedValueOnce(okDiscovery());
+    const resumed = await service.runOnce(defaultInput);
+    expect(resumed.counters.playersSucceeded).toBe(1);
+    expect(trackedPlayers.claimEligibleWave).toHaveBeenCalled();
   });
 
   it('processes wave players in parallel when concurrency≥2', async () => {
@@ -652,17 +760,155 @@ describe('PopulationCollectorService.runOnce', () => {
     });
   });
 
-  it('status-aware success finalization uses finalizeSuccess', async () => {
+  it('status-aware success finalization uses finalizeSuccess with activity policy', async () => {
     trackedPlayers.claimEligibleWave
       .mockResolvedValueOnce([tracked('tp-1')])
       .mockResolvedValueOnce([]);
+    // default okDiscovery enqueues 2 → HOT
     await service.runOnce(defaultInput);
+    const cfg = baseConfig();
     expect(trackedPlayers.finalizeSuccess).toHaveBeenCalledWith(
       expect.objectContaining({
         trackedPlayerId: 'tp-1',
-        minRefreshIntervalMs: baseConfig().minRefreshIntervalMs,
+        nextEligibleDelayMs: cfg.hotRefreshIntervalMs,
+        priority: cfg.hotPriority,
+        consecutiveZeroNewMatchRuns: 0,
       }),
     );
+  });
+
+  it('20 discovered / 1 newly enqueued → HOT success finalize', async () => {
+    trackedPlayers.claimEligibleWave
+      .mockResolvedValueOnce([tracked('tp-hot')])
+      .mockResolvedValueOnce([]);
+    discovery.discoverAndEnqueue.mockResolvedValueOnce(
+      okDiscovery({
+        discoveredMatchCount: 20,
+        enqueuedCount: 1,
+        skippedAlreadyCompleteCount: 19,
+      }),
+    );
+    await service.runOnce(defaultInput);
+    expect(trackedPlayers.finalizeSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nextEligibleDelayMs: baseConfig().hotRefreshIntervalMs,
+        priority: baseConfig().hotPriority,
+        consecutiveZeroNewMatchRuns: 0,
+      }),
+    );
+  });
+
+  it('20 discovered / 0 newly enqueued (already complete) → WARM zero-new success', async () => {
+    trackedPlayers.claimEligibleWave
+      .mockResolvedValueOnce([tracked('tp-warm', { consecutiveZeroNewMatchRuns: 0 })])
+      .mockResolvedValueOnce([]);
+    discovery.discoverAndEnqueue.mockResolvedValueOnce(
+      okDiscovery({
+        discoveredMatchCount: 20,
+        enqueuedCount: 0,
+        skippedAlreadyCompleteCount: 20,
+      }),
+    );
+    await service.runOnce(defaultInput);
+    expect(trackedPlayers.finalizeSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nextEligibleDelayMs: baseConfig().warmRefreshIntervalMs,
+        priority: baseConfig().warmPriority,
+        consecutiveZeroNewMatchRuns: 1,
+      }),
+    );
+  });
+
+  it('already queued/deduped (0 enqueued) → zero-new success, not HOT', async () => {
+    trackedPlayers.claimEligibleWave
+      .mockResolvedValueOnce([tracked('tp-dedup')])
+      .mockResolvedValueOnce([]);
+    discovery.discoverAndEnqueue.mockResolvedValueOnce(
+      okDiscovery({
+        discoveredMatchCount: 20,
+        enqueuedCount: 0,
+        skippedAlreadyCompleteCount: 0,
+      }),
+    );
+    await service.runOnce(defaultInput);
+    expect(trackedPlayers.finalizeSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consecutiveZeroNewMatchRuns: 1,
+        priority: baseConfig().warmPriority,
+      }),
+    );
+  });
+
+  it('0 discovered → zero-new success', async () => {
+    trackedPlayers.claimEligibleWave
+      .mockResolvedValueOnce([tracked('tp-empty')])
+      .mockResolvedValueOnce([]);
+    discovery.discoverAndEnqueue.mockResolvedValueOnce(
+      okDiscovery({
+        discoveredMatchCount: 0,
+        enqueuedCount: 0,
+        skippedAlreadyCompleteCount: 0,
+        externalMatchIds: [],
+      }),
+    );
+    await service.runOnce(defaultInput);
+    expect(trackedPlayers.finalizeSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consecutiveZeroNewMatchRuns: 1,
+        nextEligibleDelayMs: baseConfig().warmRefreshIntervalMs,
+      }),
+    );
+  });
+
+  it('threshold consecutive zero-new successes → COLD finalize', async () => {
+    trackedPlayers.claimEligibleWave
+      .mockResolvedValueOnce([
+        tracked('tp-cold', { consecutiveZeroNewMatchRuns: 2 }),
+      ])
+      .mockResolvedValueOnce([]);
+    discovery.discoverAndEnqueue.mockResolvedValueOnce(
+      okDiscovery({ discoveredMatchCount: 5, enqueuedCount: 0 }),
+    );
+    await service.runOnce(defaultInput);
+    expect(trackedPlayers.finalizeSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nextEligibleDelayMs: baseConfig().coldRefreshIntervalMs,
+        priority: baseConfig().coldPriority,
+        consecutiveZeroNewMatchRuns: 3,
+      }),
+    );
+  });
+
+  it('rejects runtime warm override that breaks HOT < WARM < COLD', async () => {
+    await expect(
+      service.runOnce({
+        ...defaultInput,
+        config: {
+          // Equal to default hot (1h) → violates HOT < WARM
+          minRefreshIntervalMs: baseConfig().hotRefreshIntervalMs,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_REFRESH_INTERVALS' });
+    expect(trackedPlayers.claimEligibleWave).not.toHaveBeenCalled();
+  });
+
+  it('failure path does not call finalizeSuccess / activity policy', async () => {
+    trackedPlayers.claimEligibleWave
+      .mockResolvedValueOnce([tracked('tp-fail')])
+      .mockResolvedValueOnce([]);
+    discovery.discoverAndEnqueue.mockResolvedValueOnce({
+      ok: false,
+      playerAccountId: accountUuid('acc'),
+      discoveredMatchCount: 0,
+      enqueuedCount: 0,
+      skippedAlreadyCompleteCount: 0,
+      externalMatchIds: [],
+      warnings: [],
+      normalizedFailureCode: 'DISCOVERY_FAILED',
+    });
+    await service.runOnce(defaultInput);
+    expect(trackedPlayers.finalizeSuccess).not.toHaveBeenCalled();
+    expect(trackedPlayers.finalizeFailure).toHaveBeenCalled();
   });
 
   it('preview delegates to eligibility without creating a run', async () => {

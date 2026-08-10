@@ -1,8 +1,21 @@
 import { z } from 'zod';
-import { parsePlatformRoute, ValidationFailureError } from '@league-helper/shared';
-import { loadCollectorConfig, type CollectorConfig } from './collector.config';
+import {
+  RankDivisionSchema,
+  RankTierSchema,
+  parsePlatformRoute,
+  ValidationFailureError,
+  type RankTier,
+} from '@league-helper/shared';
+import {
+  LADDER_APEX_TIERS_ALLOWLIST,
+  LADDER_REPRESENTATIVE_TIERS_ALLOWLIST,
+  loadCollectorConfig,
+  type CollectorConfig,
+} from './collector.config';
 import type {
   CollectorAuditCliArgs,
+  CollectorCoverageCliArgs,
+  CollectorLadderSeedCliArgs,
   CollectorRunCliArgs,
   CollectorSchedulerCliArgs,
   CollectorSchedulerStatusCliArgs,
@@ -12,6 +25,12 @@ import type {
   CollectorSetStatusCliArgs,
   CollectorStatusCliArgs,
 } from './collector.types';
+
+/** Apex CLI tiers: config defaults plus optional MASTER when explicitly requested. */
+const LADDER_SEED_APEX_TIERS = [
+  ...LADDER_APEX_TIERS_ALLOWLIST,
+  'MASTER',
+] as const satisfies readonly RankTier[];
 
 export const SEED_FILE_MAX_PLAYERS = 25;
 
@@ -61,6 +80,8 @@ const RUN_KNOWN_FLAGS = new Set([
 
 const STATUS_KNOWN_FLAGS = new Set(['--platform', '--queue', '--json', '--help']);
 
+const COVERAGE_KNOWN_FLAGS = new Set(['--platform', '--queue', '--json', '--help']);
+
 const AUDIT_KNOWN_FLAGS = new Set(['--json', '--help']);
 
 const SCHEDULER_KNOWN_FLAGS = new Set(['--help']);
@@ -68,6 +89,18 @@ const SCHEDULER_KNOWN_FLAGS = new Set(['--help']);
 const SCHEDULER_TRIGGER_KNOWN_FLAGS = new Set(['--json', '--help']);
 
 const SCHEDULER_STATUS_KNOWN_FLAGS = new Set(['--json', '--help']);
+
+const LADDER_SEED_KNOWN_FLAGS = new Set([
+  '--platform',
+  '--mode',
+  '--tiers',
+  '--division',
+  '--page',
+  '--max-pages-per-division',
+  '--dry-run',
+  '--json',
+  '--help',
+]);
 
 const STATUS_VALUES = new Set(['ACTIVE', 'PAUSED', 'SUSPENDED']);
 
@@ -363,6 +396,44 @@ export function parseCollectorStatusArgs(
   };
 }
 
+export function parseCollectorCoverageArgs(
+  argv: string[],
+  config: CollectorConfig = loadCollectorConfig({}),
+): CollectorCoverageCliArgs {
+  if (hasFlag(argv, '--help')) {
+    return {
+      help: true,
+      queueId: 420,
+      json: hasFlag(argv, '--json'),
+    };
+  }
+
+  assertKnownFlags(argv, COVERAGE_KNOWN_FLAGS);
+
+  const platformRaw = readFlagValue(argv, '--platform');
+  let platformFilter: string | undefined;
+  if (platformRaw !== undefined) {
+    platformFilter = parsePlatformRoute(platformRaw);
+    if (!config.platformAllowlist.includes(platformFilter)) {
+      throw new ValidationFailureError(
+        `--platform ${platformFilter} is outside COLLECTOR_PLATFORM_ALLOWLIST.`,
+        { received: platformRaw },
+      );
+    }
+  }
+
+  return {
+    help: false,
+    ...(platformFilter !== undefined ? { platformFilter } : {}),
+    queueId: parsePositiveIntFlag(readFlagValue(argv, '--queue'), 420, {
+      min: 0,
+      max: 1_000_000,
+      name: '--queue',
+    }),
+    json: hasFlag(argv, '--json'),
+  };
+}
+
 export function parseCollectorAuditArgs(argv: string[]): CollectorAuditCliArgs {
   if (hasFlag(argv, '--help')) {
     return {
@@ -422,5 +493,183 @@ export function parseCollectorSchedulerStatusArgs(
   return {
     help: false,
     json: hasFlag(argv, '--json'),
+  };
+}
+
+function parseTierCsv(
+  raw: string | undefined,
+  allowed: readonly RankTier[],
+  fallback: RankTier[],
+  flagName: string,
+): RankTier[] {
+  const source = raw ?? fallback.join(',');
+  const parts = source
+    .split(',')
+    .map((part) => part.trim().toUpperCase())
+    .filter((part) => part.length > 0);
+  if (parts.length === 0) {
+    throw new ValidationFailureError(`${flagName} must include at least one tier.`);
+  }
+
+  const allowedSet = new Set<string>(allowed);
+  const tiers: RankTier[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    const parsed = RankTierSchema.safeParse(part);
+    if (!parsed.success || !allowedSet.has(parsed.data)) {
+      throw new ValidationFailureError(
+        `${flagName} contains unsupported tier "${part}". Allowed: ${allowed.join(', ')}.`,
+        { received: part },
+      );
+    }
+    if (seen.has(parsed.data)) {
+      continue;
+    }
+    seen.add(parsed.data);
+    tiers.push(parsed.data);
+  }
+  return tiers;
+}
+
+/**
+ * Ladder seed CLI args.
+ *
+ * Apex: `--tiers` defaults to config ladderTiers (CHALLENGER,GRANDMASTER).
+ * MASTER is allowed only when explicitly listed in `--tiers`.
+ *
+ * Representative: requires bounded page selection via `--division` + `--page`
+ * OR `--max-pages-per-division` (capped by config hard max). Division defaults
+ * to I when only max-pages is provided.
+ */
+export function parseCollectorLadderSeedArgs(
+  argv: string[],
+  config: CollectorConfig = loadCollectorConfig({}),
+): CollectorLadderSeedCliArgs {
+  if (hasFlag(argv, '--help')) {
+    return {
+      help: true,
+      platform: config.ladderPlatform ?? config.platformAllowlist[0] ?? 'na1',
+      mode: 'apex',
+      tiers: [...config.ladderTiers],
+      dryRun: hasFlag(argv, '--dry-run'),
+      json: hasFlag(argv, '--json'),
+    };
+  }
+
+  assertKnownFlags(argv, LADDER_SEED_KNOWN_FLAGS);
+
+  const platformRaw = readFlagValue(argv, '--platform');
+  if (!platformRaw) {
+    throw new ValidationFailureError('--platform is required.');
+  }
+  const platform = parsePlatformRoute(platformRaw);
+  if (!config.platformAllowlist.includes(platform)) {
+    throw new ValidationFailureError(
+      `--platform ${platform} is outside COLLECTOR_PLATFORM_ALLOWLIST.`,
+      { received: platformRaw },
+    );
+  }
+  if (config.ladderPlatform != null && platform !== config.ladderPlatform) {
+    throw new ValidationFailureError(
+      `--platform ${platform} is outside COLLECTOR_LADDER_PLATFORM (${config.ladderPlatform}).`,
+      { received: platformRaw },
+    );
+  }
+
+  const modeRaw = (readFlagValue(argv, '--mode') ?? 'apex').toLowerCase();
+  if (modeRaw !== 'apex' && modeRaw !== 'representative') {
+    throw new ValidationFailureError('--mode must be apex or representative.', {
+      received: modeRaw,
+    });
+  }
+  const mode = modeRaw as CollectorLadderSeedCliArgs['mode'];
+
+  const tiersRaw = readFlagValue(argv, '--tiers');
+  const tiers =
+    mode === 'apex'
+      ? parseTierCsv(tiersRaw, LADDER_SEED_APEX_TIERS, config.ladderTiers, '--tiers')
+      : parseTierCsv(
+          tiersRaw,
+          LADDER_REPRESENTATIVE_TIERS_ALLOWLIST,
+          config.ladderRepresentativeTiers,
+          '--tiers',
+        );
+
+  if (mode === 'apex' && tiers.includes('MASTER') && tiersRaw === undefined) {
+    throw new ValidationFailureError(
+      'MASTER must be explicitly listed in --tiers (not selected via config defaults alone).',
+    );
+  }
+
+  const divisionRaw = readFlagValue(argv, '--division');
+  const pageRaw = readFlagValue(argv, '--page');
+  const maxPagesRaw = readFlagValue(argv, '--max-pages-per-division');
+
+  let division: CollectorLadderSeedCliArgs['division'] | undefined;
+  let page: number | undefined;
+  let maxPagesPerDivision: number | undefined;
+
+  if (mode === 'representative') {
+    if (pageRaw !== undefined && maxPagesRaw !== undefined) {
+      throw new ValidationFailureError(
+        '`--page` and `--max-pages-per-division` are mutually exclusive.',
+      );
+    }
+    if (pageRaw === undefined && maxPagesRaw === undefined) {
+      throw new ValidationFailureError(
+        'Representative mode requires `--division` + `--page` or `--max-pages-per-division`.',
+      );
+    }
+
+    if (pageRaw !== undefined) {
+      if (!divisionRaw) {
+        throw new ValidationFailureError('`--page` requires `--division`.');
+      }
+      const divisionParsed = RankDivisionSchema.safeParse(divisionRaw.toUpperCase());
+      if (!divisionParsed.success) {
+        throw new ValidationFailureError('--division must be one of I, II, III, IV.', {
+          received: divisionRaw,
+        });
+      }
+      division = divisionParsed.data;
+      page = parsePositiveIntFlag(pageRaw, 1, {
+        min: 1,
+        max: config.ladderMaxPagesPerTierDivision,
+        name: '--page',
+      });
+    } else {
+      if (divisionRaw) {
+        const divisionParsed = RankDivisionSchema.safeParse(divisionRaw.toUpperCase());
+        if (!divisionParsed.success) {
+          throw new ValidationFailureError('--division must be one of I, II, III, IV.', {
+            received: divisionRaw,
+          });
+        }
+        division = divisionParsed.data;
+      } else {
+        division = 'I';
+      }
+      maxPagesPerDivision = parsePositiveIntFlag(maxPagesRaw, 1, {
+        min: 1,
+        max: config.ladderMaxPagesPerTierDivision,
+        name: '--max-pages-per-division',
+      });
+    }
+  } else if (divisionRaw !== undefined || pageRaw !== undefined || maxPagesRaw !== undefined) {
+    throw new ValidationFailureError(
+      '`--division` / `--page` / `--max-pages-per-division` are only valid with --mode representative.',
+    );
+  }
+
+  return {
+    help: false,
+    platform,
+    mode,
+    tiers,
+    dryRun: hasFlag(argv, '--dry-run'),
+    json: hasFlag(argv, '--json'),
+    ...(division !== undefined ? { division } : {}),
+    ...(page !== undefined ? { page } : {}),
+    ...(maxPagesPerDivision !== undefined ? { maxPagesPerDivision } : {}),
   };
 }

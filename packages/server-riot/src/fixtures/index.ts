@@ -3,10 +3,15 @@ import type {
   RiotAccountDto,
   RiotChampionMasteryDto,
   RiotLeagueEntryDto,
+  RiotLeagueItemDto,
+  RiotLeagueListDto,
   RiotMatchDto,
   RiotMatchTimelineDto,
   RiotSummonerDto,
 } from '../riot-api.schemas';
+
+/** Official league-v4 Ranked Solo/Duo queue string (not match queueId 420). */
+const FIXTURE_LEAGUE_QUEUE_RANKED_SOLO = 'RANKED_SOLO_5x5';
 
 export const FAKE_PUUID = 'fake-puuid-000000000000000000000000000000000000000000000000000000000000';
 export const FAKE_SUMMONER_ID = 'fake-summoner-id-aaaaaaaaaaaaaaaaaaaaaa';
@@ -86,6 +91,104 @@ export function mockLeagueEntriesDto(): RiotLeagueEntryDto[] {
 
 export function mockEmptyLeagueEntriesDto(): RiotLeagueEntryDto[] {
   return [];
+}
+
+function mockLeagueItemDto(
+  overrides: Partial<RiotLeagueItemDto> & { puuid?: string } = {},
+): RiotLeagueItemDto {
+  return {
+    puuid: overrides.puuid ?? FAKE_PUUID,
+    rank: 'I',
+    leaguePoints: 500,
+    wins: 100,
+    losses: 80,
+    hotStreak: false,
+    veteran: false,
+    freshBlood: false,
+    inactive: false,
+    ...overrides,
+  };
+}
+
+/** Verified apex LeagueListDTO shape (challenger/grandmaster/master by-queue). */
+export function mockChallengerLeagueListDto(
+  overrides: Partial<RiotLeagueListDto> = {},
+): RiotLeagueListDto {
+  return {
+    leagueId: 'fake-challenger-league-id',
+    tier: 'CHALLENGER',
+    name: "Fake Challenger's League",
+    queue: FIXTURE_LEAGUE_QUEUE_RANKED_SOLO,
+    entries: [
+      mockLeagueItemDto({ puuid: FAKE_PUUID, leaguePoints: 1200 }),
+      mockLeagueItemDto({ puuid: `${FAKE_PUUID}-c2`, leaguePoints: 1100 }),
+    ],
+    ...overrides,
+  };
+}
+
+export function mockGrandmasterLeagueListDto(
+  overrides: Partial<RiotLeagueListDto> = {},
+): RiotLeagueListDto {
+  return {
+    leagueId: 'fake-grandmaster-league-id',
+    tier: 'GRANDMASTER',
+    name: "Fake Grandmaster's League",
+    queue: FIXTURE_LEAGUE_QUEUE_RANKED_SOLO,
+    entries: [mockLeagueItemDto({ puuid: `${FAKE_PUUID}-gm1`, leaguePoints: 400 })],
+    ...overrides,
+  };
+}
+
+export function mockMasterLeagueListDto(
+  overrides: Partial<RiotLeagueListDto> = {},
+): RiotLeagueListDto {
+  return {
+    leagueId: 'fake-master-league-id',
+    tier: 'MASTER',
+    name: "Fake Master's League",
+    queue: FIXTURE_LEAGUE_QUEUE_RANKED_SOLO,
+    entries: [mockLeagueItemDto({ puuid: `${FAKE_PUUID}-m1`, leaguePoints: 100 })],
+    ...overrides,
+  };
+}
+
+/** Verified paginated LeagueEntryDTO[] page (queue/tier/division entries). */
+export function mockLeagueEntriesPageDto(
+  overrides: { tier?: string; rank?: string; puuid?: string } = {},
+): RiotLeagueEntryDto[] {
+  const tier = overrides.tier ?? 'DIAMOND';
+  const rank = overrides.rank ?? 'I';
+  return [
+    {
+      leagueId: 'fake-page-league-id',
+      queueType: FIXTURE_LEAGUE_QUEUE_RANKED_SOLO,
+      tier,
+      rank,
+      puuid: overrides.puuid ?? `${FAKE_PUUID}-page-1`,
+      leaguePoints: 75,
+      wins: 50,
+      losses: 45,
+      hotStreak: false,
+      veteran: false,
+      freshBlood: true,
+      inactive: false,
+    },
+    {
+      leagueId: 'fake-page-league-id',
+      queueType: FIXTURE_LEAGUE_QUEUE_RANKED_SOLO,
+      tier,
+      rank,
+      puuid: `${FAKE_PUUID}-page-2`,
+      leaguePoints: 60,
+      wins: 40,
+      losses: 42,
+      hotStreak: true,
+      veteran: false,
+      freshBlood: false,
+      inactive: false,
+    },
+  ];
 }
 
 export function mockMatchIdList(): string[] {

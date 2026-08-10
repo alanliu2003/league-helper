@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient, type TrackedPlayer } from '@prisma/client';
 
 export type QuotaRejectionReason =
+  | 'total_cap'
   | 'population_cap'
   | 'run_cap'
   | 'source_cap'
@@ -34,6 +35,9 @@ export type ReserveAndCreateInput = {
   /** When set and run exists → attributed path; missing run → un-attributed. */
   sourceCollectorRunId?: string | null;
   sourceTrackedPlayerId: string;
+  /** Global TrackedPlayer hard cap (all enrollment sources). */
+  totalCap: number;
+  /** Autonomous MATCH_PARTICIPANT population budget cap. */
   globalCap: number;
   runCap: number;
   sourceCap: number;
@@ -43,7 +47,11 @@ export type ReserveAndCreateResult =
   | { outcome: 'created'; trackedPlayer: TrackedPlayer; attributed: boolean }
   | { outcome: 'already_tracked'; trackedPlayer: TrackedPlayer }
   | {
-      outcome: 'skipped_population_cap' | 'skipped_run_cap' | 'skipped_source_cap';
+      outcome:
+        | 'skipped_total_cap'
+        | 'skipped_population_cap'
+        | 'skipped_run_cap'
+        | 'skipped_source_cap';
     };
 
 function isUniqueViolation(error: unknown): boolean {
@@ -53,13 +61,41 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /**
+ * Ensure CollectorTrackedPlayerBudget singleton exists (fail-closed after ensure).
+ * Mirrors apps/api ladder-enrollment.budget ensureTrackedPlayerBudgetSingleton.
+ */
+export async function ensureTrackedPlayerBudgetSingleton(
+  prisma: PrismaClient | Prisma.TransactionClient,
+): Promise<void> {
+  await prisma.$executeRaw`
+    INSERT INTO "CollectorTrackedPlayerBudget" (id, "trackedPlayerCount", "ladderEnrolledCount", "createdAt", "updatedAt")
+    SELECT
+      'singleton',
+      (SELECT COUNT(*)::int FROM "TrackedPlayer"),
+      (SELECT COUNT(*)::int FROM "TrackedPlayer" WHERE "enrollmentSource" = 'LADDER'),
+      now(),
+      now()
+    ON CONFLICT (id) DO NOTHING
+  `;
+
+  const row = await prisma.collectorTrackedPlayerBudget.findUnique({
+    where: { id: 'singleton' },
+    select: { id: true },
+  });
+  if (!row) {
+    throw new Error('CollectorTrackedPlayerBudget singleton row is missing.');
+  }
+}
+
+/**
  * Race-safe reservation + TrackedPlayer create for MATCH_PARTICIPANT.
  *
  * Lock/reservation order (deadlock-safe):
- * 1. CollectorPopulationBudget
- * 2. CollectorRun (attributed only)
- * 3. CollectorRunSourceQuota (attributed only)
- * 4. TrackedPlayer INSERT
+ * 1. CollectorTrackedPlayerBudget (total hard cap)
+ * 2. CollectorPopulationBudget
+ * 3. CollectorRun (attributed only)
+ * 4. CollectorRunSourceQuota (attributed only)
+ * 5. TrackedPlayer INSERT
  *
  * Unique races MUST throw inside the transaction so prior reservations roll back.
  */
@@ -70,6 +106,11 @@ export async function reserveAndCreateTrackedParticipant(
   if (!Number.isInteger(input.discoveryDepth) || input.discoveryDepth < 0) {
     throw new Error(`Invalid discoveryDepth: ${input.discoveryDepth}`);
   }
+  if (!Number.isInteger(input.totalCap) || input.totalCap < 0) {
+    throw new Error(`Invalid totalCap: ${input.totalCap}`);
+  }
+
+  await ensureTrackedPlayerBudgetSingleton(prisma);
 
   let attributed = false;
   if (input.sourceCollectorRunId) {
@@ -100,6 +141,9 @@ export async function reserveAndCreateTrackedParticipant(
       return { outcome: 'already_tracked', trackedPlayer: existing };
     }
     if (error instanceof QuotaRejectedError) {
+      if (error.reason === 'total_cap') {
+        return { outcome: 'skipped_total_cap' };
+      }
       if (error.reason === 'population_cap') {
         return { outcome: 'skipped_population_cap' };
       }
@@ -120,7 +164,21 @@ async function executeReservationTransaction(
   attributed: boolean,
 ): Promise<Extract<ReserveAndCreateResult, { outcome: 'created' }>> {
   const trackedPlayer = await prisma.$transaction(async (tx) => {
-    // A) global autonomous budget
+    // A) global TrackedPlayer hard cap (all sources)
+    const totalRows = await tx.$queryRaw<Array<{ id: string }>>`
+      UPDATE "CollectorTrackedPlayerBudget"
+      SET
+        "trackedPlayerCount" = "trackedPlayerCount" + 1,
+        "updatedAt" = now()
+      WHERE id = 'singleton'
+        AND "trackedPlayerCount" < ${input.totalCap}
+      RETURNING id
+    `;
+    if (totalRows.length === 0) {
+      throw new QuotaRejectedError('total_cap');
+    }
+
+    // B) global autonomous MATCH_PARTICIPANT budget
     const budgetRows = await tx.$queryRaw<Array<{ id: string }>>`
       UPDATE "CollectorPopulationBudget"
       SET
@@ -135,7 +193,7 @@ async function executeReservationTransaction(
     }
 
     if (attributed && input.sourceCollectorRunId) {
-      // B) per-run reservation
+      // C) per-run reservation
       const runRows = await tx.$queryRaw<Array<{ id: string }>>`
         UPDATE "CollectorRun"
         SET
@@ -156,7 +214,7 @@ async function executeReservationTransaction(
         throw new QuotaRejectedError('run_cap');
       }
 
-      // C) per-source-per-run reservation
+      // D) per-source-per-run reservation
       await tx.$executeRaw`
         INSERT INTO "CollectorRunSourceQuota" (
           id,
@@ -192,7 +250,7 @@ async function executeReservationTransaction(
       }
     }
 
-    // D) TrackedPlayer INSERT — unique must throw to roll back reservations
+    // E) TrackedPlayer INSERT — unique must throw to roll back reservations
     try {
       return await tx.trackedPlayer.create({
         data: {

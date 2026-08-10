@@ -44,7 +44,7 @@ export type CollectorEnrollmentResult =
   | {
       ok: false;
       playerAccountId: string;
-      code: 'UNSUPPORTED_PLATFORM';
+      code: 'UNSUPPORTED_PLATFORM' | 'TOTAL_TRACKED_CAP' | 'LADDER_TRACKED_CAP';
       message: string;
       platformRoute: string;
     };
@@ -102,6 +102,7 @@ export type CollectorPreviewResult = {
     priority: number;
     nextEligibleAt: Date;
     lastSuccessfulRefreshAt: Date | null;
+    consecutiveZeroNewMatchRuns: number;
   }>;
   sampleDiscovery?: CollectorPreviewSampleDiscovery[];
 };
@@ -176,6 +177,21 @@ export type CollectorSeedCliArgs = {
   json: boolean;
 };
 
+export type CollectorLadderSeedCliArgs = {
+  platform: string;
+  mode: 'apex' | 'representative';
+  tiers: string[];
+  dryRun: boolean;
+  json: boolean;
+  /** Representative division (defaults to I when using max-pages). */
+  division?: 'I' | 'II' | 'III' | 'IV';
+  /** Representative: exact single page. */
+  page?: number;
+  /** Representative: pages 1..N (capped by config hard max). */
+  maxPagesPerDivision?: number;
+  help: boolean;
+};
+
 export type CollectorSetStatusCliArgs = {
   trackedPlayerId: string;
   status: TrackedPlayerStatus;
@@ -232,6 +248,155 @@ export type CollectorCoverageSnapshot = {
 export type CollectorCoverageSnapshotInput = {
   effectivePlatforms: string[];
   queueId: number;
+};
+
+/** Fixed density observability thresholds (not a second ranking floor). */
+export type CollectorCoverageDensityThresholds = {
+  gte1: 1;
+  gte30: 30;
+  gte100: 100;
+};
+
+export type CollectorCoverageDensityBuckets = {
+  championPositionKeysGte1: number;
+  championPositionKeysGte30: number;
+  championPositionKeysGte100: number;
+};
+
+export type CollectorCoveragePositionDensity = {
+  position: CollectorCoveragePosition;
+  gte1: number;
+  gte30: number;
+  gte100: number;
+  maxSampleSize: number;
+};
+
+export type CollectorCoverageCapSlot = {
+  used: number;
+  cap: number;
+  remaining: number;
+};
+
+export type CollectorCoverageTrackedPlayers = {
+  total: number;
+  byEnrollmentSource: Record<string, number>;
+  byPlatformRoute: Record<string, number>;
+  byDiscoveryDepth: Record<string, number>;
+  byStatus: Record<string, number>;
+};
+
+export type CollectorCoverageCapUsage = {
+  matchParticipant: CollectorCoverageCapSlot;
+  ladder: CollectorCoverageCapSlot;
+  totalTracked: CollectorCoverageCapSlot;
+};
+
+/**
+ * Persisted activity signals only. HOT/WARM/COLD at refresh time also need
+ * enqueuedNewCount, which is not stored on TrackedPlayer.
+ */
+export type CollectorCoverageActivitySignals = {
+  status: 'partial';
+  note: string;
+  coldAfterZeroNewRuns: number;
+  activePlayers: number;
+  neverSuccessfulRefresh: number;
+  zeroNewStreakAtOrAboveCold: number;
+  byConsecutiveZeroNewMatchRuns: Record<string, number>;
+};
+
+export type CollectorCoverageLadderRepresentation = {
+  status: 'available' | 'unavailable' | 'partial';
+  /** Latest RANKED_SOLO_5x5 RankSnapshot tier for enrollmentSource=LADDER roots. */
+  ladderPlayersByTier: Record<string, number> | null;
+  ladderPlayersMissingRankSnapshot: number | null;
+  /**
+   * Current-patch queue participant rows with rankTierAtIngestion set.
+   * Null when no semantic patch resolved or no tier observations exist.
+   */
+  currentPatchQueueParticipantObservationsByTier: Record<string, number> | null;
+  /**
+   * Match-level tier counts are ambiguous (participants may differ).
+   * Always unavailable with an explicit reason.
+   */
+  currentPatchQueueMatchesByTier: {
+    status: 'unavailable';
+    reason: string;
+  };
+  /** Exact rankTier ChampionAggregate keys (rankTier != ALL) with sampleSize >= 1. */
+  championPositionKeysByExactTierGte1: Record<string, number> | null;
+  reviewFlags: string[];
+  warning?: string;
+};
+
+export type CollectorCoverageClassicZero = {
+  /**
+   * Public Summoner's Rift roster from ChampionStaticData
+   * (excludes Jade Classic / non-public variants via publicChampionStaticWhere).
+   */
+  rosterSource: 'ChampionStaticData_public';
+  rosterNote: string;
+  status: 'available' | 'unavailable';
+  staticDataPatchVersion: string | null;
+  totalRosterChampions: number | null;
+  /** Champions with no qualifying current-patch q420 exact-position aggregate (sampleSize >= 1). */
+  championsWithZeroQualifyingCoverage: number | null;
+  warning?: string;
+};
+
+export type CollectorCoveragePlatformDetail = {
+  platform: string;
+  semanticPatch: string | null;
+  matchCounts: {
+    queueTotal: number;
+    currentPatchNormalized: number | null;
+  };
+  density: CollectorCoverageDensityBuckets;
+  byPosition: CollectorCoveragePositionDensity[];
+  sampleSizeHistogram: Array<{ bucket: string; count: number }>;
+  classicZero: CollectorCoverageClassicZero;
+  ladderRepresentation: CollectorCoverageLadderRepresentation;
+};
+
+export type CollectorCoverageChampionSection = {
+  densityThresholds: CollectorCoverageDensityThresholds;
+  /** Ranking floor from CHAMPION_AGGREGATION_MIN_SAMPLE — unchanged. */
+  minimumSampleRankingFloor: number;
+  nearFloorBand: { min: number; max: number };
+  sourceNormalizationVersion: string;
+  aggregationVersion: string;
+  positions: CollectorCoveragePosition[];
+  platforms: CollectorCoveragePlatformDetail[];
+};
+
+/** Focused read-only population / champion coverage report (Phase 4). */
+export type CollectorCoverageReport = {
+  ok: true;
+  mode: 'coverage';
+  generatedAt: string;
+  label: 'population_coverage_observability';
+  queueId: number;
+  effectivePlatforms: string[];
+  trackedPlayers: CollectorCoverageTrackedPlayers;
+  capUsage: CollectorCoverageCapUsage;
+  activitySignals: CollectorCoverageActivitySignals;
+  championCoverage: CollectorCoverageChampionSection;
+  /** Existing density snapshot shape (status/run reuse). */
+  densitySnapshot: CollectorCoverageSnapshot;
+  reviewFlags: string[];
+  warnings: string[];
+};
+
+export type CollectorCoverageReportInput = {
+  effectivePlatforms: string[];
+  queueId: number;
+};
+
+export type CollectorCoverageCliArgs = {
+  platformFilter?: string;
+  queueId: number;
+  json: boolean;
+  help: boolean;
 };
 
 export type CollectorStatusCliArgs = {

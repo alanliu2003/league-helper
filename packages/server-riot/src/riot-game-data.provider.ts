@@ -3,6 +3,7 @@ import {
   type GameDataProvider,
   type PlayerAccount,
   type PlatformRoute,
+  type RankDivision,
   type RankedEntry,
   type RegionalRoute,
   RankDivisionSchema,
@@ -19,6 +20,7 @@ import {
   RiotAccountDtoSchema,
   RiotChampionMasteryDtoArraySchema,
   RiotLeagueEntryDtoArraySchema,
+  RiotLeagueListDtoSchema,
   RiotMatchDtoSchema,
   RiotMatchIdListSchema,
   RiotMatchTimelineDtoSchema,
@@ -26,10 +28,23 @@ import {
   type RiotAccountDto,
   type RiotChampionMasteryDto,
   type RiotLeagueEntryDto,
+  type RiotLeagueListDto,
   type RiotMatchDto,
   type RiotMatchTimelineDto,
   type RiotSummonerDto,
 } from './riot-api.schemas';
+import {
+  RiotPaginatedLeagueTierSchema,
+  buildApexLeaguePath,
+  buildLeagueEntriesByTierDivisionPath,
+  mapLeagueEntriesToLadderCandidates,
+  mapLeagueListToLadderCandidates,
+  parseRiotLeagueQueueType,
+  type LadderCandidatesResult,
+  type LadderEntriesPageResult,
+  type RiotLeagueQueueType,
+  type RiotPaginatedLeagueTier,
+} from './riot-league-ladder';
 
 const MATCH_IDS_MAX_COUNT = 100;
 const MATCH_IDS_DEFAULT_COUNT = 20;
@@ -81,6 +96,56 @@ export class RiotGameDataProvider implements GameDataProvider {
       accountId: summoner.accountId ?? null,
       profileIconId: summoner.profileIconId ?? null,
       summonerLevel: summoner.summonerLevel ?? null,
+    };
+  }
+
+  /**
+   * Account-v1 by PUUID — resolves Riot ID for ladder enrollment without summoner-v4.
+   * Not part of GameDataProvider (collector ladder enrollment only).
+   */
+  async getAccountByPuuid(input: {
+    puuid: string;
+    platform: PlatformRoute;
+  }): Promise<PlayerAccount> {
+    const puuid = input.puuid.trim();
+    if (!puuid) {
+      throw new ValidationFailureError('puuid is required.');
+    }
+
+    const platform = parsePlatformRoute(input.platform);
+    const regionalRoute = getRegionalRouteForPlatform(platform);
+
+    const accountResult = await this.client.requestJson<RiotAccountDto>(
+      {
+        category: 'account-v1',
+        route: { kind: 'regional', regionalRoute },
+        path: `/riot/account/v1/accounts/by-puuid/${encodeURIComponent(puuid)}`,
+        resourceHint: 'account',
+      },
+      RiotAccountDtoSchema,
+    );
+
+    const account = accountResult.data;
+    if (!account.gameName || !account.tagLine) {
+      throw new ValidationFailureError(
+        'Account-v1 response is missing gameName or tagLine required for enrollment.',
+        {
+          hasGameName: Boolean(account.gameName),
+          hasTagLine: Boolean(account.tagLine),
+        },
+      );
+    }
+
+    return {
+      provider: 'RIOT',
+      externalAccountId: account.puuid,
+      riotId: parseRiotId({ gameName: account.gameName, tagLine: account.tagLine }),
+      platform,
+      regionalRoute,
+      summonerId: null,
+      accountId: null,
+      profileIconId: null,
+      summonerLevel: null,
     };
   }
 
@@ -201,6 +266,116 @@ export class RiotGameDataProvider implements GameDataProvider {
     );
 
     return result.data.map((entry) => mapChampionMastery(entry, player));
+  }
+
+  /**
+   * Apex ladder list — Challenger. One bounded Riot request; no page iteration.
+   * Not part of GameDataProvider (collector ladder acquisition only).
+   */
+  async getChallengerLeague(input: {
+    platform: PlatformRoute;
+    leagueQueueType: RiotLeagueQueueType | string;
+  }): Promise<LadderCandidatesResult> {
+    return this.fetchApexLeague('challenger', input);
+  }
+
+  /** Apex ladder list — Grandmaster. One bounded Riot request; no page iteration. */
+  async getGrandmasterLeague(input: {
+    platform: PlatformRoute;
+    leagueQueueType: RiotLeagueQueueType | string;
+  }): Promise<LadderCandidatesResult> {
+    return this.fetchApexLeague('grandmaster', input);
+  }
+
+  /** Apex ladder list — Master. One bounded Riot request; no page iteration. */
+  async getMasterLeague(input: {
+    platform: PlatformRoute;
+    leagueQueueType: RiotLeagueQueueType | string;
+  }): Promise<LadderCandidatesResult> {
+    return this.fetchApexLeague('master', input);
+  }
+
+  /**
+   * One page of paginated league entries for a tier/division.
+   * Phase 2 decides how many pages to request; this method never loops.
+   */
+  async getLeagueEntriesByTierDivision(input: {
+    platform: PlatformRoute;
+    leagueQueueType: RiotLeagueQueueType | string;
+    tier: RiotPaginatedLeagueTier | string;
+    division: RankDivision | string;
+    page: number;
+  }): Promise<LadderEntriesPageResult> {
+    const platform = parsePlatformRoute(input.platform);
+    const leagueQueueType = parseRiotLeagueQueueType(input.leagueQueueType);
+    const tierParsed = RiotPaginatedLeagueTierSchema.safeParse(input.tier);
+    if (!tierParsed.success) {
+      throw new ValidationFailureError(
+        'Paginated league entries require a documented non-apex tier (DIAMOND–IRON).',
+        { tier: input.tier },
+      );
+    }
+    const divisionParsed = RankDivisionSchema.safeParse(input.division);
+    if (!divisionParsed.success) {
+      throw new ValidationFailureError('Invalid league division.', { division: input.division });
+    }
+    if (!Number.isInteger(input.page) || input.page < 1) {
+      throw new ValidationFailureError('League entries page must be an integer >= 1.', {
+        page: input.page,
+      });
+    }
+
+    const result = await this.client.requestJson<RiotLeagueEntryDto[]>(
+      {
+        category: 'league-v4',
+        route: { kind: 'platform', platform },
+        path: buildLeagueEntriesByTierDivisionPath({
+          queue: leagueQueueType,
+          tier: tierParsed.data,
+          division: divisionParsed.data,
+        }),
+        query: { page: input.page },
+        resourceHint: 'ranked',
+      },
+      RiotLeagueEntryDtoArraySchema,
+    );
+
+    const mapped = mapLeagueEntriesToLadderCandidates({
+      entries: result.data,
+      platformRoute: platform,
+      acquisitionMode: 'REPRESENTATIVE',
+      page: input.page,
+    });
+
+    return {
+      ...mapped,
+      page: input.page,
+      pageExhausted: result.data.length === 0,
+    };
+  }
+
+  private async fetchApexLeague(
+    kind: 'challenger' | 'grandmaster' | 'master',
+    input: { platform: PlatformRoute; leagueQueueType: RiotLeagueQueueType | string },
+  ): Promise<LadderCandidatesResult> {
+    const platform = parsePlatformRoute(input.platform);
+    const leagueQueueType = parseRiotLeagueQueueType(input.leagueQueueType);
+
+    const result = await this.client.requestJson<RiotLeagueListDto>(
+      {
+        category: 'league-v4',
+        route: { kind: 'platform', platform },
+        path: buildApexLeaguePath(kind, leagueQueueType),
+        resourceHint: 'ranked',
+      },
+      RiotLeagueListDtoSchema,
+    );
+
+    return mapLeagueListToLadderCandidates({
+      list: result.data,
+      platformRoute: platform,
+      acquisitionMode: 'APEX',
+    });
   }
 }
 

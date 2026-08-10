@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  isSharedCooldownActive,
+  type RiotSharedCooldownStore,
+} from '@league-helper/server-riot';
 import { MatchIngestionProducer } from '../../queues/match-ingestion.producer';
 import {
   loadCollectorConfig,
@@ -7,6 +11,7 @@ import {
   type CollectorConfig,
 } from './collector.config';
 import { COLLECTOR_CONFIG } from './collector-enrollment.service';
+import { RIOT_SHARED_COOLDOWN_STORE } from './collector.tokens';
 import { isRateLimitedCollectorFailureCode } from './collector.failure-codes';
 import { CollectorSchedulerStateRepository } from './collector-scheduler-state.repository';
 import type { CollectorRunOnceResult, SchedulerTickResult } from './collector.types';
@@ -69,6 +74,9 @@ export class CollectorSchedulerService {
     @Inject(MatchIngestionProducer)
     private readonly matchIngestion: MatchIngestionProducer,
     @Optional() @Inject(COLLECTOR_CONFIG) config?: CollectorConfig,
+    @Optional()
+    @Inject(RIOT_SHARED_COOLDOWN_STORE)
+    private readonly sharedCooldown?: RiotSharedCooldownStore | null,
   ) {
     this.config = config ?? loadCollectorConfig(process.env);
   }
@@ -132,8 +140,24 @@ export class CollectorSchedulerService {
   private async runOwnedTick(owner: string): Promise<SchedulerTickResult> {
     let renewal: { stop: () => void } | undefined;
     try {
-      const state = await this.schedulerState.readState();
+      // After lease/ownership: shared Riot cooldown → local scheduler cooldown →
+      // queue backpressure → runOnce.
       const now = new Date();
+      if (this.sharedCooldown) {
+        const shared = await this.sharedCooldown.getCooldownState();
+        if (isSharedCooldownActive(shared.cooldownUntil, now.getTime())) {
+          const recorded = await this.schedulerState.recordOutcome(owner, 'SKIPPED_COOLDOWN');
+          if (!recorded) {
+            this.logger.error('Scheduler ownership lost while recording SKIPPED_COOLDOWN (shared)');
+          }
+          this.logger.log(
+            `Scheduler tick skipped: shared Riot cooldown until=${new Date(shared.cooldownUntil!).toISOString()} leaseRecorded=${recorded}`,
+          );
+          return { outcome: 'SKIPPED_COOLDOWN' };
+        }
+      }
+
+      const state = await this.schedulerState.readState();
       if (state?.cooldownUntil && state.cooldownUntil.getTime() > now.getTime()) {
         const recorded = await this.schedulerState.recordOutcome(owner, 'SKIPPED_COOLDOWN');
         if (!recorded) {
@@ -245,8 +269,7 @@ export class CollectorSchedulerService {
     }
 
     if (wasRateLimited(run)) {
-      // CollectorRunOnceResult does not expose observed Retry-After; use configured cooldown only.
-      const cooldownUntil = new Date(Date.now() + this.config.schedulerRateLimitCooldownMs);
+      const cooldownUntil = await this.resolveLocalCooldownAfterRateLimit();
       const cooldownOk = await this.schedulerState.setCooldown(owner, cooldownUntil);
       if (!cooldownOk) {
         this.logger.error(
@@ -266,6 +289,33 @@ export class CollectorSchedulerService {
     }
 
     return { outcome: 'TRIGGERED', collectorRunId: run.runId };
+  }
+
+  /**
+   * Mirror shared Riot cooldown into local scheduler status.
+   * Never shortens shared; local = max(local proposal, shared.cooldownUntil).
+   */
+  private async resolveLocalCooldownAfterRateLimit(): Promise<Date> {
+    const now = Date.now();
+    const localProposedUntil = now + this.config.schedulerRateLimitCooldownMs;
+
+    if (!this.sharedCooldown) {
+      return new Date(localProposedUntil);
+    }
+
+    const shared = await this.sharedCooldown.getCooldownState();
+    if (isSharedCooldownActive(shared.cooldownUntil, now) && shared.cooldownUntil != null) {
+      return new Date(Math.max(localProposedUntil, shared.cooldownUntil));
+    }
+
+    // Collector should have published; if somehow inactive, extend shared then mirror.
+    const extended = await this.sharedCooldown.extendCooldown({
+      now,
+      configuredFloorMs: this.config.riotShared429CooldownMinMs,
+      retryAfterMs: null,
+      source: 'scheduler',
+    });
+    return new Date(Math.max(localProposedUntil, extended.cooldownUntil));
   }
 
   private startLeaseRenewal(owner: string): { stop: () => void } {

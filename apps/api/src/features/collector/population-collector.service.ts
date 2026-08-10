@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import type { RiotSharedCooldownStore } from '@league-helper/server-riot';
 import type { CollectorRun, PlayerAccount, TrackedPlayer } from '@prisma/client';
 import { CollectorRunStatus } from '@prisma/client';
 import { PlayerAccountRepository } from '../../persistence/player-account.repository';
@@ -8,10 +9,9 @@ import type { PlayerMatchDiscoveryResult } from '../players/discovery/player-mat
 import { loadCollectorConfig, type CollectorConfig } from './collector.config';
 import { CollectorEligibilityService, computeEffectivePlatforms } from './collector-eligibility.service';
 import { COLLECTOR_CONFIG } from './collector-enrollment.service';
-import {
-  COLLECTOR_RATE_LIMITED_FAILURE_CODE,
-  isRateLimitedCollectorFailureCode,
-} from './collector.failure-codes';
+import { RIOT_SHARED_COOLDOWN_STORE } from './collector.tokens';
+import { isRateLimitedCollectorFailureCode } from './collector.failure-codes';
+import { computeSuccessfulRefreshSchedule } from './collector-refresh-policy';
 import { CollectorRunRepository } from './collector-run.repository';
 import {
   COLLECTOR_PROVIDER,
@@ -36,6 +36,16 @@ export class CollectorRunError extends Error {
 type RuntimeConfig = Pick<
   CollectorConfig,
   | 'minRefreshIntervalMs'
+  | 'hotRefreshIntervalMs'
+  | 'warmRefreshIntervalMs'
+  | 'coldRefreshIntervalMs'
+  | 'coldAfterZeroNewRuns'
+  | 'hotPriority'
+  | 'warmPriority'
+  | 'coldPriority'
+  | 'maxConsecutiveZeroNewMatchRuns'
+  | 'priorityMin'
+  | 'priorityMax'
   | 'baseBackoffMs'
   | 'maxBackoffMs'
   | 'maxBackoffExponent'
@@ -58,7 +68,12 @@ type PlayerOutcome =
    * Claimed with no useful budget: lease released without success cadence.
    * Counts as playersFailed + budgetExhausted (see releaseZeroBudgetClaim).
    */
-  | { kind: 'budget_skip' };
+  | { kind: 'budget_skip' }
+  /**
+   * Claimed but not started due to shared Riot cooldown / rate-limit drain.
+   * Lease released without finalizeFailure. Does NOT count as attempted/failed.
+   */
+  | { kind: 'cooldown_skip' };
 
 type WaveAssignment = {
   player: TrackedPlayer;
@@ -175,6 +190,9 @@ export class PopulationCollectorService {
     private readonly eligibility: CollectorEligibilityService,
     @Inject(PlayerAccountRepository) private readonly playerAccounts: PlayerAccountRepository,
     @Optional() @Inject(COLLECTOR_CONFIG) config?: CollectorConfig,
+    @Optional()
+    @Inject(RIOT_SHARED_COOLDOWN_STORE)
+    private readonly sharedCooldown?: RiotSharedCooldownStore | null,
   ) {
     this.baseConfig = config ?? loadCollectorConfig(process.env);
   }
@@ -187,6 +205,7 @@ export class PopulationCollectorService {
     eligibility: Pick<CollectorEligibilityService, 'preview'>;
     playerAccounts: Pick<PlayerAccountRepository, 'findById'>;
     config: CollectorConfig;
+    sharedCooldown?: RiotSharedCooldownStore | null;
   }): PopulationCollectorService {
     return new PopulationCollectorService(
       deps.trackedPlayers,
@@ -195,6 +214,7 @@ export class PopulationCollectorService {
       deps.eligibility as CollectorEligibilityService,
       deps.playerAccounts as PlayerAccountRepository,
       deps.config,
+      deps.sharedCooldown,
     );
   }
 
@@ -271,6 +291,11 @@ export class PopulationCollectorService {
           break;
         }
 
+        // Shared cooldown preflight: do not claim; do not set rateLimitStops.
+        if (this.sharedCooldown && (await this.sharedCooldown.isCoolingDown(Date.now()))) {
+          break;
+        }
+
         const claimed = await this.trackedPlayers.claimEligibleWave({
           platformRoutes: effectivePlatforms,
           provider: COLLECTOR_PROVIDER,
@@ -303,6 +328,11 @@ export class PopulationCollectorService {
         });
 
         for (const outcome of outcomes) {
+          // cooldown_skip: claimed but not attempted (lease released cleanly).
+          if (outcome.kind === 'cooldown_skip') {
+            continue;
+          }
+
           anyAttempted = true;
           counters.playersAttempted += 1;
 
@@ -411,8 +441,31 @@ export class PopulationCollectorService {
   private resolveRuntimeConfig(input: CollectorRunOnceInput): RuntimeConfig {
     const c = this.baseConfig;
     const o = input.config ?? {};
+    const warmRefreshIntervalMs = o.minRefreshIntervalMs ?? c.warmRefreshIntervalMs;
+    // Fail-fast: runtime warm override must preserve HOT < WARM < COLD (same as loadCollectorConfig).
+    if (
+      !(
+        c.hotRefreshIntervalMs < warmRefreshIntervalMs &&
+        warmRefreshIntervalMs < c.coldRefreshIntervalMs
+      )
+    ) {
+      throw new CollectorRunError(
+        'INVALID_REFRESH_INTERVALS',
+        'Runtime warm refresh interval must satisfy HOT < WARM < COLD.',
+      );
+    }
     return {
-      minRefreshIntervalMs: o.minRefreshIntervalMs ?? c.minRefreshIntervalMs,
+      minRefreshIntervalMs: warmRefreshIntervalMs,
+      hotRefreshIntervalMs: c.hotRefreshIntervalMs,
+      warmRefreshIntervalMs,
+      coldRefreshIntervalMs: c.coldRefreshIntervalMs,
+      coldAfterZeroNewRuns: c.coldAfterZeroNewRuns,
+      hotPriority: c.hotPriority,
+      warmPriority: c.warmPriority,
+      coldPriority: c.coldPriority,
+      maxConsecutiveZeroNewMatchRuns: c.maxConsecutiveZeroNewMatchRuns,
+      priorityMin: c.priorityMin,
+      priorityMax: c.priorityMax,
       baseBackoffMs: o.baseBackoffMs ?? c.baseBackoffMs,
       maxBackoffMs: o.maxBackoffMs ?? c.maxBackoffMs,
       maxBackoffExponent: o.maxBackoffExponent ?? c.maxBackoffExponent,
@@ -458,14 +511,14 @@ export class PopulationCollectorService {
           continue;
         }
 
-        // Rate-limit drain: do not start new Riot work.
-        if (rateLimited) {
-          outcomes[index] = await this.finalizeTransientFailure({
+        // Rate-limit / shared-cooldown drain: release lease without finalizeFailure.
+        const sharedCooling =
+          this.sharedCooldown != null &&
+          (await this.sharedCooldown.isCoolingDown(Date.now()));
+        if (rateLimited || sharedCooling) {
+          outcomes[index] = await this.releaseCooldownSkipClaim({
             player: assignment.player,
             ownerToken: input.ownerToken,
-            runtime: input.runtime,
-            failureCode: COLLECTOR_RATE_LIMITED_FAILURE_CODE,
-            rateLimited: true,
           });
           continue;
         }
@@ -548,10 +601,30 @@ export class PopulationCollectorService {
     }
 
     if (discovery.ok) {
+      // Activity signal = newly published enqueue work from THIS refresh, not discovered count.
+      const schedule = computeSuccessfulRefreshSchedule({
+        enqueuedNewCount: discovery.enqueuedCount,
+        consecutiveZeroNewMatchRuns: input.player.consecutiveZeroNewMatchRuns,
+        nowMs: Date.now(),
+        config: {
+          hotRefreshIntervalMs: input.runtime.hotRefreshIntervalMs,
+          warmRefreshIntervalMs: input.runtime.warmRefreshIntervalMs,
+          coldRefreshIntervalMs: input.runtime.coldRefreshIntervalMs,
+          coldAfterZeroNewRuns: input.runtime.coldAfterZeroNewRuns,
+          hotPriority: input.runtime.hotPriority,
+          warmPriority: input.runtime.warmPriority,
+          coldPriority: input.runtime.coldPriority,
+          priorityMin: input.runtime.priorityMin,
+          priorityMax: input.runtime.priorityMax,
+          maxConsecutiveZeroNewMatchRuns: input.runtime.maxConsecutiveZeroNewMatchRuns,
+        },
+      });
       const finalized = await this.trackedPlayers.finalizeSuccess({
         trackedPlayerId: input.player.id,
         ownerToken: input.ownerToken,
-        minRefreshIntervalMs: input.runtime.minRefreshIntervalMs,
+        nextEligibleDelayMs: schedule.nextEligibleDelayMs,
+        priority: schedule.priority,
+        consecutiveZeroNewMatchRuns: schedule.consecutiveZeroNewMatchRuns,
       });
       if (!finalized.updated) {
         return { kind: 'ownership_lost' };
@@ -567,6 +640,15 @@ export class PopulationCollectorService {
     const failureCode = discovery.normalizedFailureCode ?? 'DISCOVERY_FAILED';
     const rateLimited =
       discovery.rateLimited === true || isRateLimitedCollectorFailureCode(failureCode);
+
+    if (rateLimited && this.sharedCooldown) {
+      await this.sharedCooldown.extendCooldown({
+        now: Date.now(),
+        configuredFloorMs: this.baseConfig.riotShared429CooldownMinMs,
+        retryAfterMs: discovery.retryAfterMs ?? null,
+        source: 'collector',
+      });
+    }
 
     const finalized = await this.trackedPlayers.finalizeFailure({
       trackedPlayerId: input.player.id,
@@ -644,6 +726,21 @@ export class PopulationCollectorService {
       return { kind: 'ownership_lost' };
     }
     return { kind: 'budget_skip' };
+  }
+
+  /** Release claim without failure backoff when peers drain under shared 429 cooldown. */
+  private async releaseCooldownSkipClaim(input: {
+    player: TrackedPlayer;
+    ownerToken: string;
+  }): Promise<PlayerOutcome> {
+    const released = await this.trackedPlayers.releaseOwnedLease({
+      trackedPlayerId: input.player.id,
+      ownerToken: input.ownerToken,
+    });
+    if (!released.updated) {
+      return { kind: 'ownership_lost' };
+    }
+    return { kind: 'cooldown_skip' };
   }
 
   private async finalizeTransientFailure(input: {

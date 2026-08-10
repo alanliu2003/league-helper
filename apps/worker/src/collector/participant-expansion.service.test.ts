@@ -12,6 +12,7 @@ function config(overrides: Partial<ParticipantExpansionConfig> = {}): Participan
     expansionMaxTrackedPlayers: 500,
     expansionQueueId: 420,
     platformAllowlist: ['na1'],
+    totalTrackedPlayersHardCap: 5000,
     ...overrides,
   };
 }

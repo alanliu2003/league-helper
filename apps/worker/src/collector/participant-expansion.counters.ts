@@ -5,6 +5,7 @@ export type AsyncExpansionOutcome =
   | 'created'
   | 'already_tracked'
   | 'skipped_depth_limit'
+  | 'skipped_total_cap'
   | 'skipped_population_cap'
   | 'skipped_run_cap'
   | 'skipped_source_cap'

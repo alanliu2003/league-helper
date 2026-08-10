@@ -34,6 +34,7 @@ function expansionConfig(
     expansionMaxTrackedPlayers: 500,
     expansionQueueId: 420,
     platformAllowlist: [PLATFORM],
+    totalTrackedPlayersHardCap: 5000,
     ...overrides,
   };
 }
@@ -54,6 +55,18 @@ async function reset(): Promise<void> {
   await prisma.collectorPopulationBudget.update({
     where: { id: 'singleton' },
     data: { matchParticipantEnrolledCount: 0 },
+  });
+  await prisma.collectorTrackedPlayerBudget.upsert({
+    where: { id: 'singleton' },
+    create: {
+      id: 'singleton',
+      trackedPlayerCount: 0,
+      ladderEnrolledCount: 0,
+    },
+    update: {
+      trackedPlayerCount: 0,
+      ladderEnrolledCount: 0,
+    },
   });
 }
 

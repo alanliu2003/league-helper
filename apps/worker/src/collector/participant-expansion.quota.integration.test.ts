@@ -34,6 +34,18 @@ async function reset(): Promise<void> {
     where: { id: 'singleton' },
     data: { matchParticipantEnrolledCount: 0 },
   });
+  await prisma.collectorTrackedPlayerBudget.upsert({
+    where: { id: 'singleton' },
+    create: {
+      id: 'singleton',
+      trackedPlayerCount: 0,
+      ladderEnrolledCount: 0,
+    },
+    update: {
+      trackedPlayerCount: 0,
+      ladderEnrolledCount: 0,
+    },
+  });
 }
 
 async function seedAccount(suffix: string): Promise<{ playerAccountId: string }> {
@@ -119,6 +131,7 @@ describe('participant expansion quota concurrency (PostgreSQL)', () => {
           platformRoute: PLATFORM,
           discoveryDepth: 1,
           sourceTrackedPlayerId: source.trackedPlayerId,
+          totalCap: 10000,
           globalCap: N,
           runCap: 100,
           sourceCap: 100,
@@ -161,6 +174,7 @@ describe('participant expansion quota concurrency (PostgreSQL)', () => {
           discoveryDepth: 1,
           sourceCollectorRunId: runId,
           sourceTrackedPlayerId: source.trackedPlayerId,
+          totalCap: 10000,
           globalCap: 100,
           runCap,
           sourceCap: 100,
@@ -194,6 +208,7 @@ describe('participant expansion quota concurrency (PostgreSQL)', () => {
           discoveryDepth: 1,
           sourceCollectorRunId: runId,
           sourceTrackedPlayerId: source.trackedPlayerId,
+          totalCap: 10000,
           globalCap: 100,
           runCap: 100,
           sourceCap,
@@ -231,6 +246,7 @@ describe('participant expansion quota concurrency (PostgreSQL)', () => {
           discoveryDepth: 1,
           sourceCollectorRunId: runId,
           sourceTrackedPlayerId: source.trackedPlayerId,
+          totalCap: 10000,
           globalCap: 100,
           runCap: 100,
           sourceCap: 100,
@@ -296,6 +312,7 @@ describe('participant expansion quota concurrency (PostgreSQL)', () => {
       platformRoute: PLATFORM,
       discoveryDepth: 1,
       sourceTrackedPlayerId: source.trackedPlayerId,
+      totalCap: 10000,
       globalCap: 100,
       runCap: 100,
       sourceCap: 100,
@@ -365,6 +382,49 @@ describe('participant expansion quota concurrency (PostgreSQL)', () => {
     ).toBe(1);
   });
 
+  it('total hard cap blocks participant create even when population budget has room', async () => {
+    const source = await seedSourceTracked('src-total-cap');
+    const { playerAccountId } = await seedAccount('total-cap-p');
+
+    await prisma.collectorTrackedPlayerBudget.update({
+      where: { id: 'singleton' },
+      data: { trackedPlayerCount: 1, ladderEnrolledCount: 0 },
+    });
+    await prisma.collectorPopulationBudget.update({
+      where: { id: 'singleton' },
+      data: { matchParticipantEnrolledCount: 0 },
+    });
+
+    const result = await reserveAndCreateTrackedParticipant(prisma, {
+      playerAccountId,
+      provider: PROVIDER,
+      platformRoute: PLATFORM,
+      discoveryDepth: 1,
+      sourceTrackedPlayerId: source.trackedPlayerId,
+      totalCap: 1,
+      globalCap: 100,
+      runCap: 100,
+      sourceCap: 100,
+    });
+
+    expect(result.outcome).toBe('skipped_total_cap');
+    expect(
+      await prisma.trackedPlayer.count({
+        where: { enrollmentSource: TrackedPlayerEnrollmentSource.MATCH_PARTICIPANT },
+      }),
+    ).toBe(0);
+
+    const population = await prisma.collectorPopulationBudget.findUniqueOrThrow({
+      where: { id: 'singleton' },
+    });
+    expect(population.matchParticipantEnrolledCount).toBe(0);
+
+    const total = await prisma.collectorTrackedPlayerBudget.findUniqueOrThrow({
+      where: { id: 'singleton' },
+    });
+    expect(total.trackedPlayerCount).toBe(1);
+  });
+
   it('missing collector run uses un-attributed path and does not throw', async () => {
     const source = await seedSourceTracked('src-missing-run');
     const { playerAccountId } = await seedAccount('missing-run-p');
@@ -376,6 +436,7 @@ describe('participant expansion quota concurrency (PostgreSQL)', () => {
       discoveryDepth: 1,
       sourceCollectorRunId: '00000000-0000-4000-8000-000000000099',
       sourceTrackedPlayerId: source.trackedPlayerId,
+      totalCap: 10000,
       globalCap: 100,
       runCap: 1,
       sourceCap: 1,

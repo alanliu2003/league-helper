@@ -7,10 +7,12 @@ import {
   type PrismaClient,
 } from '@prisma/client';
 import type { Redis } from 'ioredis';
+import type { RiotSharedCooldownStore } from '@league-helper/server-riot';
 import type { ChampionAggregationJobPayload, GameDataProvider } from '@league-helper/shared';
 import {
   MATCH_INGESTION_JOB_NAME,
   MatchIngestionJobPayloadSchema,
+  ProviderRateLimitedError,
   buildMatchIngestionIdempotencyKey,
   type MatchIngestionJobPayload,
   ValidationFailureError,
@@ -46,6 +48,8 @@ export type MatchIngestionProcessorDeps = {
   config: MatchIngestionWorkerConfig;
   championAggregationQueue: Queue<ChampionAggregationJobPayload>;
   championAggregationConfig: ChampionAggregationWorkerConfig;
+  /** Optional for unit tests; production wires Redis-backed store. */
+  sharedCooldown?: RiotSharedCooldownStore | null;
 };
 
 async function shouldEnqueueChampionAggregation(input: {
@@ -92,6 +96,77 @@ function boundDelayMs(retryAfterSeconds: number, config: MatchIngestionWorkerCon
   return Math.min(Math.max(requested, config.backoffBaseMs), config.backoffMaxMs);
 }
 
+function retryAfterMsFromRateLimited(error: ProviderRateLimitedError): number | null {
+  const details = error.details;
+  if (
+    details === null ||
+    typeof details !== 'object' ||
+    !('retryAfterSeconds' in details)
+  ) {
+    return null;
+  }
+  const seconds = (details as { retryAfterSeconds?: unknown }).retryAfterSeconds;
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
+    return null;
+  }
+  return Math.round(seconds * 1_000);
+}
+
+async function publishSharedCooldownFrom429(input: {
+  deps: MatchIngestionProcessorDeps;
+  error: ProviderRateLimitedError;
+}): Promise<void> {
+  if (!input.deps.sharedCooldown) {
+    return;
+  }
+  await input.deps.sharedCooldown.extendCooldown({
+    now: Date.now(),
+    configuredFloorMs: input.deps.config.riotShared429CooldownMinMs,
+    retryAfterMs: retryAfterMsFromRateLimited(input.error),
+    source: 'worker',
+  });
+}
+
+async function delayJobForSharedCooldown(input: {
+  job: Job<MatchIngestionJobPayload>;
+  token: string | undefined;
+  durableJobId: string | undefined;
+  deps: MatchIngestionProcessorDeps;
+  correlationId?: string;
+  code: string;
+  message: string;
+  retryAfterSeconds?: number;
+}): Promise<never> {
+  if (input.durableJobId) {
+    await markDurableJobStatus({
+      prisma: input.deps.prisma,
+      durableJobId: input.durableJobId,
+      status: IngestionJobStatus.FAILED,
+      lastErrorCode: input.code,
+      lastErrorMessage: input.message,
+    });
+  }
+
+  const now = Date.now();
+  const bound = boundDelayMs(input.retryAfterSeconds ?? 2, input.deps.config);
+  const remainingShared = input.deps.sharedCooldown
+    ? await input.deps.sharedCooldown.remainingMs(now)
+    : 0;
+  const delayMs = Math.max(bound, remainingShared, input.deps.config.backoffBaseMs);
+
+  logger.warn('Delayed rate limit', {
+    correlationId: input.correlationId,
+    jobId: safeJobId(input.job.id),
+    code: input.code,
+    delayMs,
+    remainingSharedMs: remainingShared,
+  });
+  if (input.token) {
+    await input.job.moveToDelayed(now + delayMs, input.token);
+  }
+  throw new DelayedError();
+}
+
 async function handleClassifiedFailure(input: {
   job: Job<MatchIngestionJobPayload>;
   token: string | undefined;
@@ -107,27 +182,19 @@ async function handleClassifiedFailure(input: {
   const exhausted = attemptsMade >= maxAttempts && classified.kind !== 'delayed';
 
   if (classified.kind === 'delayed') {
-    if (input.durableJobId) {
-      await markDurableJobStatus({
-        prisma: input.deps.prisma,
-        durableJobId: input.durableJobId,
-        status: IngestionJobStatus.FAILED,
-        lastErrorCode: classified.code,
-        lastErrorMessage: classified.message,
-      });
+    if (input.error instanceof ProviderRateLimitedError) {
+      await publishSharedCooldownFrom429({ deps: input.deps, error: input.error });
     }
-    const delayMs = boundDelayMs(classified.retryAfterSeconds ?? 2, input.deps.config);
-    logger.warn('Delayed rate limit', {
+    await delayJobForSharedCooldown({
+      job: input.job,
+      token: input.token,
+      durableJobId: input.durableJobId,
+      deps: input.deps,
       correlationId: input.correlationId,
-      jobId: safeJobId(input.job.id),
       code: classified.code,
-      delayMs,
-      attempt: attemptsMade,
+      message: classified.message,
+      retryAfterSeconds: classified.retryAfterSeconds,
     });
-    if (input.token) {
-      await input.job.moveToDelayed(Date.now() + delayMs, input.token);
-    }
-    throw new DelayedError();
   }
 
   if (classified.kind === 'permanent') {
@@ -363,6 +430,24 @@ export async function processMatchIngestionJob(
       }
     }
 
+    // Shared Riot cooldown gate — after already_complete short-circuit, before getMatch.
+    if (deps.sharedCooldown) {
+      const now = Date.now();
+      const remainingMs = await deps.sharedCooldown.remainingMs(now);
+      if (remainingMs > 0) {
+        await delayJobForSharedCooldown({
+          job,
+          token,
+          durableJobId,
+          deps,
+          correlationId,
+          code: 'PROVIDER_RATE_LIMITED',
+          message: 'Shared Riot 429 cooldown active; delaying match fetch.',
+          retryAfterSeconds: Math.ceil(remainingMs / 1000),
+        });
+      }
+    }
+
     logger.info('Match fetch start', {
       correlationId,
       jobId: safeJobId(job.id),
@@ -464,6 +549,10 @@ export async function processMatchIngestionJob(
           durationMs: Date.now() - timelineStarted,
         });
       } catch (timelineError: unknown) {
+        // Always publish shared cooldown on timeline 429, including soft-fail path.
+        if (timelineError instanceof ProviderRateLimitedError) {
+          await publishSharedCooldownFrom429({ deps, error: timelineError });
+        }
         const classified = classifyIngestionError(timelineError);
         // Missing/failed timeline must not destroy match data.
         if (classified.kind === 'permanent' || classified.code === 'RESOURCE_NOT_FOUND') {

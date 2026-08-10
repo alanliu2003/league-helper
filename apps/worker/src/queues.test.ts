@@ -31,6 +31,7 @@ describe('match-ingestion worker config', () => {
     expect(config.jobAttempts).toBe(5);
     expect(config.backoffBaseMs).toBe(2000);
     expect(config.backoffMaxMs).toBe(60_000);
+    expect(config.riotShared429CooldownMinMs).toBe(15 * 60_000);
     expect(config.timelineFetchEnabled).toBe(true);
     expect(config.storeRawPayloads).toBe(false);
     expect(config.timelineRequiredForComplete).toBe(false);

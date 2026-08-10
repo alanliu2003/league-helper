@@ -1,4 +1,8 @@
 import {
+  DEFAULT_RIOT_SHARED_429_COOLDOWN_MIN_MS,
+  RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV,
+} from '@league-helper/server-riot';
+import {
   CHAMPION_AGGREGATION_QUEUE_NAME,
   MATCH_INGESTION_QUEUE_NAME,
   ValidationFailureError,
@@ -26,6 +30,11 @@ export type MatchIngestionWorkerConfig = {
   jobAttempts: number;
   backoffBaseMs: number;
   backoffMaxMs: number;
+  /**
+   * Shared Riot 429 cooldown floor (ms). Cross-process with API ladder/collector/scheduler.
+   * Product search is intentionally out of Phase 3A.
+   */
+  riotShared429CooldownMinMs: number;
   timelineFetchEnabled: boolean;
   storeRawPayloads: boolean;
   timelineRequiredForComplete: boolean;
@@ -99,6 +108,15 @@ export function loadMatchIngestionWorkerConfig(
       max: 600_000,
       name: 'MATCH_INGESTION_BACKOFF_MAX_MS',
     }),
+    riotShared429CooldownMinMs: parseBoundedInt(
+      env[RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV],
+      DEFAULT_RIOT_SHARED_429_COOLDOWN_MIN_MS,
+      {
+        min: 0,
+        max: 7 * 24 * 60 * 60_000,
+        name: RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV,
+      },
+    ),
     timelineFetchEnabled: parseBoolean(
       env.MATCH_TIMELINE_FETCH_ENABLED,
       true,

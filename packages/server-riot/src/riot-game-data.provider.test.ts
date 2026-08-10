@@ -273,6 +273,69 @@ describe('RiotGameDataProvider', () => {
       'na1.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/',
     );
   });
+
+  it('resolves account-v1 by puuid via regional routing and maps PlayerAccount without summoner', async () => {
+    const account = mockAccountDto({
+      puuid: FAKE_PUUID,
+      gameName: 'LadderPlayer',
+      tagLine: 'NA1',
+    });
+    const { fetchFn, calls } = createMockFetch([{ status: 200, body: account }]);
+    const provider = new RiotGameDataProvider(
+      RiotApiClient.create(realConfigOverrides(), {
+        fetchFn,
+        sleepFn: async () => undefined,
+        randomFn: () => 0,
+      }),
+    );
+
+    const player = await provider.getAccountByPuuid({
+      puuid: FAKE_PUUID,
+      platform: 'na1',
+    });
+
+    expect(player).toMatchObject({
+      provider: 'RIOT',
+      externalAccountId: FAKE_PUUID,
+      riotId: { gameName: 'LadderPlayer', tagLine: 'NA1' },
+      platform: 'na1',
+      regionalRoute: 'americas',
+      summonerId: null,
+      accountId: null,
+      profileIconId: null,
+      summonerLevel: null,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toContain(
+      `americas.api.riotgames.com/riot/account/v1/accounts/by-puuid/${encodeURIComponent(FAKE_PUUID)}`,
+    );
+  });
+
+  it('rejects empty puuid and account DTOs missing Riot ID fields', async () => {
+    const providerEmpty = new RiotGameDataProvider(
+      RiotApiClient.create(realConfigOverrides(), {
+        fetchFn: createMockFetch([]).fetchFn,
+        sleepFn: async () => undefined,
+        randomFn: () => 0,
+      }),
+    );
+    await expect(
+      providerEmpty.getAccountByPuuid({ puuid: '   ', platform: 'na1' }),
+    ).rejects.toBeInstanceOf(ValidationFailureError);
+
+    const incomplete = mockAccountDto({ gameName: undefined, tagLine: undefined });
+    const { fetchFn } = createMockFetch([{ status: 200, body: incomplete }]);
+    const provider = new RiotGameDataProvider(
+      RiotApiClient.create(realConfigOverrides(), {
+        fetchFn,
+        sleepFn: async () => undefined,
+        randomFn: () => 0,
+      }),
+    );
+    await expect(
+      provider.getAccountByPuuid({ puuid: FAKE_PUUID, platform: 'na1' }),
+    ).rejects.toBeInstanceOf(ValidationFailureError);
+  });
 });
 
 describe('MockRiotGameDataProvider', () => {
@@ -289,5 +352,22 @@ describe('MockRiotGameDataProvider', () => {
       FAKE_MATCH_IDS[0],
       FAKE_MATCH_IDS[1],
     ]);
+  });
+
+  it('implements getAccountByPuuid for enrollment-shaped PlayerAccount', async () => {
+    const provider = new MockRiotGameDataProvider();
+    const player = await provider.getAccountByPuuid({
+      puuid: FAKE_PUUID,
+      platform: 'na1',
+    });
+    expect(player).toMatchObject({
+      provider: 'RIOT',
+      externalAccountId: FAKE_PUUID,
+      riotId: { gameName: 'ExamplePlayer', tagLine: 'NA1' },
+      platform: 'na1',
+      regionalRoute: 'americas',
+      summonerId: null,
+      accountId: null,
+    });
   });
 });
