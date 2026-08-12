@@ -185,6 +185,31 @@ describe('ladder candidate normalization', () => {
     expect(page.candidates[0]?.page).toBe(3);
   });
 
+  it('preserves distinct Challenger / Grandmaster / Master tiers (no Challenger collapse)', () => {
+    const challenger = mapLeagueListToLadderCandidates({
+      list: mockChallengerLeagueListDto(),
+      platformRoute: 'na1',
+      acquisitionMode: 'APEX',
+    });
+    const grandmaster = mapLeagueListToLadderCandidates({
+      list: mockGrandmasterLeagueListDto(),
+      platformRoute: 'na1',
+      acquisitionMode: 'APEX',
+    });
+    const master = mapLeagueListToLadderCandidates({
+      list: mockMasterLeagueListDto(),
+      platformRoute: 'na1',
+      acquisitionMode: 'APEX',
+    });
+
+    expect(new Set(challenger.candidates.map((c) => c.tier))).toEqual(new Set(['CHALLENGER']));
+    expect(new Set(grandmaster.candidates.map((c) => c.tier))).toEqual(new Set(['GRANDMASTER']));
+    expect(new Set(master.candidates.map((c) => c.tier))).toEqual(new Set(['MASTER']));
+    expect(challenger.candidates.every((c) => c.platformRoute === 'na1' && c.puuid.length > 0)).toBe(
+      true,
+    );
+  });
+
   it('maps league queue string to match queueId only via explicit constant mapping', () => {
     expect(mapRiotLeagueQueueTypeToMatchQueueId(RIOT_LEAGUE_QUEUE_RANKED_SOLO)).toBe(420);
     expect(mapRiotLeagueQueueTypeToMatchQueueId('RANKED_FLEX_SR')).toBe(440);

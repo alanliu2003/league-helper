@@ -268,6 +268,9 @@ export const RiotTimelineEventDtoSchema = z
     victimId: z.number().int().optional(),
     assistingParticipantIds: z.array(z.number().int()).optional(),
     itemId: z.number().int().optional(),
+    /// ITEM_UNDO (and some transforms) supply before/after item ids.
+    beforeId: z.number().int().optional(),
+    afterId: z.number().int().optional(),
     skillSlot: z.number().int().optional(),
     levelUpType: z.string().optional(),
     wardType: z.string().optional(),

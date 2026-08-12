@@ -38,6 +38,7 @@ function baseParticipant(
     lane: 'MIDDLE',
     role: 'SOLO',
     rankTierAtIngestion: 'GOLD',
+    rankResolutionStatus: 'RESOLVED_RANKED',
     win: true,
     kills: 5,
     deaths: 2,
@@ -61,7 +62,8 @@ describe('evaluateMatchEligibility', () => {
     if (result.eligible) {
       expect(result.contributors).toHaveLength(1);
       expect(result.contributors[0]?.exact.position).toBe('MIDDLE');
-      expect(result.contributors[0]?.exact.rankTier).toBe('GOLD');
+      expect(result.contributors[0]?.rankClassification.exactRankTier).toBe('GOLD');
+      expect(result.contributors[0]?.rankClassification.contributesToAll).toBe(true);
     }
   });
 
@@ -91,30 +93,166 @@ describe('evaluateMatchEligibility', () => {
     });
   });
 
-  it('maps null rankTierAtIngestion to UNKNOWN', () => {
+  it('PENDING null rank stays in ALL and does not become UNKNOWN', () => {
     const result = evaluateMatchEligibility(
       baseMatch(),
-      [baseParticipant({ rankTierAtIngestion: null })],
+      [
+        baseParticipant({
+          rankTierAtIngestion: null,
+          rankResolutionStatus: 'PENDING',
+        }),
+      ],
       VERSIONS,
     );
     expect(result.eligible).toBe(true);
     if (result.eligible) {
-      expect(result.contributors[0]?.exact.rankTier).toBe('UNKNOWN');
-      expect(result.invalidRankTierCount).toBe(0);
+      const c = result.contributors[0]!;
+      expect(c.rankClassification.contributesToAll).toBe(true);
+      expect(c.rankClassification.contributesToUnknown).toBe(false);
+      expect(c.rankClassification.exactRankTier).toBeUndefined();
+      expect(c.rankClassification.isRankResolved).toBe(false);
     }
   });
 
-  it('coerces invalid rank tier to UNKNOWN and counts it', () => {
+  it('FAILED_RETRYABLE stays in ALL and does not become UNKNOWN', () => {
     const result = evaluateMatchEligibility(
       baseMatch(),
-      [baseParticipant({ rankTierAtIngestion: 'NOT_A_TIER' })],
+      [
+        baseParticipant({
+          rankTierAtIngestion: null,
+          rankResolutionStatus: 'FAILED_RETRYABLE',
+        }),
+      ],
       VERSIONS,
     );
     expect(result.eligible).toBe(true);
     if (result.eligible) {
-      expect(result.contributors[0]?.exact.rankTier).toBe('UNKNOWN');
+      expect(result.contributors[0]?.rankClassification).toMatchObject({
+        contributesToAll: true,
+        contributesToUnknown: false,
+        isPermanentUnavailable: false,
+        isRankResolved: false,
+      });
+    }
+  });
+
+  it('RESOLVED_UNRANKED contributes to ALL and UNKNOWN', () => {
+    const result = evaluateMatchEligibility(
+      baseMatch(),
+      [
+        baseParticipant({
+          rankTierAtIngestion: null,
+          rankResolutionStatus: 'RESOLVED_UNRANKED',
+        }),
+      ],
+      VERSIONS,
+    );
+    expect(result.eligible).toBe(true);
+    if (result.eligible) {
+      expect(result.contributors[0]?.rankClassification).toMatchObject({
+        contributesToAll: true,
+        contributesToUnknown: true,
+        isPermanentUnavailable: false,
+        isRankResolved: true,
+      });
+    }
+  });
+
+  it('FAILED_PERMANENT contributes to ALL only — not exact, not UNKNOWN', () => {
+    const result = evaluateMatchEligibility(
+      baseMatch(),
+      [
+        baseParticipant({
+          rankTierAtIngestion: null,
+          rankResolutionStatus: 'FAILED_PERMANENT',
+        }),
+      ],
+      VERSIONS,
+    );
+    expect(result.eligible).toBe(true);
+    if (result.eligible) {
+      const c = result.contributors[0]!;
+      expect(c.rankClassification.contributesToAll).toBe(true);
+      expect(c.rankClassification.exactRankTier).toBeUndefined();
+      expect(c.rankClassification.contributesToUnknown).toBe(false);
+      expect(c.rankClassification.isPermanentUnavailable).toBe(true);
+    }
+  });
+
+  it('RESOLVED_RANKED with invalid tier does not silently become UNKNOWN', () => {
+    const result = evaluateMatchEligibility(
+      baseMatch(),
+      [
+        baseParticipant({
+          rankTierAtIngestion: 'NOT_A_TIER',
+          rankResolutionStatus: 'RESOLVED_RANKED',
+        }),
+      ],
+      VERSIONS,
+    );
+    expect(result.eligible).toBe(true);
+    if (result.eligible) {
+      expect(result.contributors[0]?.rankClassification.contributesToUnknown).toBe(false);
+      expect(result.contributors[0]?.rankClassification.exactRankTier).toBeUndefined();
       expect(result.invalidRankTierCount).toBe(1);
     }
+  });
+
+  it('Camille SUPPORT canonical: ALL=27, exact=2, UNKNOWN=0, unresolved=25', () => {
+    const participants: ParticipantEligibilityRow[] = [
+      baseParticipant({
+        participantId: 1,
+        championId: 164,
+        teamPosition: 'UTILITY',
+        individualPosition: 'UTILITY',
+        lane: 'BOTTOM',
+        role: 'DUO_SUPPORT',
+        rankTierAtIngestion: 'CHALLENGER',
+        rankResolutionStatus: 'RESOLVED_RANKED',
+      }),
+      baseParticipant({
+        participantId: 2,
+        championId: 164,
+        teamPosition: 'UTILITY',
+        individualPosition: 'UTILITY',
+        lane: 'BOTTOM',
+        role: 'DUO_SUPPORT',
+        rankTierAtIngestion: 'GRANDMASTER',
+        rankResolutionStatus: 'RESOLVED_RANKED',
+      }),
+      ...Array.from({ length: 25 }, (_, i) =>
+        baseParticipant({
+          participantId: i + 3,
+          championId: 164,
+          teamPosition: 'UTILITY',
+          individualPosition: 'UTILITY',
+          lane: 'BOTTOM',
+          role: 'DUO_SUPPORT',
+          rankTierAtIngestion: null,
+          rankResolutionStatus: 'PENDING',
+        }),
+      ),
+    ];
+
+    const result = evaluateMatchEligibility(baseMatch(), participants, VERSIONS);
+    expect(result.eligible).toBe(true);
+    if (!result.eligible) {
+      return;
+    }
+
+    expect(result.contributors).toHaveLength(27);
+    expect(result.contributors.every((c) => c.base.position === 'SUPPORT')).toBe(true);
+    expect(result.contributors.every((c) => c.rankClassification.contributesToAll)).toBe(true);
+    expect(
+      result.contributors.filter((c) => c.rankClassification.exactRankTier === 'CHALLENGER'),
+    ).toHaveLength(1);
+    expect(
+      result.contributors.filter((c) => c.rankClassification.exactRankTier === 'GRANDMASTER'),
+    ).toHaveLength(1);
+    expect(result.contributors.filter((c) => c.rankClassification.contributesToUnknown)).toHaveLength(
+      0,
+    );
+    expect(result.contributors.filter((c) => !c.rankClassification.isRankResolved)).toHaveLength(25);
   });
 
   it('normalizes UTILITY to SUPPORT and never keeps raw riot position', () => {
@@ -145,6 +283,8 @@ describe('evaluateMatchEligibility', () => {
           individualPosition: '',
           lane: null,
           role: null,
+          rankResolutionStatus: 'NOT_APPLICABLE',
+          rankTierAtIngestion: null,
         }),
       ],
       VERSIONS,
@@ -152,6 +292,7 @@ describe('evaluateMatchEligibility', () => {
     expect(result.eligible).toBe(true);
     if (result.eligible) {
       expect(result.contributors[0]?.exact.position).toBe('UNKNOWN');
+      expect(result.contributors[0]?.rankClassification.contributesToUnknown).toBe(false);
     }
   });
 
@@ -162,5 +303,19 @@ describe('evaluateMatchEligibility', () => {
       VERSIONS,
     );
     expect(result).toEqual({ eligible: false, reason: 'NO_ELIGIBLE_PARTICIPANTS' });
+  });
+
+  it('still applies queue/patch eligibility independently of rank resolution', () => {
+    const result = evaluateMatchEligibility(
+      baseMatch({ normalizedPatch: null }),
+      [
+        baseParticipant({
+          rankTierAtIngestion: null,
+          rankResolutionStatus: 'PENDING',
+        }),
+      ],
+      VERSIONS,
+    );
+    expect(result).toEqual({ eligible: false, reason: 'MISSING_NORMALIZED_PATCH' });
   });
 });

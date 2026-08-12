@@ -417,13 +417,13 @@ describe('loadCollectorConfig', () => {
     it('rejects invalid or non-allowlisted ladder tiers', () => {
       expect(() =>
         loadCollectorConfig({
-          COLLECTOR_LADDER_TIERS: 'CHALLENGER,MASTER',
+          COLLECTOR_LADDER_TIERS: 'CHALLENGER,DIAMOND',
         }),
       ).toThrow(ValidationFailureError);
 
       expect(() =>
         loadCollectorConfig({
-          COLLECTOR_LADDER_REPRESENTATIVE_TIERS: 'DIAMOND,SILVER',
+          COLLECTOR_LADDER_REPRESENTATIVE_TIERS: 'DIAMOND,CHALLENGER',
         }),
       ).toThrow(ValidationFailureError);
 
@@ -434,17 +434,17 @@ describe('loadCollectorConfig', () => {
       ).toThrow(ValidationFailureError);
     });
 
-    it('accepts allowlisted tiers and optional ladder platform in allowlist', () => {
+    it('accepts allowlisted Apex tiers including MASTER and optional ladder platform', () => {
       const config = loadCollectorConfig({
         COLLECTOR_PLATFORM_ALLOWLIST: 'na1,euw1',
         COLLECTOR_LADDER_PLATFORM: 'euw1',
-        COLLECTOR_LADDER_TIERS: 'GRANDMASTER,CHALLENGER,GRANDMASTER',
-        COLLECTOR_LADDER_REPRESENTATIVE_TIERS: 'GOLD,DIAMOND',
+        COLLECTOR_LADDER_TIERS: 'GRANDMASTER,CHALLENGER,MASTER,GRANDMASTER',
+        COLLECTOR_LADDER_REPRESENTATIVE_TIERS: 'GOLD,DIAMOND,SILVER,IRON',
       });
 
       expect(config.ladderPlatform).toBe('euw1');
-      expect(config.ladderTiers).toEqual(['GRANDMASTER', 'CHALLENGER']);
-      expect(config.ladderRepresentativeTiers).toEqual(['GOLD', 'DIAMOND']);
+      expect(config.ladderTiers).toEqual(['GRANDMASTER', 'CHALLENGER', 'MASTER']);
+      expect(config.ladderRepresentativeTiers).toEqual(['GOLD', 'DIAMOND', 'SILVER', 'IRON']);
       expect(config.ladderQueueType).toBe('RANKED_SOLO_5x5');
     });
 

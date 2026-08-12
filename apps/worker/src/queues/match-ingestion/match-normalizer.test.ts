@@ -52,7 +52,12 @@ describe('match-normalizer', () => {
     expect(normalized.teams[0]?.objectives).toBeTruthy();
     expect(normalized.participants[0]?.perkIds).toEqual([8005, 8008, 8126]);
     expect(normalized.participants[0]?.statPerkIds).toEqual([5008, 5008, 5002]);
-    expect(normalized.participants[0]?.itemIds).toEqual([3031, 3006, 3340]);
+    expect(normalized.participants[0]?.primaryPerkStyleId).toBe(8000);
+    expect(normalized.participants[0]?.secondaryPerkStyleId).toBe(8100);
+    // Preserve empty inventory slots (item2–item5 = 0) and trinket slot.
+    expect(normalized.participants[0]?.itemIds).toEqual([3031, 3006, 0, 0, 0, 0, 3340]);
+    expect(normalized.participants[0]?.summonerSpell1Id).toBe(4);
+    expect(normalized.participants[0]?.summonerSpell2Id).toBe(14);
     expect(normalized.participants[0]?.totalDamageDealtToChampions).toBe(20_000);
     expect(normalized.rawPayload).toBeNull();
   });

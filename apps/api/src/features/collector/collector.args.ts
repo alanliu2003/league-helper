@@ -26,11 +26,8 @@ import type {
   CollectorStatusCliArgs,
 } from './collector.types';
 
-/** Apex CLI tiers: config defaults plus optional MASTER when explicitly requested. */
-const LADDER_SEED_APEX_TIERS = [
-  ...LADDER_APEX_TIERS_ALLOWLIST,
-  'MASTER',
-] as const satisfies readonly RankTier[];
+/** Apex CLI tiers: shared Apex segment (Challenger / Grandmaster / Master). */
+const LADDER_SEED_APEX_TIERS = LADDER_APEX_TIERS_ALLOWLIST;
 
 export const SEED_FILE_MAX_PLAYERS = 25;
 
@@ -534,8 +531,9 @@ function parseTierCsv(
 /**
  * Ladder seed CLI args.
  *
- * Apex: `--tiers` defaults to config ladderTiers (CHALLENGER,GRANDMASTER).
- * MASTER is allowed only when explicitly listed in `--tiers`.
+ * Apex: `--tiers` defaults to config ladderTiers (usually CHALLENGER,GRANDMASTER).
+ * MASTER is allowlisted (Apex segment) but must still be explicitly listed in `--tiers`
+ * so a large Master league list is never selected from config defaults alone.
  *
  * Representative: requires bounded page selection via `--division` + `--page`
  * OR `--max-pages-per-division` (capped by config hard max). Division defaults

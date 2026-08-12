@@ -3,10 +3,14 @@ export {
   MATCH_INGESTION_JOB_NAME,
   CHAMPION_AGGREGATION_QUEUE_NAME,
   CHAMPION_AGGREGATION_JOB_NAME,
+  PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
+  PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
   type MatchIngestionQueueName,
   type MatchIngestionJobName,
   type ChampionAggregationQueueName,
   type ChampionAggregationJobName,
+  type ParticipantRankEnrichmentQueueName,
+  type ParticipantRankEnrichmentJobName,
 } from './queue-names';
 
 export {
@@ -26,6 +30,14 @@ export {
   type ChampionAggregationJobPayload,
   type ChampionAggregationJobType,
 } from './champion-aggregation-job';
+
+export {
+  ParticipantRankEnrichmentJobPayloadSchema,
+  ParticipantRankEnrichmentJobTypeSchema,
+  buildParticipantRankEnrichmentBullMqJobId,
+  type ParticipantRankEnrichmentJobPayload,
+  type ParticipantRankEnrichmentJobType,
+} from './participant-rank-enrichment-job';
 
 export {
   BULLMQ_DEFAULT_PREFIX,

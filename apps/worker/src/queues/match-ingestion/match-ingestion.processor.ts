@@ -7,8 +7,12 @@ import {
   type PrismaClient,
 } from '@prisma/client';
 import type { Redis } from 'ioredis';
-import type { RiotSharedCooldownStore } from '@league-helper/server-riot';
-import type { ChampionAggregationJobPayload, GameDataProvider } from '@league-helper/shared';
+import { withRiotWorkload, type RiotSharedCooldownStore } from '@league-helper/server-riot';
+import type {
+  ChampionAggregationJobPayload,
+  GameDataProvider,
+  ParticipantRankEnrichmentJobPayload,
+} from '@league-helper/shared';
 import {
   MATCH_INGESTION_JOB_NAME,
   MatchIngestionJobPayloadSchema,
@@ -20,11 +24,13 @@ import {
 import type {
   ChampionAggregationWorkerConfig,
   MatchIngestionWorkerConfig,
+  ParticipantRankEnrichmentWorkerConfig,
 } from '../../config.js';
 import { logger } from '../../logger.js';
 import { createChampionAggregationRepository } from '../champion-aggregation/champion-aggregation.repository.js';
 import { enqueueChampionAggregationAfterCommit } from '../champion-aggregation/enqueue.js';
 import type { PreviousParticipantDimensionSnapshot } from '../champion-aggregation/previous-keys.js';
+import { enqueueRankEnrichmentForCompletedMatch } from '../participant-rank-enrichment/ingestion-hook.js';
 import { classifyIngestionError } from './ingestion-error-classifier.js';
 import { invalidatePlayerProfileCaches } from './ingestion-cache-invalidator.js';
 import { safeJobId, truncateMatchId } from './log-safe.js';
@@ -38,6 +44,7 @@ import {
   resolvePlayerAccountLinks,
 } from './match-persistence.js';
 import { expandMatchParticipantsSafe } from '../../collector/expand-match-participants-safe.js';
+import { extractBuildRelevantTimelineEvents } from './timeline-build-events.js';
 import { calculateTimelineMetrics } from './timeline-metrics.service.js';
 import { normalizeTimeline } from './timeline-normalizer.js';
 
@@ -48,6 +55,9 @@ export type MatchIngestionProcessorDeps = {
   config: MatchIngestionWorkerConfig;
   championAggregationQueue: Queue<ChampionAggregationJobPayload>;
   championAggregationConfig: ChampionAggregationWorkerConfig;
+  /** Optional in unit tests; production wires the enrichment queue. */
+  participantRankEnrichmentQueue?: Queue<ParticipantRankEnrichmentJobPayload> | null;
+  participantRankEnrichmentConfig?: ParticipantRankEnrichmentWorkerConfig | null;
   /** Optional for unit tests; production wires Redis-backed store. */
   sharedCooldown?: RiotSharedCooldownStore | null;
 };
@@ -89,6 +99,29 @@ async function enqueueAggregationSafe(input: {
     previousSnapshots: input.previousSnapshots,
     correlationId: input.correlationId,
   });
+}
+
+async function enqueueRankEnrichmentSafe(input: {
+  deps: MatchIngestionProcessorDeps;
+  matchId: string;
+  correlationId?: string;
+}): Promise<void> {
+  try {
+    await enqueueRankEnrichmentForCompletedMatch({
+      prisma: input.deps.prisma,
+      matchId: input.matchId,
+      queue: input.deps.participantRankEnrichmentQueue,
+      config: input.deps.participantRankEnrichmentConfig,
+      correlationId: input.correlationId,
+    });
+  } catch (error: unknown) {
+    logger.warn('participant_rank_enrichment_hook_failed', {
+      matchId: input.matchId,
+      correlationId: input.correlationId,
+      code: 'PARTICIPANT_RANK_ENRICHMENT_HOOK_FAILED',
+      error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
+    });
+  }
 }
 
 function boundDelayMs(retryAfterSeconds: number, config: MatchIngestionWorkerConfig): number {
@@ -182,6 +215,7 @@ async function handleClassifiedFailure(input: {
   const exhausted = attemptsMade >= maxAttempts && classified.kind !== 'delayed';
 
   if (classified.kind === 'delayed') {
+    // Proactive budget deferrals must NOT publish the emergency 429 cooldown.
     if (input.error instanceof ProviderRateLimitedError) {
       await publishSharedCooldownFrom429({ deps: input.deps, error: input.error });
     }
@@ -408,6 +442,13 @@ export async function processMatchIngestionJob(
           correlationId,
         });
 
+        // Async rank enrichment — never blocks INGEST_MATCH on League-v4.
+        await enqueueRankEnrichmentSafe({
+          deps,
+          matchId: existing.id,
+          correlationId,
+        });
+
         await invalidatePlayerProfileCaches({
           prisma: deps.prisma,
           redis: deps.redis,
@@ -455,7 +496,9 @@ export async function processMatchIngestionJob(
       regionalRoute: payload.regionalRoute,
     });
 
-    const rawMatch = await deps.provider.getMatch(payload.externalMatchId, payload.regionalRoute);
+    const rawMatch = await withRiotWorkload('match', () =>
+      deps.provider.getMatch(payload.externalMatchId, payload.regionalRoute),
+    );
 
     logger.info('Match fetch complete', {
       correlationId,
@@ -503,6 +546,7 @@ export async function processMatchIngestionJob(
     let timelineStatus: TimelineFetchStatus = TimelineFetchStatus.SKIPPED;
     let timelineFailure: string | null = null;
     let metrics: ReturnType<typeof calculateTimelineMetrics> = [];
+    let buildEvents: ReturnType<typeof extractBuildRelevantTimelineEvents> | undefined;
     let timelineRaw: Parameters<typeof persistTimelineAndMetrics>[0]['rawPayload'] = null;
     let timelineSchemaVersion = '1';
 
@@ -518,9 +562,8 @@ export async function processMatchIngestionJob(
       });
 
       try {
-        const rawTimeline = await deps.provider.getTimeline(
-          payload.externalMatchId,
-          payload.regionalRoute,
+        const rawTimeline = await withRiotWorkload('match', () =>
+          deps.provider.getTimeline(payload.externalMatchId, payload.regionalRoute),
         );
         const timeline = normalizeTimeline({
           raw: rawTimeline,
@@ -529,6 +572,7 @@ export async function processMatchIngestionJob(
         timelineRaw = timeline.rawPayload;
         timelineSchemaVersion = timeline.timelineSchemaVersion;
         timelineStatus = TimelineFetchStatus.FETCHED;
+        buildEvents = extractBuildRelevantTimelineEvents(timeline.events);
         metrics = calculateTimelineMetrics({
           frames: timeline.frames,
           events: timeline.events,
@@ -598,6 +642,7 @@ export async function processMatchIngestionJob(
         timelineSchemaVersion,
         failureReason: timelineFailure,
         metrics,
+        buildEvents,
         markMatchCompleted: false,
       });
       throw new ValidationFailureError('Timeline is required for match completion.', {
@@ -613,6 +658,7 @@ export async function processMatchIngestionJob(
       timelineSchemaVersion,
       failureReason: timelineFailure,
       metrics,
+      buildEvents,
       markMatchCompleted: true,
     });
 
@@ -645,6 +691,13 @@ export async function processMatchIngestionJob(
       matchId: persisted.matchId,
       requestedByPlayerAccountId: payload.requestedByPlayerAccountId,
       sourceCollectorRunId: payload.sourceCollectorRunId,
+      correlationId,
+    });
+
+    // Async co-participant rank enrichment — does not await Riot League-v4.
+    await enqueueRankEnrichmentSafe({
+      deps,
+      matchId: persisted.matchId,
       correlationId,
     });
 

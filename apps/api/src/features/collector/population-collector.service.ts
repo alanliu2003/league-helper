@@ -62,6 +62,8 @@ type PlayerOutcome =
       enqueued: number;
       skipped: number;
       rateLimited: boolean;
+      /** Proactive budget deferral — wave drain without shared 429 cooldown. */
+      budgetDeferred?: boolean;
     }
   | { kind: 'ownership_lost' }
   /**
@@ -317,7 +319,7 @@ export class PopulationCollectorService {
           remainingEnqueueBudget,
         });
 
-        const { outcomes, rateLimited } = await this.processWaveParallel({
+        const { outcomes, rateLimited, budgetDeferred } = await this.processWaveParallel({
           assignments,
           ownerToken,
           collectorRunId: run.id,
@@ -358,6 +360,10 @@ export class PopulationCollectorService {
 
         if (rateLimited) {
           counters.rateLimitStops += 1;
+          stopClaims = true;
+        }
+        if (budgetDeferred) {
+          // Proactive pacing backpressure — stop further claims without 429 cooldown.
           stopClaims = true;
         }
       }
@@ -487,10 +493,15 @@ export class PopulationCollectorService {
     runtime: RuntimeConfig;
     effectivePlatforms: string[];
     workerCount: number;
-  }): Promise<{ outcomes: PlayerOutcome[]; rateLimited: boolean }> {
+  }): Promise<{
+    outcomes: PlayerOutcome[];
+    rateLimited: boolean;
+    budgetDeferred: boolean;
+  }> {
     const outcomes = new Array<PlayerOutcome>(input.assignments.length);
     let nextIndex = 0;
     let rateLimited = false;
+    let budgetDeferred = false;
 
     const worker = async (): Promise<void> => {
       for (;;) {
@@ -515,7 +526,7 @@ export class PopulationCollectorService {
         const sharedCooling =
           this.sharedCooldown != null &&
           (await this.sharedCooldown.isCoolingDown(Date.now()));
-        if (rateLimited || sharedCooling) {
+        if (rateLimited || budgetDeferred || sharedCooling) {
           outcomes[index] = await this.releaseCooldownSkipClaim({
             player: assignment.player,
             ownerToken: input.ownerToken,
@@ -536,6 +547,9 @@ export class PopulationCollectorService {
         if (outcome.kind === 'failure' && outcome.rateLimited) {
           rateLimited = true;
         }
+        if (outcome.kind === 'failure' && outcome.budgetDeferred) {
+          budgetDeferred = true;
+        }
         outcomes[index] = outcome;
       }
     };
@@ -546,7 +560,7 @@ export class PopulationCollectorService {
     );
     await Promise.all(workers);
 
-    return { outcomes, rateLimited };
+    return { outcomes, rateLimited, budgetDeferred };
   }
 
   private async processClaimedPlayer(input: {
@@ -640,8 +654,11 @@ export class PopulationCollectorService {
     const failureCode = discovery.normalizedFailureCode ?? 'DISCOVERY_FAILED';
     const rateLimited =
       discovery.rateLimited === true || isRateLimitedCollectorFailureCode(failureCode);
+    const budgetDeferred =
+      discovery.budgetDeferred === true || failureCode === 'RIOT_REQUEST_BUDGET_DEFERRED';
 
-    if (rateLimited && this.sharedCooldown) {
+    // Emergency shared cooldown only for true Riot 429s — never for proactive budget waits.
+    if (rateLimited && !budgetDeferred && this.sharedCooldown) {
       await this.sharedCooldown.extendCooldown({
         now: Date.now(),
         configuredFloorMs: this.baseConfig.riotShared429CooldownMinMs,
@@ -670,6 +687,7 @@ export class PopulationCollectorService {
       enqueued: discovery.enqueuedCount,
       skipped: discovery.skippedAlreadyCompleteCount,
       rateLimited,
+      budgetDeferred,
     };
   }
 

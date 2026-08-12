@@ -42,5 +42,7 @@ export type PlayerMatchDiscoveryResult = {
   warnings: Array<{ code: string; message: string }>;
   normalizedFailureCode?: string;
   rateLimited?: boolean;
+  /** Proactive budget deferral — do not publish shared 429 cooldown. */
+  budgetDeferred?: boolean;
   retryAfterMs?: number;
 };

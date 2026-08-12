@@ -11,6 +11,15 @@ export type RiotRequestRoute =
 
 export type RiotHttpMethod = 'GET';
 
+export type RiotRequestWorkloadHint =
+  | 'match'
+  | 'refresh'
+  | 'enrichment'
+  | 'ladder'
+  | 'identity'
+  | 'product'
+  | 'unknown';
+
 export type RiotRequestOptions = {
   method?: RiotHttpMethod;
   category: RiotEndpointCategory;
@@ -20,6 +29,11 @@ export type RiotRequestOptions = {
   correlationId?: string;
   /** Resource hint used for safer 404 messaging. */
   resourceHint?: 'account' | 'summoner' | 'match' | 'timeline' | 'mastery' | 'ranked' | 'match-ids';
+  /**
+   * Optional proactive budget workload tag. When omitted, AsyncLocalStorage
+   * context or a category default is used.
+   */
+  workload?: RiotRequestWorkloadHint;
 };
 
 export type RiotRateLimitWindow = {

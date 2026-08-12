@@ -22,6 +22,7 @@ import type {
 } from './riot-api.types';
 import { createConsoleRiotLogger, type RiotLogger } from './riot-logger';
 import { createRiotResponseMetadata } from './riot-response-metadata';
+import type { RiotRequestBudgetGate } from './riot-request-budget';
 import { decideRetry, sleep } from './riot-retry';
 
 export type RiotApiClientDependencies = {
@@ -29,6 +30,8 @@ export type RiotApiClientDependencies = {
   sleepFn?: SleepFn;
   randomFn?: RandomFn;
   logger?: RiotLogger;
+  /** Optional proactive cross-process request budget (checked before HTTP send). */
+  requestBudget?: RiotRequestBudgetGate | null;
 };
 
 export class RiotApiClient {
@@ -37,6 +40,7 @@ export class RiotApiClient {
   private sleepFn: SleepFn;
   private randomFn: RandomFn;
   private logger: RiotLogger;
+  private requestBudget: RiotRequestBudgetGate | null;
 
   constructor(config: RiotConfig, deps: RiotApiClientDependencies = {}) {
     this.config = config;
@@ -44,6 +48,7 @@ export class RiotApiClient {
     this.sleepFn = deps.sleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.randomFn = deps.randomFn ?? Math.random;
     this.logger = deps.logger ?? createConsoleRiotLogger(RiotApiClient.name);
+    this.requestBudget = deps.requestBudget ?? null;
   }
 
   /** Test-friendly factory with injectable fetch/sleep/random. */
@@ -63,6 +68,26 @@ export class RiotApiClient {
 
     let attempt = 0;
     while (true) {
+      if (this.requestBudget) {
+        const budget = await this.requestBudget.acquireForRequest({
+          category: options.category,
+          workload: options.workload,
+          sleepFn: this.sleepFn,
+        });
+        if (budget.waitedMs > 0) {
+          this.logSafe({
+            level: 'log',
+            message: 'Riot request admitted after proactive budget wait',
+            category: options.category,
+            routeLabel,
+            correlationId,
+            attempt,
+            waitedMs: budget.waitedMs,
+            workload: budget.workload,
+          });
+        }
+      }
+
       const started = Date.now();
       let response: Response;
 
@@ -125,6 +150,14 @@ export class RiotApiClient {
         status: response.status,
         rateLimitType: metadata.rateLimit.rateLimitType,
       });
+
+      if (this.requestBudget?.observeResponse) {
+        try {
+          await this.requestBudget.observeResponse(metadata);
+        } catch {
+          // Observability must not break request path.
+        }
+      }
 
       if (response.status === 429 || (response.status >= 400 && response.status < 500)) {
         await this.safeReadBody(response);

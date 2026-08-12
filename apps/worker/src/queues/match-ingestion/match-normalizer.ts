@@ -57,9 +57,12 @@ export type NormalizedMatchParticipant = {
   wardsKilled: number;
   controlWardsPurchased: number | null;
   timePlayedSeconds: number;
+  /** Final inventory item0–item6 including empty slots as 0. */
   itemIds: number[];
   perkIds: number[];
   statPerkIds: number[];
+  primaryPerkStyleId: number | null;
+  secondaryPerkStyleId: number | null;
   summonerSpell1Id: number;
   summonerSpell2Id: number;
   rawPayload: Prisma.InputJsonValue | null;
@@ -126,9 +129,8 @@ function normalizeTeamPosition(raw: unknown): TeamPosition {
 
 function extractItemIds(participant: RiotMatchParticipantDto): number[] {
   const record = asRecord(participant);
-  return [0, 1, 2, 3, 4, 5, 6]
-    .map((index) => asNumber(record[`item${index}`], 0))
-    .filter((id) => id > 0);
+  // Keep empty slots (0) so item0–item6 positions remain reconstructible.
+  return [0, 1, 2, 3, 4, 5, 6].map((index) => asNumber(record[`item${index}`], 0));
 }
 
 function extractPerkIds(participant: RiotMatchParticipantDto): number[] {
@@ -146,6 +148,21 @@ function extractPerkIds(participant: RiotMatchParticipantDto): number[] {
     }
   }
   return ids;
+}
+
+function extractPerkStyleIds(participant: RiotMatchParticipantDto): {
+  primaryPerkStyleId: number | null;
+  secondaryPerkStyleId: number | null;
+} {
+  const perks = asRecord(participant.perks);
+  const styles = Array.isArray(perks.styles) ? perks.styles : [];
+  const styleIds = styles
+    .map((style) => asOptionalNumber(asRecord(style).style))
+    .filter((value): value is number => value !== null);
+  return {
+    primaryPerkStyleId: styleIds[0] ?? null,
+    secondaryPerkStyleId: styleIds[1] ?? null,
+  };
 }
 
 function extractStatPerkIds(participant: RiotMatchParticipantDto): number[] {
@@ -221,6 +238,7 @@ function normalizeParticipant(
 
   const totalMinionsKilled = asNumber(participant.totalMinionsKilled, 0);
   const neutralMinionsKilled = asNumber(participant.neutralMinionsKilled, 0);
+  const perkStyles = extractPerkStyleIds(participant);
 
   return {
     participantId,
@@ -257,6 +275,8 @@ function normalizeParticipant(
     itemIds: extractItemIds(participant),
     perkIds: extractPerkIds(participant),
     statPerkIds: extractStatPerkIds(participant),
+    primaryPerkStyleId: perkStyles.primaryPerkStyleId,
+    secondaryPerkStyleId: perkStyles.secondaryPerkStyleId,
     summonerSpell1Id: asNumber(participant.summoner1Id, 0),
     summonerSpell2Id: asNumber(participant.summoner2Id, 0),
     rawPayload: storeRaw ? (participant as unknown as Prisma.InputJsonValue) : null,

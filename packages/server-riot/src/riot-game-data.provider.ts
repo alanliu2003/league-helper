@@ -67,6 +67,7 @@ export class RiotGameDataProvider implements GameDataProvider {
         route: { kind: 'regional', regionalRoute },
         path: `/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(riotId.gameName)}/${encodeURIComponent(riotId.tagLine)}`,
         resourceHint: 'account',
+        workload: 'identity',
       },
       RiotAccountDtoSchema,
     );
@@ -78,6 +79,7 @@ export class RiotGameDataProvider implements GameDataProvider {
         route: { kind: 'platform', platform },
         path: `/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(account.puuid)}`,
         resourceHint: 'summoner',
+        workload: 'identity',
       },
       RiotSummonerDtoSchema,
     );
@@ -121,6 +123,7 @@ export class RiotGameDataProvider implements GameDataProvider {
         route: { kind: 'regional', regionalRoute },
         path: `/riot/account/v1/accounts/by-puuid/${encodeURIComponent(puuid)}`,
         resourceHint: 'account',
+        workload: 'identity',
       },
       RiotAccountDtoSchema,
     );
@@ -336,6 +339,7 @@ export class RiotGameDataProvider implements GameDataProvider {
         }),
         query: { page: input.page },
         resourceHint: 'ranked',
+        workload: 'ladder',
       },
       RiotLeagueEntryDtoArraySchema,
     );
@@ -367,6 +371,7 @@ export class RiotGameDataProvider implements GameDataProvider {
         route: { kind: 'platform', platform },
         path: buildApexLeaguePath(kind, leagueQueueType),
         resourceHint: 'ranked',
+        workload: 'ladder',
       },
       RiotLeagueListDtoSchema,
     );

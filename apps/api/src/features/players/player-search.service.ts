@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { type ChampionMasterySnapshot, type PlayerAccount } from '@prisma/client';
+import { withRiotWorkload } from '@league-helper/server-riot';
 import {
   PlayerSearchRequestSchema,
   type GameDataProvider,
@@ -77,14 +78,15 @@ export class PlayerSearchService {
   ) {}
 
   async search(request: PlayerSearchRequest, correlationId: string): Promise<PlayerSearchResponse> {
-    const parsed = PlayerSearchRequestSchema.parse(request);
-    const matchCount = this.resolveMatchCount(parsed.matchCount);
+    return withRiotWorkload('product', async () => {
+      const parsed = PlayerSearchRequestSchema.parse(request);
+      const matchCount = this.resolveMatchCount(parsed.matchCount);
 
-    const resolved = await this.gameData.resolvePlayer({
-      gameName: parsed.gameName,
-      tagLine: parsed.tagLine,
-      platform: parsed.platform,
-    });
+      const resolved = await this.gameData.resolvePlayer({
+        gameName: parsed.gameName,
+        tagLine: parsed.tagLine,
+        platform: parsed.platform,
+      });
 
     const account = await this.playerAccounts.upsertPlayerAccount({
       provider: resolved.provider,
@@ -132,6 +134,7 @@ export class PlayerSearchService {
     await this.cache.setProfile(account.playerId, response);
     assertNoPuuidLeak(response);
     return response;
+    });
   }
 
   async syncPlayerData(input: SyncPlayerDataInput): Promise<PlayerSearchResponse> {

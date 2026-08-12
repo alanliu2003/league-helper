@@ -5,14 +5,12 @@ import {
   accumulateContribution,
   buildChampionAggregateDimensionKey,
   emptyAccumulator,
-  expandChampionDimensionTuples,
   type ChampionAggregateAccumulator,
   type ChampionRollupPolicy,
   type MaterializedChampionDimensions,
 } from '@league-helper/match-analytics';
 import type { ChampionAggregationWorkerConfig } from '../../config.js';
 import {
-  contributorMatchesMaterializedKey,
   createChampionAggregationRepository,
   groupKeysForBatchedReads,
   type ChampionAggregationRepository,
@@ -22,6 +20,10 @@ import {
   incrementChampionStatsCacheGenerations,
 } from '../../queues/champion-aggregation/cache-generation-invalidator.js';
 import { evaluateMatchEligibility } from '../../queues/champion-aggregation/eligibility.js';
+import {
+  contributorFeedsKeyForRankClassification,
+  expandDimensionTuplesForRankClassification,
+} from '../../queues/champion-aggregation/rank-dimension-keys.js';
 import type { AggregateCliFilters } from './parse-args.js';
 import { EXIT_COMMAND_FAILURE, EXIT_SUCCESS } from './exit-codes.js';
 
@@ -104,33 +106,15 @@ function aggregateWhere(
 }
 
 function contributorFeedsKey(
-  exact: {
-    patch: string;
-    platformRoute: string;
-    regionalRoute: string;
-    queueId: number;
-    rankTier: string;
-    position: string;
-    championId: number;
-    sourceNormalizationVersion: string;
-    aggregationVersion: string;
+  contributor: {
+    base: import('../../queues/champion-aggregation/rank-dimension-keys.js').ContributorBaseDimensions;
+    rankClassification: import('@league-helper/shared').ParticipantRankAggregateClassification;
   },
   key: MaterializedChampionDimensions,
 ): boolean {
-  if (
-    exact.patch !== key.patch ||
-    exact.platformRoute !== key.platformRoute ||
-    exact.regionalRoute !== key.regionalRoute ||
-    exact.queueId !== key.queueId ||
-    exact.sourceNormalizationVersion !== key.sourceNormalizationVersion ||
-    exact.aggregationVersion !== key.aggregationVersion
-  ) {
-    return false;
-  }
-  return contributorMatchesMaterializedKey(
-    exact.rankTier,
-    exact.position,
-    exact.championId,
+  return contributorFeedsKeyForRankClassification(
+    contributor.base,
+    contributor.rankClassification,
     key,
   );
 }
@@ -158,7 +142,7 @@ async function foldKeys(input: {
       }
       for (const contributor of eligibility.contributors) {
         for (const key of group.keys) {
-          if (!contributorFeedsKey(contributor.exact, key)) {
+          if (!contributorFeedsKey(contributor, key)) {
             continue;
           }
           const keyString = buildChampionAggregateDimensionKey(key);
@@ -166,7 +150,7 @@ async function foldKeys(input: {
           accumulators.set(
             keyString,
             accumulateContribution(current, {
-              championId: contributor.exact.championId,
+              championId: contributor.base.championId,
               won: contributor.won,
               kills: contributor.kills,
               deaths: contributor.deaths,
@@ -315,6 +299,7 @@ export async function runRebuildChampionAggregates(
           lane: true,
           role: true,
           rankTierAtIngestion: true,
+          rankResolutionStatus: true,
           win: true,
           kills: true,
           deaths: true,
@@ -350,22 +335,17 @@ export async function runRebuildChampionAggregates(
     for (const contributor of eligibility.contributors) {
       if (
         input.filters.championId !== undefined &&
-        contributor.exact.championId !== input.filters.championId
+        contributor.base.championId !== input.filters.championId
       ) {
         continue;
       }
-      try {
-        for (const materialized of expandChampionDimensionTuples(
-          contributor.exact,
-          input.rollupPolicy,
-        )) {
-          keyMap.set(buildChampionAggregateDimensionKey(materialized), materialized);
-        }
-      } catch {
-        // Reserved ALL dims throw during expand — skip for dry-run estimate of supported keys.
-        if (!input.dryRun) {
-          throw new Error('ROLLUP_EXPAND_FAILED');
-        }
+      for (const materialized of expandDimensionTuplesForRankClassification(
+        contributor.base,
+        contributor.rankClassification,
+      )) {
+        // rebuild rollupPolicy currently unused for rank-aware expand (default ALL/exact/UNKNOWN).
+        void input.rollupPolicy;
+        keyMap.set(buildChampionAggregateDimensionKey(materialized), materialized);
       }
     }
   }

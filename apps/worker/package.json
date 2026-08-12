@@ -19,7 +19,9 @@
     "aggregates:reconcile-champions": "tsx src/cli/reconcile-champion-aggregates.ts",
     "aggregates:status-champions": "tsx src/cli/status-champion-aggregates.ts",
     "aggregates:audit-rank-coverage": "tsx src/cli/audit-rank-coverage.ts",
-    "aggregates:audit-champions": "tsx src/cli/audit-champions.ts"
+    "aggregates:audit-champions": "tsx src/cli/audit-champions.ts",
+    "aggregates:rank-enrichment-health": "tsx src/cli/rank-enrichment-health.ts",
+    "aggregates:backfill-participant-ranks": "tsx src/cli/backfill-participant-ranks.ts"
   },
   "dependencies": {
     "@league-helper/match-analytics": "workspace:*",

@@ -4,6 +4,7 @@ import {
   ProviderIdSchema,
   RegionalRouteSchema,
   TeamPositionSchema,
+  initialParticipantRankResolutionStatus,
   parsePatchVersion,
 } from '@league-helper/shared';
 import type { Match, MatchParticipant, Prisma } from '@prisma/client';
@@ -361,6 +362,11 @@ export class MatchRepository {
               role: participant.role ?? null,
               rankTierAtIngestion: participant.rankTierAtIngestion ?? null,
               rankDivisionAtIngestion: participant.rankDivisionAtIngestion ?? null,
+              rankResolutionStatus: initialParticipantRankResolutionStatus({
+                queueId: input.queueId,
+                rankTierAtIngestion: participant.rankTierAtIngestion ?? null,
+                externalAccountId: participant.externalAccountId ?? null,
+              }),
               win: participant.win,
               kills: participant.kills ?? 0,
               deaths: participant.deaths ?? 0,

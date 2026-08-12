@@ -215,6 +215,23 @@ describe('LadderSeedService', () => {
     expect(result.counters.byTier.GRANDMASTER).toBe(1);
   });
 
+  it('B2: enrolls Master candidates with preserved MASTER tier counter', async () => {
+    const { service, enroll } = createHarness({ provider: provider() });
+    const result = await service.seed({
+      platform: 'na1',
+      mode: 'apex',
+      tiers: ['MASTER'],
+      dryRun: false,
+    });
+
+    expect(getMasterLeague).toHaveBeenCalledTimes(1);
+    expect(getChallengerLeague).not.toHaveBeenCalled();
+    expect(enroll).toHaveBeenCalledTimes(1);
+    expect(result.counters.created).toBe(1);
+    expect(result.counters.byTier.MASTER).toBe(1);
+    expect(result.counters.byTier.CHALLENGER).toBeUndefined();
+  });
+
   it('C: enrolls representative page candidates', async () => {
     const { service, enroll } = createHarness({ provider: provider() });
     const result = await service.seed({
@@ -386,6 +403,29 @@ describe('LadderSeedService', () => {
     expect(result.counters.fetched).toBe(3);
     // Read-only lookups are allowed.
     expect(playerAccounts.findByProviderExternalId).toHaveBeenCalled();
+  });
+
+  it('J2: dry-run fetches Challenger + Grandmaster + Master without enrollment', async () => {
+    const { service, enroll } = createHarness({ provider: provider() });
+    const result = await service.seed({
+      platform: 'na1',
+      mode: 'apex',
+      tiers: ['CHALLENGER', 'GRANDMASTER', 'MASTER'],
+      dryRun: true,
+    });
+
+    expect(getChallengerLeague).toHaveBeenCalledTimes(1);
+    expect(getGrandmasterLeague).toHaveBeenCalledTimes(1);
+    expect(getMasterLeague).toHaveBeenCalledTimes(1);
+    expect(enroll).not.toHaveBeenCalled();
+    expect(result.counters.created).toBe(0);
+    expect(result.counters.providerCalls).toBe(3);
+    expect(result.counters.byTier).toEqual({
+      CHALLENGER: 2,
+      GRANDMASTER: 1,
+      MASTER: 1,
+    });
+    expect(result.counters.apexCandidates).toBe(4);
   });
 
   it('K: seeder does not enqueue match jobs', async () => {

@@ -115,6 +115,7 @@ export async function runReconcileChampionAggregates(
             lane: true,
             role: true,
             rankTierAtIngestion: true,
+            rankResolutionStatus: true,
             win: true,
             kills: true,
             deaths: true,
@@ -198,7 +199,7 @@ export async function runReconcileChampionAggregates(
         const { participants, ...matchRow } = matches.find((m) => m.id === matchId)!;
         const eligibility = evaluateMatchEligibility(matchRow, participants, versions);
         const currentKeys = eligibility.eligible
-          ? expandCurrentDimensionKeys(eligibility.contributors.map((c) => c.exact))
+          ? expandCurrentDimensionKeys(eligibility.contributors)
           : [];
 
         await repository.upsertRecalcScope({

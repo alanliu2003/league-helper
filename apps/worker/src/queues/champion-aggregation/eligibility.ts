@@ -7,9 +7,13 @@ import {
   PlatformRouteSchema,
   RankTierSchema,
   RegionalRouteSchema,
+  classifyParticipantRankForAggregates,
   normalizeParticipantPosition,
   type NormalizedPosition,
+  type ParticipantRankAggregateClassification,
+  type ParticipantRankResolutionStatus,
 } from '@league-helper/shared';
+import type { ContributorBaseDimensions } from './rank-dimension-keys.js';
 
 export type MatchEligibilityRow = {
   id: string;
@@ -35,7 +39,9 @@ export type ParticipantEligibilityRow = {
   individualPosition: string;
   lane: string | null;
   role: string | null;
+  /** Observed tier during ingestion/enrichment — not match-start historical truth. */
   rankTierAtIngestion: string | null;
+  rankResolutionStatus: ParticipantRankResolutionStatus;
   win: boolean;
   kills: number;
   deaths: number;
@@ -65,6 +71,14 @@ export type PermanentlyIneligibleReason =
 export type EligibleContributor = {
   matchId: string;
   participantId: number;
+  /** Non-rank dimensions (patch/platform/queue/position/champion/versions). */
+  base: ContributorBaseDimensions;
+  rankClassification: ParticipantRankAggregateClassification;
+  /**
+   * Compatibility exact dims for callers that still expect ExactChampionDimensions.
+   * rankTier is set only when exact or UNKNOWN bucket applies; otherwise UNKNOWN placeholder
+   * that must not be used for key expansion without rankClassification.
+   */
   exact: ExactChampionDimensions;
   won: boolean;
   kills: number;
@@ -94,20 +108,35 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && Number.isFinite(value) && value >= 0;
 }
 
-function resolveRankTier(
-  raw: string | null,
-): { tier: ExactChampionRankTier; invalid: boolean } {
-  if (raw == null || raw.trim() === '') {
-    return { tier: UNKNOWN_RANK_TIER_SENTINEL, invalid: false };
+function resolveExactRankTierForCompat(
+  classification: ParticipantRankAggregateClassification,
+): ExactChampionRankTier {
+  if (classification.exactRankTier) {
+    return classification.exactRankTier;
   }
-  const parsed = RankTierSchema.safeParse(raw.trim().toUpperCase());
-  if (!parsed.success) {
-    if (raw === UNKNOWN_RANK_TIER_SENTINEL) {
-      return { tier: UNKNOWN_RANK_TIER_SENTINEL, invalid: false };
-    }
-    return { tier: UNKNOWN_RANK_TIER_SENTINEL, invalid: true };
+  if (classification.contributesToUnknown) {
+    return UNKNOWN_RANK_TIER_SENTINEL;
   }
-  return { tier: parsed.data, invalid: false };
+  // Unresolved / N/A-without-unknown: placeholder only — key expansion uses classification.
+  return UNKNOWN_RANK_TIER_SENTINEL;
+}
+
+/**
+ * Resolve aggregate rank classification from explicit resolution status.
+ * Rank state controls exact/UNKNOWN buckets only — never base ALL eligibility.
+ */
+export function resolveParticipantRankClassification(participant: {
+  rankResolutionStatus: ParticipantRankResolutionStatus;
+  rankTierAtIngestion: string | null;
+}): ParticipantRankAggregateClassification {
+  const resolvedTier =
+    participant.rankResolutionStatus === 'RESOLVED_RANKED'
+      ? participant.rankTierAtIngestion
+      : null;
+  return classifyParticipantRankForAggregates({
+    status: participant.rankResolutionStatus,
+    resolvedTier,
+  });
 }
 
 export function resolveMatchEndedAtFromRow(match: MatchEligibilityRow): Date | null {
@@ -163,6 +192,7 @@ export function isStructurallyValidParticipant(participant: ParticipantEligibili
 /**
  * Match-level permanent ineligibility (no processing marker required).
  * Version mismatch / remake / incomplete / missing structural match dims.
+ * Rank resolution status never gates base sample eligibility for ALL.
  */
 export function evaluateMatchEligibility(
   match: MatchEligibilityRow | null,
@@ -207,24 +237,34 @@ export function evaluateMatchEligibility(
     if (!isStructurallyValidParticipant(participant)) {
       continue;
     }
-    const rank = resolveRankTier(participant.rankTierAtIngestion);
-    if (rank.invalid) {
+    const rankClassification = resolveParticipantRankClassification(participant);
+    if (
+      participant.rankResolutionStatus === 'RESOLVED_RANKED' &&
+      (participant.rankTierAtIngestion == null ||
+        !RankTierSchema.safeParse(participant.rankTierAtIngestion.trim().toUpperCase()).success)
+    ) {
       invalidRankTierCount += 1;
     }
     const position = normalizeEligiblePosition(match, participant);
+    const base: ContributorBaseDimensions = {
+      patch: match.normalizedPatch,
+      platformRoute: platform.data,
+      regionalRoute: regional.data,
+      queueId: match.queueId,
+      position,
+      championId: participant.championId,
+      sourceNormalizationVersion: versions.sourceNormalizationVersion,
+      aggregationVersion: versions.aggregationVersion,
+    };
+    const exactRankTier = resolveExactRankTierForCompat(rankClassification);
     contributors.push({
       matchId: match.id,
       participantId: participant.participantId,
+      base,
+      rankClassification,
       exact: {
-        patch: match.normalizedPatch,
-        platformRoute: platform.data,
-        regionalRoute: regional.data,
-        queueId: match.queueId,
-        rankTier: rank.tier,
-        position,
-        championId: participant.championId,
-        sourceNormalizationVersion: versions.sourceNormalizationVersion,
-        aggregationVersion: versions.aggregationVersion,
+        ...base,
+        rankTier: exactRankTier,
       },
       won: participant.win,
       kills: participant.kills,

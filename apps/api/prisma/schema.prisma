@@ -77,6 +77,19 @@ enum TrackedPlayerEnrollmentSource {
   LADDER
 }
 
+/// Participant Solo/Flex rank resolution lifecycle (M12-v2).
+/// PENDING/FAILED_RETRYABLE never map silently to aggregate UNKNOWN.
+enum ParticipantRankResolutionStatus {
+  PENDING
+  FAILED_RETRYABLE
+  RESOLVED_RANKED
+  RESOLVED_UNRANKED
+  /// Documented permanent-unavailable (e.g. missing PUUID).
+  FAILED_PERMANENT
+  /// Non-ranked queue — no applicable Solo/Flex rank.
+  NOT_APPLICABLE
+}
+
 enum CollectorRunStatus {
   RUNNING
   COMPLETED
@@ -220,6 +233,8 @@ model Match {
   participants                  MatchParticipant[]
   teams                         MatchTeam[]
   timeline                      MatchTimeline?
+  /// Compact build/skill timeline events (not full Riot timeline frames).
+  timelineEvents                MatchTimelineEvent[]
   championAggregationProcessing ChampionAggregationProcessing[]
   championAggregationRecalcScopes ChampionAggregationRecalcScope[]
 
@@ -252,8 +267,15 @@ model MatchParticipant {
   lane                           String?
   /// Raw Riot legacy role (SOLO/DUO/DUO_CARRY/DUO_SUPPORT) — not a public position.
   role                           String?
+  /// Rank observed during ingestion/enrichment cycle — NOT exact match-start rank.
   rankTierAtIngestion            String?
   rankDivisionAtIngestion        String?
+  /// Explicit resolution lifecycle; null must not be overloaded for multiple meanings.
+  rankResolutionStatus           ParticipantRankResolutionStatus @default(PENDING)
+  /// When status last reached a terminal or updated resolved observation.
+  rankResolvedAt                 DateTime?                       @db.Timestamptz(3)
+  /// Optional link to the ParticipantRankObservation that last updated resolution.
+  rankObservationId              String?
   win                            Boolean
   kills                          Int
   deaths                         Int
@@ -274,9 +296,13 @@ model MatchParticipant {
   wardsKilled                    Int      @default(0)
   controlWardsPurchased          Int?
   timePlayedSeconds              Int      @default(0)
+  /// Final inventory item0–item6; empty slots stored as 0 for new ingestions.
   itemIds                        Int[]    @default([])
   perkIds                        Int[]    @default([])
   statPerkIds                    Int[]    @default([])
+  /// Riot perk style tree IDs (e.g. 8000 Precision); null on historical rows.
+  primaryPerkStyleId             Int?
+  secondaryPerkStyleId           Int?
   summonerSpell1Id               Int      @default(0)
   summonerSpell2Id               Int      @default(0)
   goldAt10                       Int?
@@ -302,8 +328,9 @@ model MatchParticipant {
   createdAt                      DateTime @default(now()) @db.Timestamptz(3)
   updatedAt                      DateTime @updatedAt @db.Timestamptz(3)
 
-  match         Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  playerAccount PlayerAccount? @relation(fields: [playerAccountId], references: [id], onDelete: SetNull)
+  match            Match                           @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  playerAccount    PlayerAccount?                  @relation(fields: [playerAccountId], references: [id], onDelete: SetNull)
+  rankObservation  ParticipantRankObservation?     @relation(fields: [rankObservationId], references: [id], onDelete: SetNull)
 
   @@unique([matchId, participantId])
   @@index([matchId, teamId])
@@ -313,6 +340,37 @@ model MatchParticipant {
   @@index([championId, individualPosition])
   @@index([championId, matchId])
   @@index([rankTierAtIngestion, championId])
+  @@index([rankResolutionStatus, championId])
+  @@index([rankObservationId])
+}
+
+/// Durable League-v4 (or local) participant-rank observations.
+/// Identity is provider + platform + PUUID + queueType — no TrackedPlayer/PlayerAccount FK.
+model ParticipantRankObservation {
+  id                String                           @id @default(uuid())
+  provider          String
+  platformRoute     String
+  /// Riot PUUID (MatchParticipant.externalAccountId).
+  externalAccountId String
+  /// Shared-domain QueueType (RANKED_SOLO_5x5 / RANKED_FLEX_SR).
+  queueType         String
+  /// Shared-domain RankTier when resolutionStatus = RESOLVED_RANKED.
+  observedTier      String?
+  /// Shared-domain RankDivision when applicable (null for Master+).
+  observedDivision  String?
+  resolutionStatus  ParticipantRankResolutionStatus
+  /// Observation time (not globally unique — history is append-only).
+  observedAt        DateTime                         @db.Timestamptz(3)
+  /// Optional non-secret provider result detail (e.g. HTTP status / empty-entry).
+  providerResultCode String?
+  createdAt         DateTime                         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                         @updatedAt @db.Timestamptz(3)
+
+  matchParticipants MatchParticipant[]
+
+  @@index([provider, platformRoute, externalAccountId, queueType, observedAt(sort: Desc)])
+  @@index([externalAccountId, queueType, observedAt])
+  @@index([resolutionStatus, observedAt])
 }
 
 model MatchTeam {
@@ -346,6 +404,29 @@ model MatchTimeline {
   match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@index([fetchStatus])
+}
+
+/// Build/skill-relevant Match-v5 timeline events only (ITEM_*, SKILL_LEVEL_UP).
+/// Join to MatchParticipant via (matchId, participantId). Historical matches may have zero rows.
+model MatchTimelineEvent {
+  id            String   @id @default(uuid())
+  matchId       String
+  /// Stable order among preserved events for this match (0-based).
+  eventIndex    Int
+  type          String
+  timestampMs   Int
+  participantId Int?
+  itemId        Int?
+  beforeItemId  Int?
+  afterItemId   Int?
+  skillSlot     Int?
+  levelUpType   String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, eventIndex])
+  @@index([matchId, participantId, timestampMs])
 }
 
 model ChampionMasterySnapshot {

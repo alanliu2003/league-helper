@@ -1,3 +1,4 @@
+import { isRiotRequestBudgetDeferredError } from '@league-helper/server-riot';
 import {
   DatabaseUnavailableError,
   DomainError,
@@ -65,6 +66,15 @@ function isPrismaTransient(error: unknown): boolean {
  * Never includes PUUIDs, payloads, or connection strings in the result.
  */
 export function classifyIngestionError(error: unknown): ClassifiedIngestionError {
+  if (isRiotRequestBudgetDeferredError(error)) {
+    return {
+      kind: 'delayed',
+      code: 'RIOT_REQUEST_BUDGET_DEFERRED',
+      message: safeMessage(error),
+      retryAfterSeconds: Math.max(1, Math.ceil(error.waitMs / 1000)),
+    };
+  }
+
   if (error instanceof ProviderRateLimitedError) {
     return {
       kind: 'delayed',

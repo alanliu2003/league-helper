@@ -5,11 +5,15 @@ import {
   type Prisma,
   type PrismaClient,
 } from '@prisma/client';
-import { MATCH_INGESTION_JOB_NAME } from '@league-helper/shared';
+import {
+  MATCH_INGESTION_JOB_NAME,
+  initialParticipantRankResolutionStatus,
+} from '@league-helper/shared';
 import type { PreviousParticipantDimensionSnapshot } from '../champion-aggregation/previous-keys.js';
 import type { NormalizedMatch } from './match-normalizer.js';
 import { loadRankTiersAtIngestion } from './rank-at-ingestion.js';
 import type { ParticipantTimelineMetrics } from './timeline-metrics.service.js';
+import type { PreservedTimelineEvent } from './timeline-build-events.js';
 
 export type AccountLinkMap = Map<string, string>; // externalAccountId (PUUID) -> playerAccountId
 
@@ -31,6 +35,7 @@ type LinkParticipantRow = {
   playerAccountId: string | null;
   externalAccountId: string | null;
   rankTierAtIngestion: string | null;
+  rankResolutionStatus: import('@prisma/client').ParticipantRankResolutionStatus;
 };
 
 type ExistingParticipantSnapshotRow = LinkParticipantRow & {
@@ -132,6 +137,7 @@ function capturePreviousParticipantSnapshots(existing: {
     lane: participant.lane,
     role: participant.role,
     rankTierAtIngestion: participant.rankTierAtIngestion,
+    rankResolutionStatus: participant.rankResolutionStatus,
   }));
 }
 
@@ -168,6 +174,7 @@ export async function persistNormalizedMatch(
           playerAccountId: true,
           externalAccountId: true,
           rankTierAtIngestion: true,
+          rankResolutionStatus: true,
           championId: true,
           teamPosition: true,
           individualPosition: true,
@@ -330,6 +337,27 @@ export async function persistNormalizedMatch(
       const existingTier = existingRankByParticipantId.get(participant.participantId) ?? null;
       // Immutable first trustworthy known tier: never clear non-null; never replace known tier.
       const shouldSetRankOnUpdate = existingTier == null && resolvedTier != null;
+      const createRankResolutionStatus = initialParticipantRankResolutionStatus({
+        queueId: match.queueId,
+        rankTierAtIngestion: resolvedTier,
+        externalAccountId: participant.externalAccountId,
+      });
+      const createRankResolvedAt =
+        createRankResolutionStatus === 'RESOLVED_RANKED' ||
+        createRankResolutionStatus === 'RESOLVED_UNRANKED' ||
+        createRankResolutionStatus === 'FAILED_PERMANENT' ||
+        createRankResolutionStatus === 'NOT_APPLICABLE'
+          ? persistenceNow
+          : null;
+      // On update, only advance status when first trustworthy tier arrives — do not
+      // clobber Phase 3 enrichment terminals on every overwrite.
+      const updateRankResolutionStatus = shouldSetRankOnUpdate
+        ? initialParticipantRankResolutionStatus({
+            queueId: match.queueId,
+            rankTierAtIngestion: resolvedTier,
+            externalAccountId: participant.externalAccountId,
+          })
+        : null;
 
       await tx.matchParticipant.upsert({
         where: {
@@ -353,6 +381,8 @@ export async function persistNormalizedMatch(
           lane: participant.lane,
           role: participant.role,
           rankTierAtIngestion: resolvedTier,
+          rankResolutionStatus: createRankResolutionStatus,
+          rankResolvedAt: createRankResolvedAt,
           win: participant.win,
           kills: participant.kills,
           deaths: participant.deaths,
@@ -376,6 +406,8 @@ export async function persistNormalizedMatch(
           itemIds: participant.itemIds,
           perkIds: participant.perkIds,
           statPerkIds: participant.statPerkIds,
+          primaryPerkStyleId: participant.primaryPerkStyleId,
+          secondaryPerkStyleId: participant.secondaryPerkStyleId,
           summonerSpell1Id: participant.summonerSpell1Id,
           summonerSpell2Id: participant.summonerSpell2Id,
           rawPayload: participant.rawPayload ?? undefined,
@@ -383,6 +415,16 @@ export async function persistNormalizedMatch(
         update: {
           ...(playerAccountId ? { playerAccountId } : {}),
           ...(shouldSetRankOnUpdate ? { rankTierAtIngestion: resolvedTier } : {}),
+          ...(updateRankResolutionStatus
+            ? {
+                rankResolutionStatus: updateRankResolutionStatus,
+                ...(updateRankResolutionStatus === 'RESOLVED_RANKED' ||
+                updateRankResolutionStatus === 'FAILED_PERMANENT' ||
+                updateRankResolutionStatus === 'NOT_APPLICABLE'
+                  ? { rankResolvedAt: persistenceNow }
+                  : {}),
+              }
+            : {}),
           externalAccountId: participant.externalAccountId,
           riotIdGameName: participant.riotIdGameName,
           riotIdTagLine: participant.riotIdTagLine,
@@ -416,6 +458,8 @@ export async function persistNormalizedMatch(
           itemIds: participant.itemIds,
           perkIds: participant.perkIds,
           statPerkIds: participant.statPerkIds,
+          primaryPerkStyleId: participant.primaryPerkStyleId,
+          secondaryPerkStyleId: participant.secondaryPerkStyleId,
           summonerSpell1Id: participant.summonerSpell1Id,
           summonerSpell2Id: participant.summonerSpell2Id,
           ...(participant.rawPayload !== null ? { rawPayload: participant.rawPayload } : {}),
@@ -482,6 +526,24 @@ async function linkMissingParticipants(input: {
   for (const participant of newlyLinked) {
     const resolvedTier =
       rankTiers.get(participantKey(participant.participantId)) ?? null;
+    const nextTier =
+      participant.rankTierAtIngestion == null && resolvedTier != null
+        ? resolvedTier
+        : participant.rankTierAtIngestion;
+    // Newly linked participants regain a PUUID path — recompute status (may leave FAILED_PERMANENT).
+    const original = input.participants.find((row) => row.id === participant.id);
+    const rankResolutionStatus = initialParticipantRankResolutionStatus({
+      queueId: input.queueId,
+      rankTierAtIngestion: nextTier,
+      externalAccountId: original?.externalAccountId ?? null,
+    });
+    const rankResolvedAt =
+      rankResolutionStatus === 'RESOLVED_RANKED' ||
+      rankResolutionStatus === 'RESOLVED_UNRANKED' ||
+      rankResolutionStatus === 'FAILED_PERMANENT' ||
+      rankResolutionStatus === 'NOT_APPLICABLE'
+        ? input.cutoff
+        : null;
     await input.prisma.matchParticipant.update({
       where: { id: participant.id },
       data: {
@@ -489,6 +551,8 @@ async function linkMissingParticipants(input: {
         ...(participant.rankTierAtIngestion == null && resolvedTier != null
           ? { rankTierAtIngestion: resolvedTier }
           : {}),
+        rankResolutionStatus,
+        ...(rankResolvedAt ? { rankResolvedAt } : {}),
       },
     });
   }
@@ -503,6 +567,8 @@ export async function persistTimelineAndMetrics(input: {
   timelineSchemaVersion: string;
   failureReason?: string | null;
   metrics: ParticipantTimelineMetrics[];
+  /** Build/skill events to persist; replace prior preserved events for this match when provided. */
+  buildEvents?: PreservedTimelineEvent[];
   markMatchCompleted: boolean;
 }): Promise<void> {
   await input.prisma.$transaction(async (tx) => {
@@ -524,6 +590,26 @@ export async function persistTimelineAndMetrics(input: {
         failureReason: input.failureReason ?? null,
       },
     });
+
+    if (input.buildEvents !== undefined) {
+      await tx.matchTimelineEvent.deleteMany({ where: { matchId: input.matchId } });
+      if (input.buildEvents.length > 0) {
+        await tx.matchTimelineEvent.createMany({
+          data: input.buildEvents.map((event) => ({
+            matchId: input.matchId,
+            eventIndex: event.eventIndex,
+            type: event.type,
+            timestampMs: event.timestampMs,
+            participantId: event.participantId,
+            itemId: event.itemId,
+            beforeItemId: event.beforeItemId,
+            afterItemId: event.afterItemId,
+            skillSlot: event.skillSlot,
+            levelUpType: event.levelUpType,
+          })),
+        });
+      }
+    }
 
     for (const metric of input.metrics) {
       await tx.matchParticipant.update({
@@ -671,6 +757,7 @@ export async function ensurePlayerLinkageForCompletedMatch(input: {
           playerAccountId: true,
           externalAccountId: true,
           rankTierAtIngestion: true,
+          rankResolutionStatus: true,
         },
       },
     },

@@ -29,6 +29,7 @@ type Store = {
   participants: Array<Record<string, unknown>>;
   teams: Array<Record<string, unknown>>;
   timelines: Map<string, Record<string, unknown>>;
+  timelineEvents: Array<Record<string, unknown>>;
   snapshots: SnapshotRow[];
   accounts: Array<{ id: string; provider: string; externalAccountId: string }>;
 };
@@ -277,6 +278,19 @@ function createPrismaMock(store: Store) {
             },
           ),
         },
+        matchTimelineEvent: {
+          deleteMany: vi.fn(async ({ where }: { where: { matchId: string } }) => {
+            const before = store.timelineEvents.length;
+            store.timelineEvents = store.timelineEvents.filter(
+              (row) => row.matchId !== where.matchId,
+            );
+            return { count: before - store.timelineEvents.length };
+          }),
+          createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+            store.timelineEvents.push(...data);
+            return { count: data.length };
+          }),
+        },
         rankSnapshot: {
           findMany: rankSnapshotFindMany,
         },
@@ -309,6 +323,7 @@ describe('persistNormalizedMatch rankTierAtIngestion', () => {
       participants: [],
       teams: [],
       timelines: new Map(),
+      timelineEvents: [],
       snapshots: [],
       accounts: [
         {
@@ -704,6 +719,192 @@ describe('persistNormalizedMatch rankTierAtIngestion', () => {
   });
 });
 
+describe('build-data preservation persistence', () => {
+  it('persists final inventory with empty slots, perk styles, and summoner spells', async () => {
+    const store: Store = {
+      matches: new Map(),
+      participants: [],
+      teams: [],
+      timelines: new Map(),
+      timelineEvents: [],
+      snapshots: [],
+      accounts: [],
+    };
+    const { prisma } = createPrismaMock(store);
+    const match = normalizeMatch({
+      raw: buildRankedMatchDto({ matchId: 'NA1_BUILD_PRESERVE_PARTICIPANT' }),
+      regionalRoute: 'americas',
+      storeRawPayloads: false,
+      normalizationVersion: 1,
+    });
+
+    await persistNormalizedMatch(prisma as never, match, new Map());
+
+    const participant = store.participants.find((row) => row.participantId === 1);
+    expect(participant?.itemIds).toEqual([3031, 3006, 0, 0, 0, 0, 3340]);
+    expect(participant?.perkIds).toEqual([8005, 8008, 8126]);
+    expect(participant?.statPerkIds).toEqual([5008, 5008, 5002]);
+    expect(participant?.primaryPerkStyleId).toBe(8000);
+    expect(participant?.secondaryPerkStyleId).toBe(8100);
+    expect(participant?.summonerSpell1Id).toBe(4);
+    expect(participant?.summonerSpell2Id).toBe(14);
+  });
+
+  it('persists build-relevant timeline events joinable by matchId + participantId', async () => {
+    const store: Store = {
+      matches: new Map([
+        [
+          'RIOT:NA1_BUILD_EVENTS',
+          {
+            id: 'match-build-events',
+            provider: 'RIOT',
+            externalMatchId: 'NA1_BUILD_EVENTS',
+            ingestionStatus: MatchIngestionStatus.IN_PROGRESS,
+            ingestedAt: new Date('2024-06-15T12:00:00.000Z'),
+            createdAt: new Date('2024-06-15T11:00:00.000Z'),
+          },
+        ],
+      ]),
+      participants: [
+        {
+          id: 'part-build-1',
+          matchId: 'match-build-events',
+          participantId: 1,
+        },
+      ],
+      teams: [],
+      timelines: new Map(),
+      timelineEvents: [],
+      snapshots: [],
+      accounts: [],
+    };
+    const { prisma } = createPrismaMock(store);
+
+    await persistTimelineAndMetrics({
+      prisma: prisma as never,
+      matchId: 'match-build-events',
+      fetchStatus: TimelineFetchStatus.FETCHED,
+      rawPayload: null,
+      timelineSchemaVersion: '1',
+      metrics: [
+        {
+          participantId: 1,
+          goldAt10: 1000,
+          goldAt15: 2000,
+          csAt10: 10,
+          csAt15: 20,
+          xpAt10: 100,
+          xpAt15: 200,
+          goldDifferenceAt10: null,
+          goldDifferenceAt15: null,
+          csDifferenceAt10: null,
+          csDifferenceAt15: null,
+          xpDifferenceAt10: null,
+          xpDifferenceAt15: null,
+          deathsBefore10: 0,
+          deathsBetween10And20: 0,
+          deathsBeforeObjectives: null,
+          firstCompletedItemId: null,
+          firstCompletedItemAtSeconds: null,
+          killParticipation: 0.5,
+          skillOrder: [1, 3, 2],
+        },
+      ],
+      buildEvents: [
+        {
+          eventIndex: 0,
+          type: 'ITEM_PURCHASED',
+          timestampMs: 5000,
+          participantId: 1,
+          itemId: 1055,
+          beforeItemId: null,
+          afterItemId: null,
+          skillSlot: null,
+          levelUpType: null,
+        },
+        {
+          eventIndex: 1,
+          type: 'ITEM_UNDO',
+          timestampMs: 6000,
+          participantId: 1,
+          itemId: 1055,
+          beforeItemId: 1055,
+          afterItemId: 0,
+          skillSlot: null,
+          levelUpType: null,
+        },
+        {
+          eventIndex: 2,
+          type: 'ITEM_PURCHASED',
+          timestampMs: 7000,
+          participantId: 1,
+          itemId: 1055,
+          beforeItemId: null,
+          afterItemId: null,
+          skillSlot: null,
+          levelUpType: null,
+        },
+        {
+          eventIndex: 3,
+          type: 'ITEM_SOLD',
+          timestampMs: 800_000,
+          participantId: 1,
+          itemId: 1055,
+          beforeItemId: null,
+          afterItemId: null,
+          skillSlot: null,
+          levelUpType: null,
+        },
+        {
+          eventIndex: 4,
+          type: 'SKILL_LEVEL_UP',
+          timestampMs: 90_000,
+          participantId: 1,
+          itemId: null,
+          beforeItemId: null,
+          afterItemId: null,
+          skillSlot: 1,
+          levelUpType: 'NORMAL',
+        },
+        {
+          eventIndex: 5,
+          type: 'SKILL_LEVEL_UP',
+          timestampMs: 150_000,
+          participantId: 1,
+          itemId: null,
+          beforeItemId: null,
+          afterItemId: null,
+          skillSlot: 3,
+          levelUpType: 'NORMAL',
+        },
+      ],
+      markMatchCompleted: true,
+    });
+
+    expect(store.timelineEvents).toHaveLength(6);
+    expect(store.timelineEvents.map((row) => row.type)).toEqual([
+      'ITEM_PURCHASED',
+      'ITEM_UNDO',
+      'ITEM_PURCHASED',
+      'ITEM_SOLD',
+      'SKILL_LEVEL_UP',
+      'SKILL_LEVEL_UP',
+    ]);
+    expect(
+      store.timelineEvents.every(
+        (row) => row.matchId === 'match-build-events' && row.participantId === 1,
+      ),
+    ).toBe(true);
+    expect(store.timelineEvents.find((row) => row.type === 'ITEM_UNDO')).toMatchObject({
+      beforeItemId: 1055,
+      afterItemId: 0,
+      itemId: 1055,
+    });
+    const participant = store.participants.find((row) => row.participantId === 1);
+    expect(participant?.skillOrder).toEqual([1, 3, 2]);
+  });
+});
+
 describe('persistTimelineAndMetrics ingestedAt stability', () => {
   it('preserves existing ingestedAt when marking match COMPLETED', async () => {
     const existingIngestedAt = new Date('2024-06-15T12:00:00.000Z');
@@ -724,6 +925,7 @@ describe('persistTimelineAndMetrics ingestedAt stability', () => {
       participants: [],
       teams: [],
       timelines: new Map(),
+      timelineEvents: [],
       snapshots: [],
       accounts: [],
     };
@@ -762,6 +964,7 @@ describe('persistTimelineAndMetrics ingestedAt stability', () => {
       participants: [],
       teams: [],
       timelines: new Map(),
+      timelineEvents: [],
       snapshots: [],
       accounts: [],
     };

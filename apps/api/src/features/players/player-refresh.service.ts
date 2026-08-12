@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { withRiotWorkload } from '@league-helper/server-riot';
 import {
   AccountIdentityConflictError,
   PlayerRefreshRequestSchema,
@@ -62,68 +63,70 @@ export class PlayerRefreshService {
     }
 
     try {
-      await this.refreshStatus.recordRefreshStarted(account.id);
+      return await withRiotWorkload('product', async () => {
+        await this.refreshStatus.recordRefreshStarted(account.id);
 
-      const resolved = await this.gameData.resolvePlayer({
-        gameName: account.currentGameName,
-        tagLine: account.currentTagLine,
-        platform: account.platformRoute as Parameters<
-          GameDataProvider['resolvePlayer']
-        >[0]['platform'],
-      });
-
-      if (resolved.externalAccountId !== account.externalAccountId) {
-        throw new AccountIdentityConflictError(undefined, {
-          playerId: account.playerId,
+        const resolved = await this.gameData.resolvePlayer({
+          gameName: account.currentGameName,
+          tagLine: account.currentTagLine,
+          platform: account.platformRoute as Parameters<
+            GameDataProvider['resolvePlayer']
+          >[0]['platform'],
         });
-      }
 
-      const updated = await this.playerAccounts.upsertPlayerAccount({
-        playerId: account.playerId,
-        provider: resolved.provider,
-        externalAccountId: resolved.externalAccountId,
-        platformRoute: resolved.platform,
-        regionalRoute: resolved.regionalRoute,
-        gameName: resolved.riotId.gameName,
-        tagLine: resolved.riotId.tagLine,
-        summonerId: resolved.summonerId ?? null,
-        accountId: resolved.accountId ?? null,
-        profileIconId: resolved.profileIconId ?? null,
-        summonerLevel: resolved.summonerLevel ?? null,
-        lastResolvedAt: new Date(),
+        if (resolved.externalAccountId !== account.externalAccountId) {
+          throw new AccountIdentityConflictError(undefined, {
+            playerId: account.playerId,
+          });
+        }
+
+        const updated = await this.playerAccounts.upsertPlayerAccount({
+          playerId: account.playerId,
+          provider: resolved.provider,
+          externalAccountId: resolved.externalAccountId,
+          platformRoute: resolved.platform,
+          regionalRoute: resolved.regionalRoute,
+          gameName: resolved.riotId.gameName,
+          tagLine: resolved.riotId.tagLine,
+          summonerId: resolved.summonerId ?? null,
+          accountId: resolved.accountId ?? null,
+          profileIconId: resolved.profileIconId ?? null,
+          summonerLevel: resolved.summonerLevel ?? null,
+          lastResolvedAt: new Date(),
+        });
+
+        const matchCount = this.searchService.resolveMatchCount(parsed.matchCount);
+        const queueId =
+          parsed.queueId !== undefined ? parsed.queueId : this.config.defaultMatchQueueId;
+
+        const response = await this.searchService.syncPlayerData({
+          account: updated,
+          providerAccount: resolved,
+          matchCount,
+          queueId,
+          correlationId,
+        });
+
+        // Invalidate then cache authoritative stored profile (including existing matches).
+        // Refresh HTTP response returns status only — never treat it as the match list.
+        await this.cache.invalidate(playerId);
+        await this.cache.setProfile(playerId, response);
+        await this.refreshStatus.recordRefreshCompleted(account.id);
+
+        if (!parsed.force) {
+          await this.setCooldown(cooldownKey);
+        }
+
+        this.logger.log({
+          message: 'Player refresh completed',
+          correlationId,
+          playerId,
+          refreshState: response.refresh.state,
+        });
+
+        assertNoPuuidLeak(response.refresh);
+        return response.refresh;
       });
-
-      const matchCount = this.searchService.resolveMatchCount(parsed.matchCount);
-      const queueId =
-        parsed.queueId !== undefined ? parsed.queueId : this.config.defaultMatchQueueId;
-
-      const response = await this.searchService.syncPlayerData({
-        account: updated,
-        providerAccount: resolved,
-        matchCount,
-        queueId,
-        correlationId,
-      });
-
-      // Invalidate then cache authoritative stored profile (including existing matches).
-      // Refresh HTTP response returns status only — never treat it as the match list.
-      await this.cache.invalidate(playerId);
-      await this.cache.setProfile(playerId, response);
-      await this.refreshStatus.recordRefreshCompleted(account.id);
-
-      if (!parsed.force) {
-        await this.setCooldown(cooldownKey);
-      }
-
-      this.logger.log({
-        message: 'Player refresh completed',
-        correlationId,
-        playerId,
-        refreshState: response.refresh.state,
-      });
-
-      assertNoPuuidLeak(response.refresh);
-      return response.refresh;
     } finally {
       await this.releaseLock(lockKey);
     }

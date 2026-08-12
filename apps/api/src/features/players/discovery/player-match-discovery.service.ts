@@ -1,6 +1,10 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { PlayerAccount as DbPlayerAccount } from '@prisma/client';
 import {
+  isRiotRequestBudgetDeferredError,
+  withRiotWorkload,
+} from '@league-helper/server-riot';
+import {
   PlatformRouteSchema,
   ProviderIdSchema,
   ProviderRateLimitedError,
@@ -130,6 +134,15 @@ function failureFromError(error: unknown): PlayerMatchDiscoveryResult {
       rateLimited: true,
       ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
       warnings: [{ code: 'RATE_LIMITED', message: error.message }],
+    });
+  }
+
+  if (isRiotRequestBudgetDeferredError(error)) {
+    return emptyResult({
+      normalizedFailureCode: 'RIOT_REQUEST_BUDGET_DEFERRED',
+      budgetDeferred: true,
+      retryAfterMs: error.waitMs,
+      warnings: [{ code: 'RIOT_REQUEST_BUDGET_DEFERRED', message: error.message }],
     });
   }
 
@@ -386,15 +399,17 @@ export async function runPlayerMatchDiscovery(
   input: PlayerMatchDiscoveryInput,
   options?: PlayerMatchDiscoveryCallOptions,
 ): Promise<PlayerMatchDiscoveryResult> {
-  const effectiveDeps = withCallOptions(deps, options);
-  try {
-    if (input.mode === 'RIOT_ID') {
-      return await discoverRiotIdMode(effectiveDeps, input);
+  return withRiotWorkload('refresh', async () => {
+    const effectiveDeps = withCallOptions(deps, options);
+    try {
+      if (input.mode === 'RIOT_ID') {
+        return await discoverRiotIdMode(effectiveDeps, input);
+      }
+      return await discoverAccountMode(effectiveDeps, input);
+    } catch (error: unknown) {
+      return failureFromError(error);
     }
-    return await discoverAccountMode(effectiveDeps, input);
-  } catch (error: unknown) {
-    return failureFromError(error);
-  }
+  });
 }
 
 @Injectable()

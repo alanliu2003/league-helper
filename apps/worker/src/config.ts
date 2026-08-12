@@ -5,6 +5,8 @@ import {
 import {
   CHAMPION_AGGREGATION_QUEUE_NAME,
   MATCH_INGESTION_QUEUE_NAME,
+  PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
+  PARTICIPANT_RANK_OBSERVATION_FRESHNESS_MS,
   ValidationFailureError,
 } from '@league-helper/shared';
 
@@ -48,6 +50,17 @@ export type ChampionAggregationWorkerConfig = {
   sourceNormalizationVersion: string;
   aggregationVersion: string;
   confidenceLevel: number;
+};
+
+export type ParticipantRankEnrichmentWorkerConfig = {
+  queueName: string;
+  /** Developer-key default: 1. */
+  concurrency: number;
+  jobAttempts: number;
+  backoffBaseMs: number;
+  backoffMaxMs: number;
+  observationFreshnessMs: number;
+  riotShared429CooldownMinMs: number;
 };
 
 function parseBoundedInt(
@@ -188,5 +201,56 @@ export function loadChampionAggregationWorkerConfig(
       'CHAMPION_AGGREGATION_VERSION',
     ),
     confidenceLevel: parseConfidenceLevel(env.CHAMPION_AGGREGATION_CONFIDENCE_LEVEL, 0.95),
+  };
+}
+
+/**
+ * Load participant-rank enrichment worker settings from environment.
+ * Defaults stay conservative for developer-key operation (concurrency 1).
+ */
+export function loadParticipantRankEnrichmentWorkerConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): ParticipantRankEnrichmentWorkerConfig {
+  return {
+    queueName:
+      env.PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME?.trim() || PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
+    concurrency: parseBoundedInt(env.PARTICIPANT_RANK_ENRICHMENT_WORKER_CONCURRENCY, 1, {
+      min: 1,
+      max: 8,
+      name: 'PARTICIPANT_RANK_ENRICHMENT_WORKER_CONCURRENCY',
+    }),
+    jobAttempts: parseBoundedInt(env.PARTICIPANT_RANK_ENRICHMENT_JOB_ATTEMPTS, 5, {
+      min: 1,
+      max: 20,
+      name: 'PARTICIPANT_RANK_ENRICHMENT_JOB_ATTEMPTS',
+    }),
+    backoffBaseMs: parseBoundedInt(env.PARTICIPANT_RANK_ENRICHMENT_BACKOFF_BASE_MS, 2000, {
+      min: 100,
+      max: 60_000,
+      name: 'PARTICIPANT_RANK_ENRICHMENT_BACKOFF_BASE_MS',
+    }),
+    backoffMaxMs: parseBoundedInt(env.PARTICIPANT_RANK_ENRICHMENT_BACKOFF_MAX_MS, 60_000, {
+      min: 1000,
+      max: 600_000,
+      name: 'PARTICIPANT_RANK_ENRICHMENT_BACKOFF_MAX_MS',
+    }),
+    observationFreshnessMs: parseBoundedInt(
+      env.PARTICIPANT_RANK_OBSERVATION_FRESHNESS_MS,
+      PARTICIPANT_RANK_OBSERVATION_FRESHNESS_MS,
+      {
+        min: 60_000,
+        max: 7 * 24 * 60 * 60_000,
+        name: 'PARTICIPANT_RANK_OBSERVATION_FRESHNESS_MS',
+      },
+    ),
+    riotShared429CooldownMinMs: parseBoundedInt(
+      env[RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV],
+      DEFAULT_RIOT_SHARED_429_COOLDOWN_MIN_MS,
+      {
+        min: 0,
+        max: 7 * 24 * 60 * 60_000,
+        name: RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV,
+      },
+    ),
   };
 }

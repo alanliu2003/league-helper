@@ -145,6 +145,7 @@ type Store = {
   participants: Array<Record<string, unknown>>;
   teams: Array<Record<string, unknown>>;
   timelines: Map<string, Record<string, unknown>>;
+  timelineEvents: Array<Record<string, unknown>>;
   accounts: Array<{ id: string; playerId: string; provider: string; externalAccountId: string }>;
   snapshots: Array<{
     id: string;
@@ -468,6 +469,19 @@ function createPrismaMock(store: Store) {
             },
           ),
         },
+        matchTimelineEvent: {
+          deleteMany: vi.fn(async ({ where }: { where: { matchId: string } }) => {
+            const before = store.timelineEvents.length;
+            store.timelineEvents = store.timelineEvents.filter(
+              (row) => row.matchId !== where.matchId,
+            );
+            return { count: before - store.timelineEvents.length };
+          }),
+          createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+            store.timelineEvents.push(...data);
+            return { count: data.length };
+          }),
+        },
         rankSnapshot: {
           findMany: rankSnapshotFindMany,
         },
@@ -499,6 +513,7 @@ describe('processMatchIngestionJob', () => {
       participants: [],
       teams: [],
       timelines: new Map(),
+      timelineEvents: [],
       snapshots: [],
       accounts: [
         {
