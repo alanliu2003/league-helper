@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { RiotRequestBudgetDeferredError } from '@league-helper/server-riot';
 import {
   ProviderRateLimitedError,
   ProviderResponseInvalidError,
@@ -16,6 +17,19 @@ describe('classifyIngestionError', () => {
     );
     expect(result.kind).toBe('delayed');
     expect(result.retryAfterSeconds).toBe(12);
+  });
+
+  it('marks proactive budget deferral as delayed without treating it as 429', () => {
+    const result = classifyIngestionError(
+      new RiotRequestBudgetDeferredError({
+        waitMs: 2500,
+        reason: 'short_window',
+        workload: 'match',
+      }),
+    );
+    expect(result.kind).toBe('delayed');
+    expect(result.code).toBe('RIOT_REQUEST_BUDGET_DEFERRED');
+    expect(result.retryAfterSeconds).toBe(3);
   });
 
   it('marks unavailable and 5xx-like as retryable', () => {

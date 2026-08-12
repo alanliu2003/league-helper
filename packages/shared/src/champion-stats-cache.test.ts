@@ -91,6 +91,28 @@ describe('champion stats cache keys', () => {
     expect(filters.startsWith('champ_stats:filters:')).toBe(true);
   });
 
+  it('does not collide ALL/UNKNOWN/HIGH/DIAMOND when tier slot uses rank-scope tokens', () => {
+    const base = {
+      scope: baseScope,
+      generation: 1,
+      position: 'MIDDLE',
+      sortBy: 'winRate',
+      sortDirection: 'desc' as const,
+      limit: 50,
+      minimumSample: 30,
+      includeInsufficient: false,
+    };
+    const keys = [
+      buildChampionStatsTableCacheKey({ ...base, tier: 'ALL' }),
+      buildChampionStatsTableCacheKey({ ...base, tier: 'UNKNOWN' }),
+      buildChampionStatsTableCacheKey({ ...base, tier: 'SEGMENT:HIGH' }),
+      buildChampionStatsTableCacheKey({ ...base, tier: 'EXACT:DIAMOND' }),
+      buildChampionStatsTableCacheKey({ ...base, tier: 'DIAMOND' }),
+      buildChampionStatsTableCacheKey({ ...base, position: 'TOP', tier: 'ALL' }),
+    ];
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
   it('builds string-only Redis keys without importing Redis clients', () => {
     const key = buildChampionStatsGenerationKey(baseScope);
     expect(typeof key).toBe('string');

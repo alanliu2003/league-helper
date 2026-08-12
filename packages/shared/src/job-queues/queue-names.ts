@@ -7,7 +7,14 @@ export const CHAMPION_AGGREGATION_QUEUE_NAME = 'champion-aggregation' as const;
 
 export const CHAMPION_AGGREGATION_JOB_NAME = 'RECALCULATE_CHAMPION_AGGREGATES' as const;
 
+/** Phase 3 participant-rank enrichment (League-v4 by PUUID). Contract only in Phase 2. */
+export const PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME = 'participant-rank-enrichment' as const;
+
+export const PARTICIPANT_RANK_ENRICHMENT_JOB_NAME = 'ENRICH_PARTICIPANT_RANK' as const;
+
 export type MatchIngestionQueueName = typeof MATCH_INGESTION_QUEUE_NAME;
 export type MatchIngestionJobName = typeof MATCH_INGESTION_JOB_NAME;
 export type ChampionAggregationQueueName = typeof CHAMPION_AGGREGATION_QUEUE_NAME;
 export type ChampionAggregationJobName = typeof CHAMPION_AGGREGATION_JOB_NAME;
+export type ParticipantRankEnrichmentQueueName = typeof PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME;
+export type ParticipantRankEnrichmentJobName = typeof PARTICIPANT_RANK_ENRICHMENT_JOB_NAME;

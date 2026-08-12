@@ -13,7 +13,7 @@ const apiRoot = path.resolve(__dirname, '../../api');
 // Do not fall back to TEST_DATABASE_URL (API schema) — parallel pnpm test would race.
 const testDatabaseUrl =
   process.env.WORKER_TEST_DATABASE_URL ??
-  'postgresql://league:league@localhost:5432/league_helper?schema=league_helper_worker_test';
+  'postgresql://league:league@localhost:5432/league_helper_m12v2?schema=league_helper_worker_test';
 
 execSync('npx prisma migrate deploy', {
   cwd: apiRoot,

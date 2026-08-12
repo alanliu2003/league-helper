@@ -129,6 +129,40 @@ export {
   type RiotSharedCooldownStoreOptions,
 } from './riot-shared-cooldown';
 
+export {
+  RIOT_REQUEST_BUDGET_REDIS_KEY_PREFIX,
+  RIOT_REQUEST_BUDGET_ENABLED_ENV,
+  RIOT_REQUEST_BUDGET_UTILIZATION_ENV,
+  loadRiotRequestBudgetConfig,
+  effectiveWindowLimit,
+  type RiotRequestBudgetConfig,
+} from './riot-request-budget-config';
+
+export {
+  RESERVE_RIOT_REQUEST_BUDGET_LUA,
+  RiotRequestBudgetStore,
+  createRiotRequestBudgetGate,
+  type RequestBudgetRedisClient,
+  type RiotRequestBudgetReserveResult,
+  type RiotRequestBudgetMetricsSnapshot,
+  type RiotRequestBudgetStoreOptions,
+  type RiotRequestBudgetGate,
+} from './riot-request-budget';
+
+export {
+  RiotRequestBudgetDeferredError,
+  isRiotRequestBudgetDeferredError,
+  type RiotRequestBudgetDeferReason,
+} from './riot-request-budget-deferred.error';
+
+export {
+  withRiotWorkload,
+  getRiotWorkloadContext,
+  defaultWorkloadForCategory,
+  resolveRiotRequestWorkload,
+  type RiotRequestWorkload,
+} from './riot-request-workload';
+
 export { createRiotResponseMetadata } from './riot-response-metadata';
 
 export {

@@ -156,6 +156,7 @@ describe('recalculateForMatch scope race', () => {
       lane: 'MIDDLE',
       role: 'SOLO',
       rankTierAtIngestion: 'GOLD',
+      rankResolutionStatus: 'RESOLVED_RANKED' as const,
       win: true,
       kills: 5,
       deaths: 2,

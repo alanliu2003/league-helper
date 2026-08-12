@@ -5,6 +5,7 @@ import {
   PrismaClient,
 } from '@prisma/client';
 import { DEFAULT_CHAMPION_ROLLUP_POLICY } from '@league-helper/match-analytics';
+import { initialParticipantRankResolutionStatus } from '@league-helper/shared';
 import type { ChampionAggregationWorkerConfig } from '../../config.js';
 import { collectStdoutJson, reportCliFailure } from './cli-output.js';
 import { EXIT_COMMAND_FAILURE, EXIT_INTEGRITY_FAILURE, EXIT_SUCCESS } from './exit-codes.js';
@@ -21,7 +22,7 @@ import { runStatusChampionAggregates } from './status-core.js';
 
 const testDatabaseUrl =
   process.env.WORKER_TEST_DATABASE_URL ??
-  'postgresql://league:league@localhost:5432/league_helper?schema=league_helper_worker_test';
+  'postgresql://league:league@localhost:5432/league_helper_m12v2?schema=league_helper_worker_test';
 
 const prisma = new PrismaClient({
   datasources: { db: { url: testDatabaseUrl } },
@@ -139,6 +140,13 @@ async function seedEligibleMatch(input: {
             role: 'SOLO',
             rankTierAtIngestion:
               input.rankTierAtIngestion === undefined ? 'GOLD' : input.rankTierAtIngestion,
+            rankResolutionStatus: initialParticipantRankResolutionStatus({
+              queueId: input.queueId ?? 420,
+              rankTierAtIngestion:
+                input.rankTierAtIngestion === undefined ? 'GOLD' : input.rankTierAtIngestion,
+              externalAccountId: 'seed-puuid',
+            }),
+            externalAccountId: 'seed-puuid',
             win: true,
             kills: 5,
             deaths: 2,

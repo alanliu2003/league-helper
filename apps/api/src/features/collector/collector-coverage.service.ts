@@ -1,6 +1,10 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { StaticDataStatus, type TrackedPlayerEnrollmentSource } from '@prisma/client';
 import {
+  APEX_RANK_TIERS,
+  HIGH_RANK_TIERS,
+  LOW_RANK_TIERS,
+  MID_RANK_TIERS,
   PLATFORM_ROUTES,
   getRegionalRouteForPlatform,
   type ChampionRankingPosition,
@@ -60,8 +64,12 @@ const ENROLLMENT_SOURCES: TrackedPlayerEnrollmentSource[] = [
   'MATCH_PARTICIPANT',
 ];
 
-const APEX_TIERS = new Set(['CHALLENGER', 'GRANDMASTER', 'MASTER']);
-const REPRESENTATIVE_TIERS = new Set(['DIAMOND', 'EMERALD', 'PLATINUM', 'GOLD']);
+const APEX_TIERS = new Set<string>(APEX_RANK_TIERS);
+const REPRESENTATIVE_TIERS = new Set<string>([
+  ...HIGH_RANK_TIERS,
+  ...MID_RANK_TIERS,
+  ...LOW_RANK_TIERS,
+]);
 
 const SAMPLE_HISTOGRAM_BUCKETS = [
   { key: '1-2', min: 1, max: 2 },

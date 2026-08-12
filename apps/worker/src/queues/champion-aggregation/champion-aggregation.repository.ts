@@ -41,6 +41,7 @@ const PARTICIPANT_SELECT = {
   lane: true,
   role: true,
   rankTierAtIngestion: true,
+  rankResolutionStatus: true,
   win: true,
   kills: true,
   deaths: true,

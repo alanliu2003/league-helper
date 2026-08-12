@@ -97,6 +97,7 @@ export async function runStatusChampionAggregates(
             lane: true,
             role: true,
             rankTierAtIngestion: true,
+            rankResolutionStatus: true,
             win: true,
             kills: true,
             deaths: true,

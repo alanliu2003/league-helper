@@ -3,6 +3,10 @@ import {
   RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV,
 } from '@league-helper/server-riot';
 import {
+  APEX_RANK_TIERS,
+  HIGH_RANK_TIERS,
+  LOW_RANK_TIERS,
+  MID_RANK_TIERS,
   parsePlatformRoute,
   RankTierSchema,
   ValidationFailureError,
@@ -173,20 +177,27 @@ const DEFAULT_LADDER_MAX_NEW_PER_RUN = 100;
 const HARD_MAX_LADDER_MAX_NEW_PER_RUN = 1000;
 const DEFAULT_LADDER_QUEUE_TYPE = 'RANKED_SOLO_5x5' as const;
 const DEFAULT_LADDER_TIERS = 'CHALLENGER,GRANDMASTER';
+/** Default remains High+Mid; Low (Silver/Bronze/Iron) is opt-in via env or --tiers. */
 const DEFAULT_LADDER_REPRESENTATIVE_TIERS = 'DIAMOND,EMERALD,PLATINUM,GOLD';
 const DEFAULT_LADDER_MAX_PAGES_PER_TIER_DIVISION = 1;
 const HARD_MAX_LADDER_MAX_PAGES_PER_TIER_DIVISION = 5;
 const DEFAULT_LADDER_MAX_CANDIDATES_SCANNED = 500;
 const HARD_MAX_LADDER_MAX_CANDIDATES_SCANNED = 5000;
 
-/** Apex tiers allowed for COLLECTOR_LADDER_TIERS (M11 A1). */
-export const LADDER_APEX_TIERS_ALLOWLIST = ['CHALLENGER', 'GRANDMASTER'] as const satisfies readonly RankTier[];
-/** Representative tiers allowed for COLLECTOR_LADDER_REPRESENTATIVE_TIERS (M11 A2). */
+/**
+ * Apex tiers allowed for COLLECTOR_LADDER_TIERS.
+ * Aligned with shared RANK_SEGMENTS.APEX (Challenger + Grandmaster + Master).
+ * Default env value remains CHALLENGER,GRANDMASTER; MASTER is opt-in (large list).
+ */
+export const LADDER_APEX_TIERS_ALLOWLIST = APEX_RANK_TIERS;
+/**
+ * Representative tiers allowlist: High + Mid + Low segments.
+ * Default env stays High+Mid; Phase 6E low-tier waves pass SILVER/BRONZE/IRON explicitly.
+ */
 export const LADDER_REPRESENTATIVE_TIERS_ALLOWLIST = [
-  'DIAMOND',
-  'EMERALD',
-  'PLATINUM',
-  'GOLD',
+  ...HIGH_RANK_TIERS,
+  ...MID_RANK_TIERS,
+  ...LOW_RANK_TIERS,
 ] as const satisfies readonly RankTier[];
 
 const MAX_DURATION_MS = 7 * 24 * HOUR_MS;

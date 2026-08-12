@@ -17,7 +17,6 @@ import {
   type EligibleContributor,
 } from './eligibility.js';
 import {
-  contributorMatchesMaterializedKey,
   groupKeysForBatchedReads,
   parseChampionAggregateDimensionKey,
   type ChampionAggregationRepository,
@@ -26,6 +25,7 @@ import {
   expandCurrentDimensionKeys,
   unionDimensionKeys,
 } from './previous-keys.js';
+import { contributorFeedsKeyForRankClassification } from './rank-dimension-keys.js';
 
 export type RecalculateForMatchResult =
   | {
@@ -64,21 +64,9 @@ function contributorFeedsKey(
   contributor: EligibleContributor,
   key: MaterializedChampionDimensions,
 ): boolean {
-  const exact = contributor.exact;
-  if (
-    exact.patch !== key.patch ||
-    exact.platformRoute !== key.platformRoute ||
-    exact.regionalRoute !== key.regionalRoute ||
-    exact.queueId !== key.queueId ||
-    exact.sourceNormalizationVersion !== key.sourceNormalizationVersion ||
-    exact.aggregationVersion !== key.aggregationVersion
-  ) {
-    return false;
-  }
-  return contributorMatchesMaterializedKey(
-    exact.rankTier,
-    exact.position,
-    exact.championId,
+  return contributorFeedsKeyForRankClassification(
+    contributor.base,
+    contributor.rankClassification,
     key,
   );
 }
@@ -247,7 +235,7 @@ export async function recalculateForMatch(
   }
 
   const currentKeys = eligibility.eligible
-    ? expandCurrentDimensionKeys(eligibility.contributors.map((c) => c.exact))
+    ? expandCurrentDimensionKeys(eligibility.contributors)
     : [];
   const affectedKeyStrings = unionDimensionKeys(previousKeys, currentKeys);
   const affectedDims = affectedKeyStrings

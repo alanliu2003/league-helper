@@ -73,7 +73,76 @@ export {
 
 export { RankTierSchema, RankDivisionSchema, type RankTier, type RankDivision } from './ranks';
 
+export {
+  RANK_SEGMENT_IDS,
+  RANK_SEGMENTS,
+  APEX_RANK_TIERS,
+  HIGH_RANK_TIERS,
+  MID_RANK_TIERS,
+  LOW_RANK_TIERS,
+  rankSegmentForTier,
+  parseRankSegmentId,
+  hasCompleteApexRepresentation,
+  assertTierInSegment,
+  type RankSegmentId,
+  type RankSegmentTiers,
+} from './rank-segments';
+
+export {
+  RankScopeSchema,
+  parseRankScope,
+  rankScopeEquals,
+  serializeRankScopeCacheToken,
+  exactTiersForRankScope,
+  resolveRankScopeReadStrategy,
+  legacyTierFilterToRankScope,
+  assertProductRankScope,
+  resolutionStatusAllowsExactOrSegmentProductScope,
+  type RankScope,
+  type RankScopeReadStrategy,
+  type LegacyChampionStatsTierFilter,
+} from './rank-scope';
+
+export {
+  emptyMergeableChampionAggregateTotals,
+  mergeChampionAggregateTotals,
+  deriveSegmentWinRate,
+  type MergeableChampionAggregateTotals,
+} from './rank-aware-merge';
+
+export {
+  CHAMPION_STATS_RANKING_FLOOR,
+  RankAwareProductQualityMetaSchema,
+  buildRankAwareProductQualityMeta,
+  type RankAwareProductQualityMeta,
+} from './rank-aware-eligibility';
+
 export { QueueTypeSchema, type QueueType } from './queues';
+
+export {
+  ParticipantRankResolutionStatusSchema,
+  AGGREGATE_UNKNOWN_RANK_TIER,
+  PARTICIPANT_RANK_OBSERVATION_FRESHNESS_MS,
+  classifyParticipantRankForAggregates,
+  initialParticipantRankResolutionStatus,
+  isRankedSoloOrFlexQueue,
+  type ParticipantRankResolutionStatus,
+  type ParticipantRankAggregateClassification,
+  type ClassifyParticipantRankInput,
+} from './participant-rank-resolution';
+
+export {
+  emptyRankResolutionStateCounts,
+  rankCoverageDenominator,
+  computeRankQualityMetrics,
+  classifyExactRankCoverageHealth,
+  bumpRankResolutionStateCount,
+  RANK_COVERAGE_UNHEALTHY_WARNING,
+  type RankResolutionStateCounts,
+  type RankQualityMetrics,
+  type ExactRankCoverageHealth,
+  type ExactRankCoverageHealthResult,
+} from './participant-rank-quality';
 
 export {
   RANKED_SOLO_QUEUE_ID,
@@ -148,6 +217,11 @@ export {
   ChampionAggregationJobPayloadSchema,
   ChampionAggregationJobTypeSchema,
   buildChampionAggregationBullMqJobId,
+  PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
+  PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
+  ParticipantRankEnrichmentJobPayloadSchema,
+  ParticipantRankEnrichmentJobTypeSchema,
+  buildParticipantRankEnrichmentBullMqJobId,
   BULLMQ_DEFAULT_PREFIX,
   parseBullMqRedisConnectionInfo,
   createBullMqConnectionOptions,
@@ -160,6 +234,10 @@ export {
   type ChampionAggregationJobName,
   type ChampionAggregationJobPayload,
   type ChampionAggregationJobType,
+  type ParticipantRankEnrichmentQueueName,
+  type ParticipantRankEnrichmentJobName,
+  type ParticipantRankEnrichmentJobPayload,
+  type ParticipantRankEnrichmentJobType,
   type BullMqRedisConnectionInfo,
 } from './job-queues';
 

@@ -61,6 +61,7 @@ function participantRow(
     lane: 'MIDDLE',
     role: 'SOLO',
     rankTierAtIngestion: 'GOLD',
+    rankResolutionStatus: 'RESOLVED_RANKED',
     win: true,
     kills: 5,
     deaths: 2,

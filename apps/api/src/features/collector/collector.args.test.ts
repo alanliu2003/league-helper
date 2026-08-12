@@ -192,6 +192,15 @@ describe('collector.args', () => {
       expect(args.tiers).toEqual(['CHALLENGER', 'MASTER']);
     });
 
+    it('rejects MASTER when only present in config defaults (must be explicit --tiers)', () => {
+      expect(() =>
+        parseCollectorLadderSeedArgs(['--platform', 'na1', '--mode', 'apex', '--dry-run'], {
+          ...config(),
+          ladderTiers: ['CHALLENGER', 'GRANDMASTER', 'MASTER'],
+        }),
+      ).toThrow(/MASTER must be explicitly listed in --tiers/);
+    });
+
     it('parses representative page selection', () => {
       const args = parseCollectorLadderSeedArgs(
         [
@@ -245,7 +254,27 @@ describe('collector.args', () => {
       ).toThrow(ValidationFailureError);
     });
 
-    it('rejects unsupported representative tiers', () => {
+    it('accepts low-tier representative tiers (Silver/Bronze/Iron)', () => {
+      const args = parseCollectorLadderSeedArgs(
+        [
+          '--platform',
+          'na1',
+          '--mode',
+          'representative',
+          '--tiers',
+          'SILVER',
+          '--division',
+          'II',
+          '--page',
+          '1',
+        ],
+        config(),
+      );
+      expect(args.tiers).toEqual(['SILVER']);
+      expect(args.division).toBe('II');
+    });
+
+    it('rejects apex tiers in representative mode', () => {
       expect(() =>
         parseCollectorLadderSeedArgs(
           [
@@ -254,7 +283,7 @@ describe('collector.args', () => {
             '--mode',
             'representative',
             '--tiers',
-            'SILVER',
+            'CHALLENGER',
             '--max-pages-per-division',
             '1',
           ],

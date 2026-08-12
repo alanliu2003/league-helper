@@ -14,7 +14,7 @@ import type { CollectorRunOnceResult, SchedulerTickResult } from './collector.ty
 
 const testDatabaseUrl =
   process.env.TEST_DATABASE_URL ??
-  'postgresql://league:league@localhost:5432/league_helper?schema=league_helper_test';
+  'postgresql://league:league@localhost:5432/league_helper_m12v2?schema=league_helper_test';
 
 const prisma = new PrismaClient({
   datasources: { db: { url: testDatabaseUrl } },

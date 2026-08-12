@@ -1,22 +1,22 @@
 import {
-  DEFAULT_CHAMPION_ROLLUP_POLICY,
-  UNKNOWN_RANK_TIER_SENTINEL,
-  buildChampionAggregateDimensionKey,
-  expandChampionDimensionTuples,
-  type ExactChampionDimensions,
-  type ExactChampionRankTier,
-} from '@league-helper/match-analytics';
-import {
   PlatformRouteSchema,
-  RankTierSchema,
   RegionalRouteSchema,
+  classifyParticipantRankForAggregates,
   normalizeParticipantPosition,
+  type ParticipantRankResolutionStatus,
 } from '@league-helper/shared';
+import {
+  expandDimensionKeysForRankClassification,
+  type ContributorBaseDimensions,
+} from './rank-dimension-keys.js';
 
 /**
  * Aggregate-defining snapshot captured BEFORE participant overwrite.
  * Expanded to materialized keys at durable-scope write / enqueue time with
  * the configured sourceNormalizationVersion + aggregationVersion.
+ *
+ * Generic affected-key closure = expand(previous snapshots) ∪ expand(current).
+ * Rank + position transitions are covered without one-off UNKNOWN sibling patches.
  */
 export type PreviousParticipantDimensionSnapshot = {
   patch: string;
@@ -32,22 +32,12 @@ export type PreviousParticipantDimensionSnapshot = {
   lane: string | null;
   role: string | null;
   rankTierAtIngestion: string | null;
+  rankResolutionStatus: ParticipantRankResolutionStatus;
 };
-
-function resolveRankTier(raw: string | null): ExactChampionRankTier {
-  if (raw == null || raw.trim() === '') {
-    return UNKNOWN_RANK_TIER_SENTINEL;
-  }
-  if (raw === UNKNOWN_RANK_TIER_SENTINEL) {
-    return UNKNOWN_RANK_TIER_SENTINEL;
-  }
-  const parsed = RankTierSchema.safeParse(raw.trim().toUpperCase());
-  return parsed.success ? parsed.data : UNKNOWN_RANK_TIER_SENTINEL;
-}
 
 /**
  * Expand previous participant snapshots into materialized dimension key strings
- * using the default rollup policy (exact + ALL tier + ALL position).
+ * using rank-classification-aware rollup (ALL / exact / UNKNOWN).
  */
 export function expandPreviousDimensionKeys(
   snapshots: PreviousParticipantDimensionSnapshot[],
@@ -71,12 +61,19 @@ export function expandPreviousDimensionKeys(
       continue;
     }
 
-    const exact: ExactChampionDimensions = {
+    const classification = classifyParticipantRankForAggregates({
+      status: snapshot.rankResolutionStatus,
+      resolvedTier:
+        snapshot.rankResolutionStatus === 'RESOLVED_RANKED'
+          ? snapshot.rankTierAtIngestion
+          : null,
+    });
+
+    const base: ContributorBaseDimensions = {
       patch: snapshot.patch,
       platformRoute: platform.data,
       regionalRoute: regional.data,
       queueId: snapshot.queueId,
-      rankTier: resolveRankTier(snapshot.rankTierAtIngestion),
       position: normalizeParticipantPosition({
         queueId: snapshot.queueId,
         mapId: snapshot.mapId,
@@ -92,11 +89,8 @@ export function expandPreviousDimensionKeys(
       aggregationVersion: versions.aggregationVersion,
     };
 
-    for (const materialized of expandChampionDimensionTuples(
-      exact,
-      DEFAULT_CHAMPION_ROLLUP_POLICY,
-    )) {
-      keys.add(buildChampionAggregateDimensionKey(materialized));
+    for (const key of expandDimensionKeysForRankClassification(base, classification)) {
+      keys.add(key);
     }
   }
 
@@ -104,15 +98,18 @@ export function expandPreviousDimensionKeys(
 }
 
 export function expandCurrentDimensionKeys(
-  exactDims: ExactChampionDimensions[],
+  contributors: Array<{
+    base: ContributorBaseDimensions;
+    rankClassification: import('@league-helper/shared').ParticipantRankAggregateClassification;
+  }>,
 ): string[] {
   const keys = new Set<string>();
-  for (const exact of exactDims) {
-    for (const materialized of expandChampionDimensionTuples(
-      exact,
-      DEFAULT_CHAMPION_ROLLUP_POLICY,
+  for (const contributor of contributors) {
+    for (const key of expandDimensionKeysForRankClassification(
+      contributor.base,
+      contributor.rankClassification,
     )) {
-      keys.add(buildChampionAggregateDimensionKey(materialized));
+      keys.add(key);
     }
   }
   return [...keys].sort();

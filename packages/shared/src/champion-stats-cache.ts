@@ -80,6 +80,12 @@ function assertGeneration(generation: number): number {
 /**
  * Response cache key for the champion ranking table.
  * Distinct prefix from single-champion and filters keys.
+ *
+ * `tier` fingerprint slot must remain collision-free across product rank scopes.
+ * Future segment-aware callers should pass `serializeRankScopeCacheToken(scope)`
+ * (e.g. `SEGMENT:HIGH`, `EXACT:DIAMOND`, `ALL`, `UNKNOWN`) rather than a bare
+ * ambiguous string. Generation bump already invalidates when exact-tier aggregates
+ * recalculate for the same platform/patch/queue/version scope.
  */
 export function buildChampionStatsTableCacheKey(input: ChampionStatsTableCacheKeyInput): string {
   const scopeKey = serializeChampionStatsGenerationScope(input.scope);

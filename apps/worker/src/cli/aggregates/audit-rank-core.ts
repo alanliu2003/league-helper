@@ -1,7 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { MatchIngestionStatus } from '@prisma/client';
 import { RANKED_FLEX_QUEUE_ID, RANKED_SOLO_QUEUE_ID } from '@league-helper/shared';
-import { UNKNOWN_RANK_TIER_SENTINEL } from '@league-helper/match-analytics';
 import type { ChampionAggregationWorkerConfig } from '../../config.js';
 import { evaluateMatchEligibility } from '../../queues/champion-aggregation/eligibility.js';
 import type { AggregateCliFilters } from './parse-args.js';
@@ -62,10 +61,6 @@ function finalize(bucket: RankCoverageBucket): RankCoverageBucket {
   return { ...bucket, coveragePercent };
 }
 
-function isUnknownTier(tier: string): boolean {
-  return tier === UNKNOWN_RANK_TIER_SENTINEL;
-}
-
 /**
  * Rank coverage audit. Primary denominator = ranked queues 420 and 440 only.
  * Non-ranked queues are reported separately and intentionally UNKNOWN-heavy.
@@ -113,6 +108,7 @@ export async function runAuditRankCoverage(
             lane: true,
             role: true,
             rankTierAtIngestion: true,
+            rankResolutionStatus: true,
             playerAccountId: true,
             win: true,
             kills: true,
@@ -166,7 +162,8 @@ export async function runAuditRankCoverage(
           (p) => p.participantId === contributor.participantId,
         );
         const linked = Boolean(participant?.playerAccountId);
-        const known = !isUnknownTier(contributor.exact.rankTier);
+        // Exact-ranked only — unresolved must not count as "known" or UNKNOWN.
+        const known = Boolean(contributor.rankClassification.exactRankTier);
         const target = isRanked ? ranked : nonRanked;
         bump(target, linked, known);
 
