@@ -16,6 +16,7 @@
     "prisma:generate": "prisma generate --schema ../api/prisma/schema.prisma",
     "jobs:retry-match-ingestion": "tsx src/cli/retry-match-ingestion.ts",
     "aggregates:rebuild-champions": "tsx src/cli/rebuild-champion-aggregates.ts",
+    "aggregates:rebuild-champion-builds": "tsx src/cli/rebuild-champion-builds.ts",
     "aggregates:reconcile-champions": "tsx src/cli/reconcile-champion-aggregates.ts",
     "aggregates:status-champions": "tsx src/cli/status-champion-aggregates.ts",
     "aggregates:audit-rank-coverage": "tsx src/cli/audit-rank-coverage.ts",

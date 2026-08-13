@@ -2,10 +2,13 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import type { z, ZodTypeAny } from 'zod';
 import {
+  buildChampionBuildCacheKey,
+  buildChampionBuildGenerationKey,
   buildChampionStatsChampionCacheKey,
   buildChampionStatsFiltersCacheKey,
   buildChampionStatsGenerationKey,
   buildChampionStatsTableCacheKey,
+  type ChampionBuildCacheKeyInput,
   type ChampionStatsChampionCacheKeyInput,
   type ChampionStatsFiltersCacheKeyInput,
   type ChampionStatsGenerationScope,
@@ -27,8 +30,16 @@ export class ChampionStatsCacheService {
   ) {}
 
   async getGeneration(scope: ChampionStatsGenerationScope): Promise<number> {
+    return this.readGeneration(buildChampionStatsGenerationKey(scope));
+  }
+
+  async getBuildGeneration(scope: ChampionStatsGenerationScope): Promise<number> {
+    return this.readGeneration(buildChampionBuildGenerationKey(scope));
+  }
+
+  private async readGeneration(key: string): Promise<number> {
     try {
-      const raw = await this.redis.get(buildChampionStatsGenerationKey(scope));
+      const raw = await this.redis.get(key);
       if (raw === null || raw === undefined || raw.trim() === '') {
         return 0;
       }
@@ -95,6 +106,33 @@ export class ChampionStatsCacheService {
     }
   }
 
+  async setIfBuildGenerationCurrent<T>(input: {
+    scope: ChampionStatsGenerationScope;
+    expectedGeneration: number;
+    buildKey: (generation: number) => string;
+    value: T;
+  }): Promise<'written' | 'skipped' | 'failed'> {
+    try {
+      const current = await this.getBuildGeneration(input.scope);
+      if (current !== input.expectedGeneration) {
+        return 'skipped';
+      }
+      await this.redis.set(
+        input.buildKey(current),
+        JSON.stringify(input.value),
+        'EX',
+        this.config.cacheTtlSeconds,
+      );
+      return 'written';
+    } catch (error: unknown) {
+      this.logger.warn({
+        message: 'Champion builds cache write failed',
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      return 'failed';
+    }
+  }
+
   tableKey(input: ChampionStatsTableCacheKeyInput): string {
     return buildChampionStatsTableCacheKey(input);
   }
@@ -105,5 +143,9 @@ export class ChampionStatsCacheService {
 
   filtersKey(input: ChampionStatsFiltersCacheKeyInput): string {
     return buildChampionStatsFiltersCacheKey(input);
+  }
+
+  buildsKey(input: ChampionBuildCacheKeyInput): string {
+    return buildChampionBuildCacheKey(input);
   }
 }

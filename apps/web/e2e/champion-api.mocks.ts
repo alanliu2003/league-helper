@@ -1,6 +1,7 @@
 import type { Page, Request, Route } from '@playwright/test';
 import {
   CHAMPION_STATS_DISCLAIMER,
+  ChampionBuildsResponseSchema,
   ChampionDetailResponseSchema,
   ChampionListResponseSchema,
   ChampionStatsFiltersResponseSchema,
@@ -13,6 +14,7 @@ import {
   RANK_TIER_SEMANTICS,
   RANKED_FLEX_QUEUE_ID,
   RANKED_SOLO_QUEUE_ID,
+  type ChampionBuildsResponse,
   type ChampionDetailResponse,
   type ChampionListResponse,
   type ChampionRankingPosition,
@@ -38,6 +40,8 @@ export const MOCK_ICON_ZED = 'https://cdn.example.test/champions/Zed.png';
 export const MOCK_ICON_AATROX = 'https://cdn.example.test/champions/Aatrox.png';
 export const MOCK_SPLASH_AATROX = 'https://cdn.example.test/splash/Aatrox_0.jpg';
 export const MOCK_SPLASH_ZED = 'https://cdn.example.test/splash/Zed_0.jpg';
+export const MOCK_ICON_JINX = 'https://cdn.example.test/champions/Jinx.png';
+export const MOCK_ICON_THRESH = 'https://cdn.example.test/champions/Thresh.png';
 
 const POSITIONS: ChampionRankingPosition[] = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'SUPPORT'];
 
@@ -89,6 +93,11 @@ function matchChampionDetail(pathname: string): string | null {
 
 function matchChampionStats(pathname: string): string | null {
   const match = pathname.match(/\/api\/champions\/([^/]+)\/stats\/?$/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function matchChampionBuilds(pathname: string): string | null {
+  const match = pathname.match(/\/api\/champions\/([^/]+)\/builds\/?$/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
@@ -378,6 +387,42 @@ function aatroxDetail(): ChampionDetailResponse {
   });
 }
 
+function threshDetail(): ChampionDetailResponse {
+  return ChampionDetailResponseSchema.parse({
+    staticDataPatch: '14.11',
+    staticDataVersion: '14.11.1',
+    champion: {
+      championId: 412,
+      championKey: 'Thresh',
+      name: 'Thresh',
+      title: 'the Chain Warden',
+      tags: ['Support', 'Fighter'],
+      iconUrl: MOCK_ICON_THRESH,
+      splashUrl: 'https://cdn.example.test/splash/Thresh_0.jpg',
+      staticDataPatch: '14.11',
+      canonicalChampionKey: 'Thresh',
+    },
+  });
+}
+
+function jinxDetail(): ChampionDetailResponse {
+  return ChampionDetailResponseSchema.parse({
+    staticDataPatch: '14.11',
+    staticDataVersion: '14.11.1',
+    champion: {
+      championId: 222,
+      championKey: 'Jinx',
+      name: 'Jinx',
+      title: 'the Loose Cannon',
+      tags: ['Marksman'],
+      iconUrl: MOCK_ICON_JINX,
+      splashUrl: 'https://cdn.example.test/splash/Jinx_0.jpg',
+      staticDataPatch: '14.11',
+      canonicalChampionKey: 'Jinx',
+    },
+  });
+}
+
 function zedDetail(): ChampionDetailResponse {
   return ChampionDetailResponseSchema.parse({
     staticDataPatch: '14.11',
@@ -591,6 +636,145 @@ export function buildRankingTableResponse(options: {
   });
 }
 
+export function buildChampionBuildsResponse(options: {
+  empty?: boolean;
+  lowSample?: boolean;
+  platform?: 'na1' | 'euw1';
+  patch?: string;
+  queueId?: number;
+  tier?: 'ALL' | 'GOLD';
+  position?: ChampionRankingPosition;
+}): ChampionBuildsResponse {
+  const platform = options.platform ?? 'na1';
+  const patch = options.patch ?? '14.11';
+  const queueId = options.queueId ?? RANKED_SOLO_QUEUE_ID;
+  const tier = options.tier ?? 'ALL';
+  const position = options.position ?? 'MIDDLE';
+  const sampleSize = options.lowSample ? 3 : 24;
+  const wins = options.lowSample ? 3 : 14;
+  const metrics = {
+    sampleSize,
+    pickRate: 0.42,
+    wins,
+    winRate: options.lowSample ? null : wins / sampleSize,
+    lowSample: sampleSize < 5,
+    sampleBand: sampleSize < 5 ? ('BELOW_DISPLAY' as const) : ('STRONG' as const),
+  };
+
+  if (options.empty) {
+    return ChampionBuildsResponseSchema.parse({
+      disclaimer: CHAMPION_STATS_DISCLAIMER,
+      rankTierSemantics: RANK_TIER_SEMANTICS,
+      sampleScope: { kind: 'COLLECTED_SAMPLE', platform, patch, queueId },
+      resolvedFilters: { platform, patch, queueId, tier, position },
+      emptyReason: 'CHAMPION_HAS_NO_BUILDS',
+      eligibility: {
+        startingItemsEligibleGames: 0,
+        coreBuildsEligibleGames: 0,
+        bootsEligibleGames: 0,
+        runesEligibleGames: 0,
+        summonerSpellsEligibleGames: 0,
+        skillOrderEligibleGames: 0,
+      },
+      startingItems: [],
+      coreBuilds: [],
+      boots: [],
+      runes: [],
+      summonerSpells: [],
+      skillOrder: [],
+    });
+  }
+
+  return ChampionBuildsResponseSchema.parse({
+    disclaimer: CHAMPION_STATS_DISCLAIMER,
+    rankTierSemantics: RANK_TIER_SEMANTICS,
+    sampleScope: { kind: 'COLLECTED_SAMPLE', platform, patch, queueId },
+    resolvedFilters: { platform, patch, queueId, tier, position },
+    emptyReason: null,
+    eligibility: {
+      startingItemsEligibleGames: 40,
+      coreBuildsEligibleGames: 30,
+      bootsEligibleGames: 40,
+      runesEligibleGames: 40,
+      summonerSpellsEligibleGames: 40,
+      skillOrderEligibleGames: 40,
+    },
+    startingItems: [
+      {
+        ...metrics,
+        items: [
+          { id: 1056, name: "Doran's Ring", iconUrl: 'https://cdn.example.test/items/1056.png' },
+          { id: 2003, name: 'Health Potion', iconUrl: 'https://cdn.example.test/items/2003.png' },
+        ],
+      },
+    ],
+    coreBuilds: [
+      {
+        ...metrics,
+        items: [
+          {
+            id: 3116,
+            name: "Rylai's Crystal Scepter",
+            iconUrl: 'https://cdn.example.test/items/3116.png',
+          },
+          {
+            id: 3089,
+            name: "Rabadon's Deathcap",
+            iconUrl: 'https://cdn.example.test/items/3089.png',
+          },
+          { id: 3135, name: 'Void Staff', iconUrl: 'https://cdn.example.test/items/3135.png' },
+        ],
+      },
+    ],
+    boots: [
+      {
+        ...metrics,
+        item: {
+          id: 3020,
+          name: "Sorcerer's Shoes",
+          iconUrl: 'https://cdn.example.test/items/3020.png',
+        },
+      },
+    ],
+    runes: [
+      {
+        ...metrics,
+        keystone: {
+          id: 8112,
+          name: 'Electrocute',
+          iconUrl: 'https://cdn.example.test/runes/8112.png',
+        },
+        primaryPerks: [
+          { id: 8112, name: 'Electrocute', iconUrl: 'https://cdn.example.test/runes/8112.png' },
+        ],
+        secondaryPerks: [
+          { id: 8226, name: 'Manaflow Band', iconUrl: 'https://cdn.example.test/runes/8226.png' },
+        ],
+        statShards: [],
+        primaryStyleName: 'Domination',
+        secondaryStyleName: 'Sorcery',
+        stylesComplete: true,
+      },
+    ],
+    summonerSpells: [
+      {
+        ...metrics,
+        spells: [
+          { id: 4, name: 'Flash', iconUrl: 'https://cdn.example.test/spells/4.png' },
+          { id: 12, name: 'Teleport', iconUrl: 'https://cdn.example.test/spells/12.png' },
+        ],
+      },
+    ],
+    skillOrder: [
+      {
+        ...metrics,
+        maxOrder: ['Q', 'E', 'W'],
+        levelSequence: ['Q', 'W', 'E', 'Q', 'Q', 'R'],
+      },
+    ],
+  });
+}
+
 export type InstalledChampionMocks = {
   requests: ChampionRequestLog[];
   rankingRequests: ChampionRequestLog[];
@@ -682,6 +866,36 @@ export async function installChampionApiMocks(
       return;
     }
 
+    const buildsKey = matchChampionBuilds(pathname);
+    if (buildsKey) {
+      if (/^\d+$/.test(buildsKey)) {
+        await json(route, 404, notFoundBody('Champion not found'));
+        return;
+      }
+      const positionParam = searchParams.get('position');
+      if (!positionParam || !POSITIONS.includes(positionParam as ChampionRankingPosition)) {
+        await json(route, 400, {
+          success: false,
+          error: { code: 'VALIDATION_FAILURE', message: 'position is required' },
+        });
+        return;
+      }
+      await json(
+        route,
+        200,
+        buildChampionBuildsResponse({
+          empty: emptyStats,
+          lowSample: limitedSample,
+          position: positionParam as ChampionRankingPosition,
+          platform: (searchParams.get('platform') as 'na1' | 'euw1') ?? 'na1',
+          patch: searchParams.get('patch') ?? '14.11',
+          queueId: Number(searchParams.get('queueId') ?? RANKED_SOLO_QUEUE_ID),
+          tier: (searchParams.get('tier') as 'ALL' | 'GOLD') ?? 'ALL',
+        }),
+      );
+      return;
+    }
+
     const statsKey = matchChampionStats(pathname);
     if (statsKey) {
       statsRequests.push(entry);
@@ -738,6 +952,14 @@ export async function installChampionApiMocks(
       }
       if (detailKey.toLowerCase() === 'zed') {
         await json(route, 200, zedDetail());
+        return;
+      }
+      if (detailKey.toLowerCase() === 'jinx') {
+        await json(route, 200, jinxDetail());
+        return;
+      }
+      if (detailKey.toLowerCase() === 'thresh') {
+        await json(route, 200, threshDetail());
         return;
       }
       if (detailKey.toLowerCase() === 'annie') {

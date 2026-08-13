@@ -464,9 +464,10 @@ model Patch {
   createdAt            DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime         @updatedAt @db.Timestamptz(3)
 
-  champions ChampionStaticData[]
-  items     ItemStaticData[]
-  runes     RuneStaticData[]
+  champions      ChampionStaticData[]
+  items          ItemStaticData[]
+  runes          RuneStaticData[]
+  summonerSpells SummonerSpellStaticData[]
 
   @@index([normalizedMajorMinor])
   @@index([isActive])
@@ -502,12 +503,15 @@ model ItemStaticData {
   name        String
   description String
   plaintext   String?
-  goldData    Json
-  stats       Json
-  tags        String[] @default([])
-  imageData   Json
-  purchasable Boolean  @default(true)
-  rawPayload  Json?
+  goldData     Json
+  stats        Json
+  tags         String[] @default([])
+  imageData    Json
+  purchasable  Boolean  @default(true)
+  fromItemIds  Int[]    @default([])
+  intoItemIds  Int[]    @default([])
+  consumed     Boolean  @default(false)
+  rawPayload   Json?
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @db.Timestamptz(3)
 
@@ -535,6 +539,23 @@ model RuneStaticData {
   patch Patch @relation(fields: [patchId], references: [id], onDelete: Restrict)
 
   @@unique([patchId, runeId])
+}
+
+model SummonerSpellStaticData {
+  id          String   @id @default(uuid())
+  patchId     String
+  spellId     Int
+  spellKey    String
+  name        String
+  description String
+  imageData   Json
+  rawPayload  Json?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  patch Patch @relation(fields: [patchId], references: [id], onDelete: Restrict)
+
+  @@unique([patchId, spellId])
 }
 
 // ---------------------------------------------------------------------------
@@ -650,6 +671,37 @@ model MatchupAggregate {
   @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId, opponentChampionId])
   @@index([championId, opponentChampionId, patch, queueId, rankTier])
   @@index([championId, patch, teamPosition])
+}
+
+/// Source-derived champion build/rune/spell/skill aggregates (M14).
+/// One row per dimension + category + signature. Not a JSON blob of mixed builds.
+model ChampionBuildAggregate {
+  id                         String    @id @default(uuid())
+  patch                      String
+  platformRoute              String    @default("")
+  regionalRoute              String    @default("")
+  queueId                    Int
+  rankTier                   String
+  teamPosition               String
+  championId                 Int
+  category                   String
+  signature                  String
+  entityIds                  Int[]     @default([])
+  auxIds                     Int[]     @default([])
+  primaryStyleId             Int?
+  secondaryStyleId           Int?
+  sampleSize                 Int
+  wins                       Int
+  /// Category-level eligible participant count for this dimension (pick-rate denominator).
+  eligibleGames              Int
+  aggregationVersion         String    @default("1")
+  latestEligibleMatchAt      DateTime? @db.Timestamptz(3)
+  calculatedAt               DateTime  @db.Timestamptz(3)
+  sourceNormalizationVersion String
+
+  @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId, category, signature, sourceNormalizationVersion, aggregationVersion], map: "ChampionBuildAggregate_dims_category_sig_key")
+  @@index([championId, patch, queueId, rankTier, teamPosition, category], map: "ChampionBuildAggregate_champion_scope_idx")
+  @@index([patch, platformRoute, queueId, aggregationVersion, category], map: "ChampionBuildAggregate_patch_platform_queue_idx")
 }
 
 // ---------------------------------------------------------------------------

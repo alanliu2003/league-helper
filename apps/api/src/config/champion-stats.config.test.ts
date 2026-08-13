@@ -8,9 +8,9 @@ describe('loadChampionStatsConfig', () => {
   });
 
   it('rejects invalid default platform', () => {
-    expect(() =>
-      loadChampionStatsConfig({ CHAMPION_STATS_DEFAULT_PLATFORM: 'nope' }),
-    ).toThrow(ValidationFailureError);
+    expect(() => loadChampionStatsConfig({ CHAMPION_STATS_DEFAULT_PLATFORM: 'nope' })).toThrow(
+      ValidationFailureError,
+    );
   });
 
   it('requires a valid default platform', () => {
@@ -28,6 +28,7 @@ describe('loadChampionStatsConfig', () => {
     expect(config.confidenceLevel).toBe(0.95);
     expect(config.defaultQueueId).toBe(420);
     expect(config.cacheTtlSeconds).toBe(60);
+    expect(config.buildAggregationVersion).toBe('1');
   });
 
   it('reads CHAMPION_AGGREGATION_SOURCE_NORMALIZATION_VERSION (not MATCH_NORMALIZATION_VERSION)', () => {
@@ -40,6 +41,7 @@ describe('loadChampionStatsConfig', () => {
       CHAMPION_AGGREGATION_CONFIDENCE_LEVEL: '0.90',
       CHAMPION_AGGREGATION_DEFAULT_QUEUE_ID: '440',
       CHAMPION_STATS_CACHE_TTL_SECONDS: '120',
+      CHAMPION_BUILD_AGGREGATION_VERSION: '2',
     });
     expect(config.sourceNormalizationVersion).toBe('2');
     expect(config.aggregationVersion).toBe('3');
@@ -47,6 +49,7 @@ describe('loadChampionStatsConfig', () => {
     expect(config.confidenceLevel).toBe(0.9);
     expect(config.defaultQueueId).toBe(440);
     expect(config.cacheTtlSeconds).toBe(120);
+    expect(config.buildAggregationVersion).toBe('2');
   });
 
   it('rejects confidence outside (0,1)', () => {

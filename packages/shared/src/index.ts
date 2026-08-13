@@ -247,10 +247,13 @@ export {
   buildChampionStatsTableCacheKey,
   buildChampionStatsChampionCacheKey,
   buildChampionStatsFiltersCacheKey,
+  buildChampionBuildGenerationKey,
+  buildChampionBuildCacheKey,
   type ChampionStatsGenerationScope,
   type ChampionStatsTableCacheKeyInput,
   type ChampionStatsChampionCacheKeyInput,
   type ChampionStatsFiltersCacheKeyInput,
+  type ChampionBuildCacheKeyInput,
 } from './champion-stats-cache';
 
 export {
@@ -318,6 +321,35 @@ export {
   type ChampionStatsFilterQueue,
   type ChampionStatsFiltersResponse,
 } from './champion-api';
+
+export {
+  ChampionBuildSampleBandSchema,
+  ChampionBuildStaticIdentitySchema,
+  ChampionBuildRowMetricsSchema,
+  ChampionStartingItemSetSchema,
+  ChampionCoreBuildSchema,
+  ChampionBootRowSchema,
+  ChampionRuneSetupSchema,
+  ChampionSpellPairSchema,
+  ChampionSkillKeySchema,
+  ChampionSkillOrderRowSchema,
+  ChampionBuildsEmptyReasonSchema,
+  ChampionBuildsQuerySchema,
+  ChampionBuildsResponseSchema,
+  type ChampionBuildSampleBand,
+  type ChampionBuildStaticIdentity,
+  type ChampionBuildRowMetrics,
+  type ChampionStartingItemSet,
+  type ChampionCoreBuild,
+  type ChampionBootRow,
+  type ChampionRuneSetup,
+  type ChampionSpellPair,
+  type ChampionSkillKey,
+  type ChampionSkillOrderRow,
+  type ChampionBuildsEmptyReason,
+  type ChampionBuildsQuery,
+  type ChampionBuildsResponse,
+} from './champion-builds';
 
 export {
   ABILITY_SLOTS,

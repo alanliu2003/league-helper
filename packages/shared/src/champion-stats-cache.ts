@@ -133,3 +133,27 @@ export function buildChampionStatsFiltersCacheKey(
   const generation = assertGeneration(input.generation);
   return `champ_stats:filters:${generation}:${scopeKey}`;
 }
+
+export type ChampionBuildCacheKeyInput = {
+  scope: ChampionStatsGenerationScope;
+  generation: number;
+  championKey: string;
+  position: string;
+  rankScopeToken: string;
+};
+
+export function buildChampionBuildGenerationKey(scope: ChampionStatsGenerationScope): string {
+  return `champ_builds:gen:${serializeChampionStatsGenerationScope(scope)}`;
+}
+
+/**
+ * Response cache key for champion builds.
+ * rankScopeToken must be serializeRankScopeCacheToken so ALL / EXACT:GOLD / SEGMENT:HIGH do not collide.
+ */
+export function buildChampionBuildCacheKey(input: ChampionBuildCacheKeyInput): string {
+  const scopeKey = serializeChampionStatsGenerationScope(input.scope);
+  const generation = assertGeneration(input.generation);
+  const championKey = z.string().min(1).parse(input.championKey);
+  const fingerprint = JSON.stringify([championKey, input.position, input.rankScopeToken]);
+  return `champ_builds:champion:${generation}:${scopeKey}:${fingerprint}`;
+}

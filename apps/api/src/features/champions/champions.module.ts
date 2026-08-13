@@ -6,6 +6,7 @@ import {
 import { DataDragonModule } from '../../integrations/data-dragon/data-dragon.module';
 import { PersistenceModule } from '../../persistence/persistence.module';
 import { QueuesModule } from '../../queues/queues.module';
+import { ChampionBuildsService } from './champion-builds.service';
 import { ChampionStatsCacheService } from './champion-stats-cache.service';
 import { ChampionStatsController } from './champion-stats.controller';
 import { ChampionStatsService } from './champion-stats.service';
@@ -22,8 +23,9 @@ import { ChampionsController } from './champions.controller';
     },
     ChampionStaticService,
     ChampionStatsService,
+    ChampionBuildsService,
     ChampionStatsCacheService,
   ],
-  exports: [ChampionStaticService, ChampionStatsService],
+  exports: [ChampionStaticService, ChampionStatsService, ChampionBuildsService],
 })
 export class ChampionsModule {}

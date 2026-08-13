@@ -28,6 +28,7 @@ export type ChampionStatsConfig = {
   minimumSample: number;
   confidenceLevel: number;
   cacheTtlSeconds: number;
+  buildAggregationVersion: string;
 };
 
 function parseRequiredPlatform(raw: string | undefined): PlatformRoute {
@@ -122,6 +123,11 @@ export function loadChampionStatsConfig(env: NodeJS.ProcessEnv = process.env): C
       env.CHAMPION_STATS_CACHE_TTL_SECONDS,
       60,
       'CHAMPION_STATS_CACHE_TTL_SECONDS',
+    ),
+    buildAggregationVersion: parseNonEmptyVersion(
+      env.CHAMPION_BUILD_AGGREGATION_VERSION,
+      '1',
+      'CHAMPION_BUILD_AGGREGATION_VERSION',
     ),
   };
 }
