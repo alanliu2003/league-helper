@@ -29,6 +29,8 @@ describe('loadChampionStatsConfig', () => {
     expect(config.defaultQueueId).toBe(420);
     expect(config.cacheTtlSeconds).toBe(60);
     expect(config.buildAggregationVersion).toBe('1');
+    expect(config.matchupAggregationVersion).toBe('1');
+    expect(config.matchupDisplayFloor).toBe(10);
   });
 
   it('reads CHAMPION_AGGREGATION_SOURCE_NORMALIZATION_VERSION (not MATCH_NORMALIZATION_VERSION)', () => {
@@ -42,6 +44,8 @@ describe('loadChampionStatsConfig', () => {
       CHAMPION_AGGREGATION_DEFAULT_QUEUE_ID: '440',
       CHAMPION_STATS_CACHE_TTL_SECONDS: '120',
       CHAMPION_BUILD_AGGREGATION_VERSION: '2',
+      CHAMPION_MATCHUP_AGGREGATION_VERSION: '3',
+      CHAMPION_MATCHUP_DISPLAY_FLOOR: '10',
     });
     expect(config.sourceNormalizationVersion).toBe('2');
     expect(config.aggregationVersion).toBe('3');
@@ -50,6 +54,8 @@ describe('loadChampionStatsConfig', () => {
     expect(config.defaultQueueId).toBe(440);
     expect(config.cacheTtlSeconds).toBe(120);
     expect(config.buildAggregationVersion).toBe('2');
+    expect(config.matchupAggregationVersion).toBe('3');
+    expect(config.matchupDisplayFloor).toBe(10);
   });
 
   it('rejects confidence outside (0,1)', () => {

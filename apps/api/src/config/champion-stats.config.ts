@@ -29,6 +29,8 @@ export type ChampionStatsConfig = {
   confidenceLevel: number;
   cacheTtlSeconds: number;
   buildAggregationVersion: string;
+  matchupAggregationVersion: string;
+  matchupDisplayFloor: number;
 };
 
 function parseRequiredPlatform(raw: string | undefined): PlatformRoute {
@@ -128,6 +130,16 @@ export function loadChampionStatsConfig(env: NodeJS.ProcessEnv = process.env): C
       env.CHAMPION_BUILD_AGGREGATION_VERSION,
       '1',
       'CHAMPION_BUILD_AGGREGATION_VERSION',
+    ),
+    matchupAggregationVersion: parseNonEmptyVersion(
+      env.CHAMPION_MATCHUP_AGGREGATION_VERSION,
+      '1',
+      'CHAMPION_MATCHUP_AGGREGATION_VERSION',
+    ),
+    matchupDisplayFloor: parsePositiveInt(
+      env.CHAMPION_MATCHUP_DISPLAY_FLOOR,
+      10,
+      'CHAMPION_MATCHUP_DISPLAY_FLOOR',
     ),
   };
 }

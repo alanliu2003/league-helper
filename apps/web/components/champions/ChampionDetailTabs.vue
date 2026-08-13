@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-export type ChampionDetailTabId = 'overview' | 'builds';
+export type ChampionDetailTabId = 'overview' | 'builds' | 'matchups';
 
 defineProps<{
   modelValue: ChampionDetailTabId;
@@ -47,6 +47,7 @@ const emit = defineEmits<{
 const tabs: Array<{ id: ChampionDetailTabId; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'builds', label: 'Builds & Runes' },
+  { id: 'matchups', label: 'Matchups' },
 ];
 
 function onTabKeydown(event: KeyboardEvent, current: ChampionDetailTabId): void {

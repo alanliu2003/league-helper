@@ -37,6 +37,7 @@ function config(
     jobAttempts: 3,
     sourceNormalizationVersion: '1',
     aggregationVersion: '1',
+    matchupAggregationVersion: '1',
     confidenceLevel: 0.95,
     ...overrides,
   };

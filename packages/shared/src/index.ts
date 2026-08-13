@@ -93,6 +93,7 @@ export {
   parseRankScope,
   rankScopeEquals,
   serializeRankScopeCacheToken,
+  parseRankScopeCacheToken,
   exactTiersForRankScope,
   resolveRankScopeReadStrategy,
   legacyTierFilterToRankScope,
@@ -249,11 +250,14 @@ export {
   buildChampionStatsFiltersCacheKey,
   buildChampionBuildGenerationKey,
   buildChampionBuildCacheKey,
+  buildChampionMatchupGenerationKey,
+  buildChampionMatchupCacheKey,
   type ChampionStatsGenerationScope,
   type ChampionStatsTableCacheKeyInput,
   type ChampionStatsChampionCacheKeyInput,
   type ChampionStatsFiltersCacheKeyInput,
   type ChampionBuildCacheKeyInput,
+  type ChampionMatchupCacheKeyInput,
 } from './champion-stats-cache';
 
 export {
@@ -350,6 +354,19 @@ export {
   type ChampionBuildsQuery,
   type ChampionBuildsResponse,
 } from './champion-builds';
+
+export {
+  ChampionMatchupOpponentSchema,
+  ChampionMatchupRowSchema,
+  ChampionMatchupsEmptyReasonSchema,
+  ChampionMatchupsQuerySchema,
+  ChampionMatchupsResponseSchema,
+  type ChampionMatchupOpponent,
+  type ChampionMatchupRow,
+  type ChampionMatchupsEmptyReason,
+  type ChampionMatchupsQuery,
+  type ChampionMatchupsResponse,
+} from './champion-matchups';
 
 export {
   ABILITY_SLOTS,

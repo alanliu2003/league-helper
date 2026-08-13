@@ -30,6 +30,9 @@ const config = {
   minimumSample: 30,
   confidenceLevel: 0.95,
   cacheTtlSeconds: 60,
+  buildAggregationVersion: '1',
+  matchupAggregationVersion: '1',
+  matchupDisplayFloor: 10,
 };
 
 function baseAggregate(overrides: Record<string, unknown> = {}) {

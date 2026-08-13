@@ -38,6 +38,7 @@
     "jobs:retry-match-ingestion": "pnpm --filter @league-helper/worker jobs:retry-match-ingestion",
     "aggregates:rebuild-champions": "pnpm --filter @league-helper/worker aggregates:rebuild-champions",
     "aggregates:rebuild-champion-builds": "pnpm --filter @league-helper/worker aggregates:rebuild-champion-builds",
+    "aggregates:rebuild-champion-matchups": "pnpm --filter @league-helper/worker aggregates:rebuild-champion-matchups",
     "aggregates:reconcile-champions": "pnpm --filter @league-helper/worker aggregates:reconcile-champions",
     "aggregates:status-champions": "pnpm --filter @league-helper/worker aggregates:status-champions",
     "aggregates:audit-rank-coverage": "pnpm --filter @league-helper/worker aggregates:audit-rank-coverage",

@@ -641,10 +641,10 @@ model ChampionAggregationRecalcScope {
 }
 
 model MatchupAggregate {
-  id                         String   @id @default(uuid())
+  id                         String    @id @default(uuid())
   patch                      String
-  platformRoute              String   @default("")
-  regionalRoute              String   @default("")
+  platformRoute              String    @default("")
+  regionalRoute              String    @default("")
   queueId                    Int
   rankTier                   String
   teamPosition               String
@@ -653,22 +653,24 @@ model MatchupAggregate {
   sampleSize                 Int
   wins                       Int
   totalGoldDifferenceAt10    Int?
-  goldDifferenceAt10Samples  Int      @default(0)
+  goldDifferenceAt10Samples  Int       @default(0)
   totalGoldDifferenceAt15    Int?
-  goldDifferenceAt15Samples  Int      @default(0)
+  goldDifferenceAt15Samples  Int       @default(0)
   totalCsDifferenceAt10      Int?
-  csDifferenceAt10Samples    Int      @default(0)
+  csDifferenceAt10Samples    Int       @default(0)
   totalCsDifferenceAt15      Int?
-  csDifferenceAt15Samples    Int      @default(0)
+  csDifferenceAt15Samples    Int       @default(0)
   soloKills                  Int?
   firstDeaths                Int?
   totalKillDifference        Int?
   totalDeathDifference       Int?
   totalAssistDifference      Int?
-  calculatedAt               DateTime @db.Timestamptz(3)
+  aggregationVersion         String    @default("1")
+  latestEligibleMatchAt      DateTime? @db.Timestamptz(3)
+  calculatedAt               DateTime  @db.Timestamptz(3)
   sourceNormalizationVersion String
 
-  @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId, opponentChampionId])
+  @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId, opponentChampionId, sourceNormalizationVersion, aggregationVersion], map: "MatchupAggregate_dims_key")
   @@index([championId, opponentChampionId, patch, queueId, rankTier])
   @@index([championId, patch, teamPosition])
 }
