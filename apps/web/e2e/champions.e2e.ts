@@ -496,6 +496,71 @@ test.describe('champions directory and detail', () => {
     await expect(page.getByRole('heading', { name: 'Context' })).toBeVisible();
     await expect(page.getByRole('link', { name: /Back to champions directory/i })).toBeVisible();
   });
+
+  test('Builds & Runes tab renders starting items, core, boots, runes, spells, and skill order', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+
+    async function openBuilds(path: string, heading: string): Promise<void> {
+      await gotoApp(page, path);
+      await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible({
+        timeout: 15_000,
+      });
+      await page.getByRole('tab', { name: 'Builds & Runes' }).click();
+      await expect(page.getByTestId('champion-builds-panel')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Starting items' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Core build' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Boots' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Runes', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Summoner spells' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Skill order' })).toBeVisible();
+      await expect(page.getByText('Most common basic ability leveling priority.')).toBeVisible();
+      await expect(page.getByText('Q > E > W')).toBeVisible();
+      await expect(page.getByText(/Common leveling sequence/)).toBeVisible();
+      await expect(page.getByText(/Pick/i).first()).toBeVisible();
+    }
+
+    await openBuilds('/champions/Ahri?platform=na1&queue=420&patch=14.11&position=MIDDLE', 'Ahri');
+    await openBuilds('/champions/Aatrox?platform=na1&queue=420&patch=14.11&position=TOP', 'Aatrox');
+    await openBuilds('/champions/Jinx?platform=na1&queue=420&patch=14.11&position=BOTTOM', 'Jinx');
+    await openBuilds(
+      '/champions/Thresh?platform=na1&queue=420&patch=14.11&position=SUPPORT',
+      'Thresh',
+    );
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId('champion-builds-panel')).toBeVisible();
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await expect(page.getByTestId('champion-builds-panel')).toBeVisible();
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(page.getByTestId('champion-builds-panel')).toBeVisible();
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+  });
+
+  test('Builds & Runes low-sample and empty states stay honest', async ({ page }) => {
+    test.setTimeout(60_000);
+
+    mocks.setLimitedSample(true);
+    await gotoApp(page, '/champions/Ahri?platform=na1&queue=420&patch=14.11&position=MIDDLE');
+    await page.getByRole('tab', { name: 'Builds & Runes' }).click();
+    await expect(page.getByTestId('champion-builds-panel')).toBeVisible();
+    await expect(
+      page
+        .getByTestId('champion-builds-panel')
+        .getByText(/Limited sample/i)
+        .first(),
+    ).toBeVisible();
+    await expect(page.getByTestId('champion-builds-panel').getByText(/100%/)).toHaveCount(0);
+
+    mocks.setLimitedSample(false);
+    mocks.setEmptyStats(true);
+    await gotoApp(page, '/champions/Ahri?platform=na1&queue=420&patch=14.11&position=MIDDLE');
+    await page.getByRole('tab', { name: 'Builds & Runes' }).click();
+    await expect(page.getByTestId('builds-empty')).toBeVisible();
+  });
 });
 
 test.describe('player → champion links', () => {

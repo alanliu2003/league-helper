@@ -76,6 +76,7 @@ async function resetTestData(): Promise<void> {
       "PlayerAnalysisReport",
       "PlayerMetricSnapshot",
       "MatchupAggregate",
+      "ChampionBuildAggregate",
       "ChampionAggregate",
       "ChampionAggregationProcessing",
       "ChampionAggregationRecalcScope",
@@ -92,6 +93,7 @@ async function resetTestData(): Promise<void> {
       "ChampionStaticData",
       "ItemStaticData",
       "RuneStaticData",
+      "SummonerSpellStaticData",
       "Patch"
     RESTART IDENTITY CASCADE;
   `);

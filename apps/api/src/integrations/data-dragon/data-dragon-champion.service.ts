@@ -116,6 +116,23 @@ export class DataDragonChampionService {
     return `${this.config.baseUrl}/cdn/${encodeURIComponent(ver)}/img/item/${itemId}.png`;
   }
 
+  /** Summoner spell icon; null when filename or version is missing. */
+  buildSummonerSpellIconUrl(imageFull: string, version: string): string | null {
+    return this.buildAbilityIconUrl('spell', imageFull, version);
+  }
+
+  /** Rune icon from a Data Dragon perk-images path; versionless `/cdn/img/` URL. */
+  buildRuneIconUrl(iconPath: string): string | null {
+    const icon = iconPath.trim().replace(/^\/+/, '');
+    if (!icon) {
+      return null;
+    }
+    return `${this.config.baseUrl}/cdn/img/${icon
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')}`;
+  }
+
   /** Passive ability icon; null when filename or version is missing. */
   buildPassiveIconUrl(imageFull: string, version: string): string | null {
     return this.buildAbilityIconUrl('passive', imageFull, version);

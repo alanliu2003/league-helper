@@ -1,10 +1,12 @@
 import {
   ApiErrorResponseSchema,
+  ChampionBuildsResponseSchema,
   ChampionDetailResponseSchema,
   ChampionListResponseSchema,
   ChampionStatsFiltersResponseSchema,
   ChampionStatsResponseSchema,
   ChampionStatsTableResponseSchema,
+  type ChampionBuildsResponse,
   type ChampionDetailResponse,
   type ChampionListResponse,
   type ChampionRankingPosition,
@@ -94,6 +96,15 @@ export type GetChampionStatsOptions = {
   signal?: AbortSignal;
 };
 
+export type GetChampionBuildsOptions = {
+  platform: PlatformRoute;
+  queue: number;
+  position: ChampionRankingPosition;
+  tier?: ChampionStatsTierFilter;
+  patch?: string;
+  signal?: AbortSignal;
+};
+
 export function useChampionApi() {
   const config = useRuntimeConfig();
   const apiBase = config.public.apiBase as string;
@@ -156,10 +167,9 @@ export function useChampionApi() {
     signal?: AbortSignal,
   ): Promise<ChampionDetailResponse> {
     try {
-      const response = await $fetch(
-        `${apiBase}/api/champions/${encodeURIComponent(championKey)}`,
-        { signal },
-      );
+      const response = await $fetch(`${apiBase}/api/champions/${encodeURIComponent(championKey)}`, {
+        signal,
+      });
       return ChampionDetailResponseSchema.parse(response);
     } catch (error) {
       throw parseApiError(error);
@@ -193,6 +203,30 @@ export function useChampionApi() {
     }
   }
 
+  async function getChampionBuilds(
+    championKey: string,
+    options: GetChampionBuildsOptions,
+  ): Promise<ChampionBuildsResponse> {
+    try {
+      const response = await $fetch(
+        `${apiBase}/api/champions/${encodeURIComponent(championKey)}/builds`,
+        {
+          query: {
+            platform: options.platform,
+            queueId: options.queue,
+            tier: options.tier,
+            position: options.position,
+            patch: options.patch,
+          },
+          signal: options.signal,
+        },
+      );
+      return ChampionBuildsResponseSchema.parse(response);
+    } catch (error) {
+      throw parseApiError(error);
+    }
+  }
+
   return {
     apiBase,
     getFilters,
@@ -200,6 +234,7 @@ export function useChampionApi() {
     getStatsTable,
     getChampionDetail,
     getChampionStats,
+    getChampionBuilds,
   };
 }
 

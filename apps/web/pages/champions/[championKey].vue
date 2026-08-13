@@ -159,10 +159,16 @@
           </div>
         </section>
 
+        <ChampionsChampionDetailTabs v-model="activeTab" class="mt-2" />
+
         <div
+          v-show="activeTab === 'overview'"
+          id="champion-tabpanel-overview"
+          role="tabpanel"
+          aria-labelledby="champion-tab-overview"
+          class="flex min-w-0 flex-col gap-8 md:gap-10"
           aria-live="polite"
           :aria-busy="statsPending"
-          class="flex min-w-0 flex-col gap-8 md:gap-10"
         >
           <PlayerErrorBanner v-if="statsError" :message="statsError" />
 
@@ -192,6 +198,23 @@
           </template>
         </div>
 
+        <div
+          v-show="activeTab === 'builds'"
+          id="champion-tabpanel-builds"
+          role="tabpanel"
+          aria-labelledby="champion-tab-builds"
+        >
+          <p v-if="!filters.position" class="text-sm text-[var(--lh-muted)]" role="status">
+            Select a position to load Builds &amp; Runes for this champion.
+          </p>
+          <ChampionsChampionBuildsPanel
+            v-else
+            :response="buildsResponse"
+            :pending="buildsPending"
+            :error="buildsError"
+          />
+        </div>
+
         <div class="min-w-0 border-t pt-6" style="border-color: var(--lh-border)">
           <ChampionsChampionLimitationsPanel
             :disclaimer="statsResponse?.disclaimer ?? filtersMeta?.disclaimer"
@@ -218,15 +241,18 @@
 <script setup lang="ts">
 import {
   getPlatformDisplayName,
+  type ChampionBuildsResponse,
   type ChampionRankingPosition,
   type ChampionStatsTierFilter,
   type PlatformRoute,
 } from '@league-helper/shared';
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useChampionDetailPage } from '~/composables/useChampionDetailPage';
+import { ChampionApiError, useChampionApi } from '~/composables/useChampionApi';
 import { championFreshnessBanner } from '~/utils/champion-freshness';
 import { buildChampionsDirectoryPath } from '~/utils/champion-links';
 import { positionDisplayLabel } from '~/utils/champion-metrics';
+import type { ChampionDetailTabId } from '~/components/champions/ChampionDetailTabs.vue';
 
 const route = useRoute();
 
@@ -261,6 +287,81 @@ const {
 } = useChampionDetailPage(() => routeKey.value);
 
 const exactMetrics = computed(() => statsResponse.value?.stats?.metrics ?? null);
+
+const activeTab = ref<ChampionDetailTabId>('overview');
+const buildsResponse = ref<ChampionBuildsResponse | null>(null);
+const buildsPending = ref(false);
+const buildsError = ref<string | null>(null);
+const { getChampionBuilds } = useChampionApi();
+let buildsRequestId = 0;
+
+async function loadBuilds(): Promise<void> {
+  if (
+    activeTab.value !== 'builds' ||
+    !filters.position ||
+    !filters.platform ||
+    filters.queue === null
+  ) {
+    return;
+  }
+  const key = champion.value?.championKey;
+  if (!key) {
+    return;
+  }
+  const requestId = ++buildsRequestId;
+  buildsPending.value = true;
+  buildsError.value = null;
+  try {
+    const response = await getChampionBuilds(key, {
+      platform: filters.platform,
+      queue: filters.queue,
+      position: filters.position,
+      tier: filters.tier ?? 'ALL',
+      patch: filters.patch ?? undefined,
+    });
+    if (requestId !== buildsRequestId) {
+      return;
+    }
+    buildsResponse.value = response;
+    buildsPending.value = false;
+  } catch (error) {
+    if (requestId !== buildsRequestId) {
+      return;
+    }
+    buildsResponse.value = null;
+    buildsPending.value = false;
+    buildsError.value =
+      error instanceof ChampionApiError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : 'Unable to load champion builds.';
+  }
+}
+
+watch(activeTab, () => {
+  if (activeTab.value === 'builds') {
+    void loadBuilds();
+  }
+});
+
+watch(
+  () =>
+    [
+      filters.platform,
+      filters.queue,
+      filters.tier,
+      filters.position,
+      filters.patch,
+      champion.value?.championKey,
+    ] as const,
+  () => {
+    buildsResponse.value = null;
+    if (activeTab.value === 'builds') {
+      void loadBuilds();
+    }
+  },
+);
 
 const pageTitle = computed(() =>
   champion.value ? `${champion.value.name} · Champions` : 'Champion',

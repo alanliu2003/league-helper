@@ -11,8 +11,10 @@ import {
 } from '@league-helper/shared';
 import { loadChampionStatsConfig } from '../../config/champion-stats.config';
 import { ChampionAggregateReadRepository } from '../../persistence/champion-aggregate-read.repository';
+import { ChampionBuildReadRepository } from '../../persistence/champion-build-read.repository';
 import { ChampionStaticRepository } from '../../persistence/champion-static.repository';
 import { assertTablePositionPresent } from './champion-stats-filters';
+import { ChampionBuildsService } from './champion-builds.service';
 import { ChampionStatsCacheService } from './champion-stats-cache.service';
 import { ChampionStatsService } from './champion-stats.service';
 import { ChampionStaticService } from './champion-static.service';
@@ -27,6 +29,7 @@ const prisma = new PrismaClient({
 
 const staticRepo = new ChampionStaticRepository(prisma as never);
 const aggregateRepo = new ChampionAggregateReadRepository(prisma as never);
+const buildRepo = new ChampionBuildReadRepository(prisma as never);
 
 const media = {
   buildChampionIconUrl: (key: string, version: string) =>
@@ -36,6 +39,11 @@ const media = {
   buildPassiveIconUrl: (imageFull: string, version: string) =>
     `https://ddragon.leagueoflegends.com/cdn/${version}/img/passive/${imageFull}`,
   buildSpellIconUrl: (imageFull: string, version: string) =>
+    `https://ddragon.leagueoflegends.com/cdn/${version}/img/spell/${imageFull}`,
+  buildItemIconUrl: (itemId: number, version: string) =>
+    `https://ddragon.leagueoflegends.com/cdn/${version}/img/item/${itemId}.png`,
+  buildRuneIconUrl: (iconPath: string) => `https://ddragon.leagueoflegends.com/cdn/img/${iconPath}`,
+  buildSummonerSpellIconUrl: (imageFull: string, version: string) =>
     `https://ddragon.leagueoflegends.com/cdn/${version}/img/spell/${imageFull}`,
 };
 
@@ -52,6 +60,7 @@ async function resetTestData(): Promise<void> {
       "PlayerMetricSnapshot",
       "MatchupAggregate",
       "ChampionAggregationRecalcScope",
+      "ChampionBuildAggregate",
       "ChampionAggregate",
       "ChampionAggregationProcessing",
       "IngestionJobRecord",
@@ -69,6 +78,7 @@ async function resetTestData(): Promise<void> {
       "ChampionStaticData",
       "ItemStaticData",
       "RuneStaticData",
+      "SummonerSpellStaticData",
       "Patch"
     RESTART IDENTITY CASCADE;
   `);
@@ -95,7 +105,17 @@ function createServices() {
     media as never,
     cache,
   );
-  return { staticService, statsService };
+  const buildsService = new ChampionBuildsService(
+    config,
+    staticService,
+    staticRepo,
+    aggregateRepo,
+    buildRepo,
+    prisma as never,
+    media as never,
+    cache,
+  );
+  return { staticService, statsService, buildsService };
 }
 
 describe('champions API integration', () => {
@@ -490,5 +510,147 @@ describe('champions API integration', () => {
       ChampionStatsTableQuerySchema.parse({ position: 'MIDDLE' }),
     );
     expect(table.freshness).toBe('RECALCULATION_PENDING');
+  });
+
+  async function seedAhriBuilds(): Promise<void> {
+    const patch = await prisma.patch.findFirstOrThrow({ where: { version: '16.10.1' } });
+    await prisma.itemStaticData.create({
+      data: {
+        patchId: patch.id,
+        itemId: 3006,
+        name: "Berserker's Greaves",
+        description: 'Boots',
+        goldData: { total: 1100 },
+        stats: {},
+        tags: ['Boots'],
+        imageData: { full: '3006.png' },
+        purchasable: true,
+        fromItemIds: [1001],
+        intoItemIds: [],
+        consumed: false,
+      },
+    });
+    await prisma.summonerSpellStaticData.createMany({
+      data: [
+        {
+          patchId: patch.id,
+          spellId: 4,
+          spellKey: 'SummonerFlash',
+          name: 'Flash',
+          description: 'Teleport a short distance.',
+          imageData: { full: 'SummonerFlash.png' },
+        },
+        {
+          patchId: patch.id,
+          spellId: 12,
+          spellKey: 'SummonerTeleport',
+          name: 'Teleport',
+          description: 'Teleport to a turret.',
+          imageData: { full: 'SummonerTeleport.png' },
+        },
+      ],
+    });
+    await prisma.championBuildAggregate.createMany({
+      data: [
+        {
+          patch: '16.10',
+          platformRoute: 'na1',
+          regionalRoute: 'americas',
+          queueId: 420,
+          rankTier: 'ALL',
+          teamPosition: 'MIDDLE',
+          championId: 103,
+          category: 'BOOTS',
+          signature: '3006',
+          entityIds: [3006],
+          sampleSize: 24,
+          wins: 14,
+          eligibleGames: 40,
+          aggregationVersion: '1',
+          sourceNormalizationVersion: '1',
+          calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        {
+          patch: '16.10',
+          platformRoute: 'na1',
+          regionalRoute: 'americas',
+          queueId: 420,
+          rankTier: 'GOLD',
+          teamPosition: 'MIDDLE',
+          championId: 103,
+          category: 'SUMMONER_SPELLS',
+          signature: '4-12',
+          entityIds: [4, 12],
+          sampleSize: 6,
+          wins: 4,
+          eligibleGames: 10,
+          aggregationVersion: '1',
+          sourceNormalizationVersion: '1',
+          calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+        },
+        {
+          patch: '16.10',
+          platformRoute: 'na1',
+          regionalRoute: 'americas',
+          queueId: 420,
+          rankTier: 'PLATINUM',
+          teamPosition: 'MIDDLE',
+          championId: 103,
+          category: 'SUMMONER_SPELLS',
+          signature: '4-12',
+          entityIds: [4, 12],
+          sampleSize: 4,
+          wins: 1,
+          eligibleGames: 8,
+          aggregationVersion: '1',
+          sourceNormalizationVersion: '1',
+          calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+        },
+      ],
+    });
+  }
+
+  it('returns empty builds for a champion with no rows', async () => {
+    const { buildsService } = createServices();
+    const empty = await buildsService.getBuilds('Annie', {
+      position: 'MIDDLE',
+      tier: 'ALL',
+    });
+    expect(empty.emptyReason).toBe('CHAMPION_HAS_NO_BUILDS');
+    expect(empty.boots).toEqual([]);
+  });
+
+  it('hides UNKNOWN rank instead of inventing a product view', async () => {
+    await seedAhriBuilds();
+    const { buildsService } = createServices();
+    const hidden = await buildsService.getBuilds('Ahri', {
+      position: 'MIDDLE',
+      tier: 'UNKNOWN',
+    });
+    expect(hidden.emptyReason).toBe('UNKNOWN_RANK_HIDDEN');
+    expect(hidden.boots).toEqual([]);
+  });
+
+  it('returns static identity, icons, and merged segment sample/wins', async () => {
+    await seedAhriBuilds();
+    const { buildsService } = createServices();
+    const all = await buildsService.getBuilds('Ahri', {
+      position: 'MIDDLE',
+      tier: 'ALL',
+      patch: '16.10',
+    });
+    expect(all.emptyReason).toBeNull();
+    expect(all.boots[0]?.item.name).toBe("Berserker's Greaves");
+    expect(all.boots[0]?.item.iconUrl).toContain('/img/item/3006.png');
+    expect(all.boots[0]?.sampleSize).toBe(24);
+
+    const gold = await buildsService.getBuilds('Ahri', {
+      position: 'MIDDLE',
+      tier: 'GOLD',
+      patch: '16.10',
+    });
+    expect(gold.summonerSpells[0]?.sampleSize).toBe(6);
+    expect(gold.summonerSpells[0]?.wins).toBe(4);
+    expect(gold.summonerSpells[0]?.spells[0]?.name).toBe('Flash');
   });
 });

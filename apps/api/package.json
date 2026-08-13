@@ -22,6 +22,7 @@
     "riot:match-ids": "tsx src/integrations/riot/cli/riot-match-ids.ts",
     "ddragon:champion": "tsx src/integrations/data-dragon/cli/ddragon-champion.ts",
     "champions:sync-static": "tsx src/integrations/data-dragon/cli/sync-champion-static.ts",
+    "champions:sync-build-static": "tsx src/integrations/data-dragon/cli/sync-build-static.ts",
     "jobs:reconcile-match-ingestion": "tsx src/queues/cli/reconcile-match-ingestion.ts",
     "jobs:status-match-ingestion": "tsx src/queues/cli/status-match-ingestion.ts",
     "player:search:mock": "tsx src/features/players/cli/player-search-mock.ts",

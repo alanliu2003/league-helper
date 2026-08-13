@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildChampionBuildCacheKey,
+  buildChampionBuildGenerationKey,
   buildChampionStatsChampionCacheKey,
   buildChampionStatsFiltersCacheKey,
   buildChampionStatsGenerationKey,
@@ -117,5 +119,41 @@ describe('champion stats cache keys', () => {
     const key = buildChampionStatsGenerationKey(baseScope);
     expect(typeof key).toBe('string');
     expect(key.startsWith('champ_stats:gen:')).toBe(true);
+  });
+
+  it('keeps build cache keys distinct from stats keys and across rank scopes', () => {
+    const stats = buildChampionStatsChampionCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      tier: 'ALL',
+      minimumSample: 1,
+      includeInsufficient: true,
+    });
+    const all = buildChampionBuildCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      rankScopeToken: 'ALL',
+    });
+    const exact = buildChampionBuildCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      rankScopeToken: 'EXACT:GOLD',
+    });
+    const segment = buildChampionBuildCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      rankScopeToken: 'SEGMENT:HIGH',
+    });
+    expect(all.startsWith('champ_builds:champion:')).toBe(true);
+    expect(buildChampionBuildGenerationKey(baseScope).startsWith('champ_builds:gen:')).toBe(true);
+    expect(new Set([stats, all, exact, segment]).size).toBe(4);
   });
 });
