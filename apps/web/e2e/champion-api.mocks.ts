@@ -35,6 +35,9 @@ export const MOCK_ICON_AHRI = 'https://cdn.example.test/champions/Ahri.png';
 export const MOCK_SPLASH_AHRI = 'https://cdn.example.test/splash/Ahri_0.jpg';
 export const MOCK_ICON_ANNIE = 'https://cdn.example.test/champions/Annie.png';
 export const MOCK_ICON_ZED = 'https://cdn.example.test/champions/Zed.png';
+export const MOCK_ICON_AATROX = 'https://cdn.example.test/champions/Aatrox.png';
+export const MOCK_SPLASH_AATROX = 'https://cdn.example.test/splash/Aatrox_0.jpg';
+export const MOCK_SPLASH_ZED = 'https://cdn.example.test/splash/Zed_0.jpg';
 
 const POSITIONS: ChampionRankingPosition[] = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'SUPPORT'];
 
@@ -294,8 +297,35 @@ export function buildChampionsListResponse(): ChampionListResponse {
         iconUrl: MOCK_ICON_ZED,
         staticDataPatch: '14.11',
       },
+      {
+        championId: 266,
+        championKey: 'Aatrox',
+        name: 'Aatrox',
+        title: 'the Darkin Blade',
+        tags: ['Fighter', 'Tank'],
+        iconUrl: MOCK_ICON_AATROX,
+        staticDataPatch: '14.11',
+      },
     ],
   });
+}
+
+function mockAbilities(
+  championKey: string,
+  names: [string, string, string, string, string],
+): NonNullable<ChampionDetailResponse['champion']['abilities']> {
+  const slots = ['PASSIVE', 'Q', 'W', 'E', 'R'] as const;
+  return slots.map((slot, index) => ({
+    slot,
+    name: names[index]!,
+    description: `${names[index]} description`,
+    iconUrl: `https://cdn.example.test/abilities/${championKey}-${slot}.png`,
+    ...(slot === 'Q'
+      ? { cooldown: '7', cost: '55', range: '900' }
+      : slot === 'PASSIVE'
+        ? {}
+        : { cooldown: '10', cost: '40', range: '600' }),
+  }));
 }
 
 function ahriDetail(canonical = true): ChampionDetailResponse {
@@ -311,7 +341,64 @@ function ahriDetail(canonical = true): ChampionDetailResponse {
       iconUrl: MOCK_ICON_AHRI,
       splashUrl: MOCK_SPLASH_AHRI,
       staticDataPatch: '14.11',
+      abilities: mockAbilities('Ahri', [
+        'Essence Theft',
+        'Orb of Deception',
+        'Fox-Fire',
+        'Charm',
+        'Spirit Rush',
+      ]),
       ...(canonical ? { canonicalChampionKey: 'Ahri' } : {}),
+    },
+  });
+}
+
+function aatroxDetail(): ChampionDetailResponse {
+  return ChampionDetailResponseSchema.parse({
+    staticDataPatch: '14.11',
+    staticDataVersion: '14.11.1',
+    champion: {
+      championId: 266,
+      championKey: 'Aatrox',
+      name: 'Aatrox',
+      title: 'the Darkin Blade',
+      tags: ['Fighter', 'Tank'],
+      iconUrl: MOCK_ICON_AATROX,
+      splashUrl: MOCK_SPLASH_AATROX,
+      staticDataPatch: '14.11',
+      abilities: mockAbilities('Aatrox', [
+        'Deathbringer Stance',
+        'The Darkin Blade',
+        'Infernal Chains',
+        'Umbral Dash',
+        'World Ender',
+      ]),
+      canonicalChampionKey: 'Aatrox',
+    },
+  });
+}
+
+function zedDetail(): ChampionDetailResponse {
+  return ChampionDetailResponseSchema.parse({
+    staticDataPatch: '14.11',
+    staticDataVersion: '14.11.1',
+    champion: {
+      championId: 238,
+      championKey: 'Zed',
+      name: 'Zed',
+      title: 'the Master of Shadows',
+      tags: ['Assassin'],
+      iconUrl: MOCK_ICON_ZED,
+      splashUrl: MOCK_SPLASH_ZED,
+      staticDataPatch: '14.11',
+      abilities: mockAbilities('Zed', [
+        'Contempt for the Weak',
+        'Razor Shuriken',
+        'Living Shadow',
+        'Shadow Slash',
+        'Death Mark',
+      ]),
+      canonicalChampionKey: 'Zed',
     },
   });
 }
@@ -643,6 +730,14 @@ export async function installChampionApiMocks(
       }
       if (detailKey.toLowerCase() === 'ahri') {
         await json(route, 200, ahriDetail(true));
+        return;
+      }
+      if (detailKey.toLowerCase() === 'aatrox') {
+        await json(route, 200, aatroxDetail());
+        return;
+      }
+      if (detailKey.toLowerCase() === 'zed') {
+        await json(route, 200, zedDetail());
         return;
       }
       if (detailKey.toLowerCase() === 'annie') {

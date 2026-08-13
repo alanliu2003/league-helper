@@ -116,6 +116,29 @@ export class DataDragonChampionService {
     return `${this.config.baseUrl}/cdn/${encodeURIComponent(ver)}/img/item/${itemId}.png`;
   }
 
+  /** Passive ability icon; null when filename or version is missing. */
+  buildPassiveIconUrl(imageFull: string, version: string): string | null {
+    return this.buildAbilityIconUrl('passive', imageFull, version);
+  }
+
+  /** Spell ability icon; null when filename or version is missing. */
+  buildSpellIconUrl(imageFull: string, version: string): string | null {
+    return this.buildAbilityIconUrl('spell', imageFull, version);
+  }
+
+  private buildAbilityIconUrl(
+    kind: 'passive' | 'spell',
+    imageFull: string,
+    version: string,
+  ): string | null {
+    const file = imageFull.trim();
+    const ver = version.trim();
+    if (!file || !ver) {
+      return null;
+    }
+    return `${this.config.baseUrl}/cdn/${encodeURIComponent(ver)}/img/${kind}/${encodeURIComponent(file)}`;
+  }
+
   async refreshCache(): Promise<DataDragonChampion[]> {
     this.memory = null;
     try {

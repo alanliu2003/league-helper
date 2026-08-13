@@ -51,11 +51,7 @@ export const ConfidenceIntervalSchema = z.object({
 });
 export type ConfidenceInterval = z.infer<typeof ConfidenceIntervalSchema>;
 
-export const ChampionStatsFreshnessSchema = z.enum([
-  'CURRENT',
-  'RECALCULATION_PENDING',
-  'UNKNOWN',
-]);
+export const ChampionStatsFreshnessSchema = z.enum(['CURRENT', 'RECALCULATION_PENDING', 'UNKNOWN']);
 export type ChampionStatsFreshness = z.infer<typeof ChampionStatsFreshnessSchema>;
 
 export const ChampionStatsEmptyReasonSchema = z.enum([
@@ -101,7 +97,8 @@ export type AggregateDimensions = z.infer<typeof AggregateDimensionsSchema>;
 
 /**
  * Champion static metadata for public responses.
- * Omits passive/spells/baseStats: seed Json blobs are not a stable frontend-safe contract.
+ * Omits raw Data Dragon passive/spells/baseStats blobs. Normalized abilities belong
+ * on ChampionDetail only — never on directory ChampionSummary rows.
  */
 export const ChampionSummarySchema = z.object({
   championId: z.number().int(),
@@ -116,8 +113,27 @@ export const ChampionSummarySchema = z.object({
 });
 export type ChampionSummary = z.infer<typeof ChampionSummarySchema>;
 
+export const ChampionAbilitySlotSchema = z.enum(['PASSIVE', 'Q', 'W', 'E', 'R']);
+export type ChampionAbilitySlot = z.infer<typeof ChampionAbilitySlotSchema>;
+
+/**
+ * Frontend-safe ability summary. Optional metadata is omitted when source data
+ * has no displayable value — never invent cooldowns, costs, or scaling numbers.
+ */
+export const ChampionAbilitySummarySchema = z.object({
+  slot: ChampionAbilitySlotSchema,
+  name: z.string().min(1),
+  description: z.string(),
+  iconUrl: z.string().url().nullable(),
+  cooldown: z.string().min(1).optional(),
+  cost: z.string().min(1).optional(),
+  range: z.string().min(1).optional(),
+});
+export type ChampionAbilitySummary = z.infer<typeof ChampionAbilitySummarySchema>;
+
 export const ChampionDetailSchema = ChampionSummarySchema.extend({
   canonicalChampionKey: z.string().min(1).optional(),
+  abilities: z.array(ChampionAbilitySummarySchema).optional(),
 });
 export type ChampionDetail = z.infer<typeof ChampionDetailSchema>;
 

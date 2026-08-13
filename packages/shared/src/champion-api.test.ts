@@ -8,6 +8,7 @@ import {
   ChampionAggregateMetricsSchema,
   ChampionAggregateRowSchema,
   ChampionDetailSchema,
+  ChampionSummarySchema,
   ChampionStatsEmptyReasonSchema,
   ChampionStatsQuerySchema,
   ChampionStatsResponseSchema,
@@ -66,9 +67,9 @@ describe('ChampionStatsTableQuerySchema', () => {
     expect(ChampionStatsTableQuerySchema.parse({ position: 'MIDDLE', tier: 'ALL' }).tier).toBe(
       'ALL',
     );
-    expect(
-      ChampionStatsTableQuerySchema.parse({ position: 'MIDDLE', tier: 'UNKNOWN' }).tier,
-    ).toBe('UNKNOWN');
+    expect(ChampionStatsTableQuerySchema.parse({ position: 'MIDDLE', tier: 'UNKNOWN' }).tier).toBe(
+      'UNKNOWN',
+    );
     expect(ChampionStatsTableQuerySchema.parse({ position: 'MIDDLE', tier: 'GOLD' }).tier).toBe(
       'GOLD',
     );
@@ -258,6 +259,8 @@ describe('champion response schemas', () => {
     expect(ChampionDetailSchema.shape).not.toHaveProperty('spells');
     expect(ChampionDetailSchema.shape).not.toHaveProperty('baseStats');
     expect(ChampionDetailSchema.shape).not.toHaveProperty('rawPayload');
+    expect(ChampionDetailSchema.shape).toHaveProperty('abilities');
+    expect(ChampionSummarySchema.shape).not.toHaveProperty('abilities');
   });
 });
 
@@ -268,7 +271,11 @@ describe('champion contract hygiene', () => {
   });
 
   it('does not expose puuid / raw payload / internal secret fields in champion schemas', () => {
-    const files = ['champion-api.ts', 'champion-stats-cache.ts', 'job-queues/champion-aggregation-job.ts'];
+    const files = [
+      'champion-api.ts',
+      'champion-stats-cache.ts',
+      'job-queues/champion-aggregation-job.ts',
+    ];
     for (const relative of files) {
       const source = readFileSync(join(__dirname, relative), 'utf8');
       expect(source.toLowerCase()).not.toMatch(/\bpuuid\b/);

@@ -78,10 +78,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function createFakePrisma(seed?: {
-  patches?: StoredPatch[];
-  failOnChampionUpsert?: boolean;
-}): {
+function createFakePrisma(seed?: { patches?: StoredPatch[]; failOnChampionUpsert?: boolean }): {
   prisma: ChampionStaticSyncPrisma;
   state: { patches: Map<string, StoredPatch>; deleteCalls: number };
 } {
@@ -98,9 +95,7 @@ function createFakePrisma(seed?: {
       patch: {
         findUnique: async ({ where }) => {
           const patch = working.get(where.version);
-          return patch
-            ? { id: patch.id, version: patch.version, isActive: patch.isActive }
-            : null;
+          return patch ? { id: patch.id, version: patch.version, isActive: patch.isActive } : null;
         },
         findFirst: async ({ where }) => {
           const patch = [...working.values()].find((p) => p.isActive === where.isActive);
@@ -167,6 +162,8 @@ function createFakePrisma(seed?: {
             tags: [...c.tags],
             baseStats: c.baseStats,
             imageData: c.imageData,
+            passive: c.passive,
+            spells: c.spells,
           }));
         },
         upsert: async ({ where, create, update }) => {
@@ -358,6 +355,8 @@ describe('classifyChampionDiff', () => {
         tags: ['Mage'],
         baseStats: {},
         imageData: {},
+        passive: {},
+        spells: [],
       },
       {
         championId: 36,
@@ -367,6 +366,8 @@ describe('classifyChampionDiff', () => {
         tags: ['Tank', 'Fighter'],
         baseStats: {},
         imageData: {},
+        passive: {},
+        spells: [],
       },
     ];
     expect(classifyChampionDiff(mapped, existing)).toEqual({
@@ -394,10 +395,7 @@ describe('syncChampionStatic', () => {
     });
     const fetchFn = vi.fn(async () =>
       jsonResponse(
-        championPayload([
-          AHRI,
-          { id: 'FakeAhri', key: '103', name: 'Fake Ahri', title: 'dup id' },
-        ]),
+        championPayload([AHRI, { id: 'FakeAhri', key: '103', name: 'Fake Ahri', title: 'dup id' }]),
       ),
     );
 
@@ -526,12 +524,7 @@ describe('syncChampionStatic', () => {
       ],
     });
     const fetchFn = vi.fn(async () =>
-      jsonResponse(
-        championPayload([
-          { ...AHRI, title: 'the Nine-Tailed Fox' },
-          MUNDO,
-        ]),
-      ),
+      jsonResponse(championPayload([{ ...AHRI, title: 'the Nine-Tailed Fox' }, MUNDO])),
     );
 
     const result = await syncChampionStatic({
@@ -838,5 +831,102 @@ describe('syncChampionStatic', () => {
     expect(champions?.get(103)?.championKey).toBe('Ahri');
     expect(champions?.get(60103)?.championKey).toBe('Jade_Ahri');
     expect(result.championRowCount).toBe(3);
+  });
+
+  it('overlays championFull.json abilities onto identity rows', async () => {
+    const { prisma, state } = createFakePrisma();
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('championFull.json')) {
+        return jsonResponse({
+          version: '16.10.1',
+          data: {
+            Ahri: {
+              ...AHRI,
+              passive: {
+                name: 'Essence Theft',
+                description: 'Ahri heals.',
+                image: { full: 'Ahri_SoulEater2.png' },
+              },
+              spells: [
+                {
+                  name: 'Orb of Deception',
+                  description: 'Ahri sends out her orb.',
+                  cooldownBurn: '7',
+                  costBurn: '55',
+                  rangeBurn: '900',
+                  image: { full: 'AhriQ.png' },
+                },
+                {
+                  name: 'Fox-Fire',
+                  description: 'Fox-fires.',
+                  cooldownBurn: '9',
+                  costBurn: '30',
+                  rangeBurn: '700',
+                  image: { full: 'AhriW.png' },
+                },
+                {
+                  name: 'Charm',
+                  description: 'Charm.',
+                  cooldownBurn: '12',
+                  costBurn: '60',
+                  rangeBurn: '1000',
+                  image: { full: 'AhriE.png' },
+                },
+                {
+                  name: 'Spirit Rush',
+                  description: 'Dash.',
+                  cooldownBurn: '130',
+                  costBurn: '100',
+                  rangeBurn: '500',
+                  image: { full: 'AhriR.png' },
+                },
+              ],
+            },
+            DrMundo: MUNDO,
+          },
+        });
+      }
+      return jsonResponse(championPayload([AHRI, MUNDO]));
+    });
+
+    const result = await syncChampionStatic({
+      config: makeConfig(),
+      prisma,
+      dryRun: false,
+      fetchDeps: { fetchFn: fetchFn as unknown as typeof fetch, sleepFn: async () => undefined },
+    });
+
+    expect(result.ok).toBe(true);
+    const ahri = state.patches.get('16.10.1')?.champions.get(103);
+    expect(ahri?.passive).toMatchObject({
+      name: 'Essence Theft',
+      imageFull: 'Ahri_SoulEater2.png',
+    });
+    expect(ahri?.spells).toHaveLength(4);
+    expect((ahri?.spells[0] as { name?: string }).name).toBe('Orb of Deception');
+  });
+
+  it('still syncs identity when championFull.json fails', async () => {
+    const { prisma, state } = createFakePrisma();
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('championFull.json')) {
+        return jsonResponse({ error: 'missing' }, 404);
+      }
+      return jsonResponse(championPayload([AHRI, MUNDO]));
+    });
+
+    const result = await syncChampionStatic({
+      config: makeConfig(),
+      prisma,
+      dryRun: false,
+      fetchDeps: { fetchFn: fetchFn as unknown as typeof fetch, sleepFn: async () => undefined },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(state.patches.get('16.10.1')?.champions.get(103)?.championKey).toBe('Ahri');
+    expect(state.patches.get('16.10.1')?.champions.get(103)?.passive).toEqual({});
+    expect(state.patches.get('16.10.1')?.champions.get(103)?.spells).toEqual([]);
   });
 });

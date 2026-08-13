@@ -429,6 +429,73 @@ test.describe('champions directory and detail', () => {
     });
     await expect(page.locator('[aria-live="polite"]').first()).toBeAttached();
   });
+
+  test('ability row renders for Ahri, Aatrox, and Zed with keyboard-accessible details', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+
+    await gotoApp(page, '/champions/Ahri?platform=na1&queue=420&patch=14.11');
+    await expect(page.getByRole('heading', { name: 'Ahri', level: 1 })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('toolbar', { name: 'Champion abilities' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Passive: Essence Theft' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Q: Orb of Deception' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'R: Spirit Rush' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Q: Orb of Deception' }).click();
+    const ahriDetail = page.getByTestId('champion-ability-popover');
+    await expect(ahriDetail).toBeVisible();
+    await expect(ahriDetail).toContainText('Orb of Deception');
+    await expect(ahriDetail).toContainText('Cooldown');
+    await expect(page.getByRole('heading', { name: 'Primary stats' })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(ahriDetail).toHaveCount(0);
+
+    await gotoApp(page, '/champions/Aatrox?platform=na1&queue=420&patch=14.11');
+    await expect(page.getByRole('heading', { name: 'Aatrox', level: 1 })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('button', { name: 'Passive: Deathbringer Stance' })).toBeVisible();
+    await page.getByRole('button', { name: 'R: World Ender' }).click();
+    await expect(page.getByTestId('champion-ability-popover')).toContainText('World Ender');
+
+    await gotoApp(page, '/champions/Zed?platform=na1&queue=420&patch=14.11');
+    await expect(page.getByRole('heading', { name: 'Zed', level: 1 })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('button', { name: 'Q: Razor Shuriken' })).toBeVisible();
+    await page.getByRole('button', { name: 'Q: Razor Shuriken' }).click();
+    await expect(page.getByTestId('champion-ability-popover')).toContainText('Razor Shuriken');
+    await page.getByRole('button', { name: 'E: Shadow Slash' }).click();
+    await expect(page.getByTestId('champion-ability-popover')).toContainText('Shadow Slash');
+    await expect(page.getByTestId('champion-ability-popover')).not.toContainText('Razor Shuriken');
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByRole('toolbar', { name: 'Champion abilities' })).toBeVisible();
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await expect(page.getByRole('toolbar', { name: 'Champion abilities' })).toBeVisible();
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(page.getByRole('toolbar', { name: 'Champion abilities' })).toBeVisible();
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+  });
+
+  test('missing abilities do not break champion identity or analytics chrome', async ({ page }) => {
+    test.setTimeout(60_000);
+
+    await gotoApp(page, '/champions/Annie?platform=na1&queue=420&patch=14.11');
+    await expect(page.getByRole('heading', { name: 'Annie', level: 1 })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText('the Dark Child')).toBeVisible();
+    await expect(page.getByRole('toolbar', { name: 'Champion abilities' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Context' })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Back to champions directory/i })).toBeVisible();
+  });
 });
 
 test.describe('player → champion links', () => {

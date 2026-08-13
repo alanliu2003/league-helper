@@ -136,6 +136,14 @@ function createService(
     buildChampionSplashUrl: vi.fn(
       (key: string) => `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${key}_0.jpg`,
     ),
+    buildPassiveIconUrl: vi.fn(
+      (imageFull: string, version: string) =>
+        `https://ddragon.leagueoflegends.com/cdn/${version}/img/passive/${imageFull}`,
+    ),
+    buildSpellIconUrl: vi.fn(
+      (imageFull: string, version: string) =>
+        `https://ddragon.leagueoflegends.com/cdn/${version}/img/spell/${imageFull}`,
+    ),
   };
 
   const cache = {

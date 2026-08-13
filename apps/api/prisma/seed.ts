@@ -12,6 +12,49 @@ const SEED_PUUID = 'seed-fake-puuid-00000000-0000-4000-8000-000000000001';
 const SEED_MATCH_ID = 'SEED_NA1_0000000001';
 const SEED_PATCH_VERSION = '14.1.1.seed';
 
+const AHRI_SEED_PASSIVE = {
+  name: 'Essence Theft',
+  description:
+    "Whenever Ahri hits a champion with a spell, she gains a stack of Essence Theft. At 9 stacks, Ahri's next spell that hits an enemy champion heals her.",
+  imageFull: 'Ahri_SoulEater2.png',
+};
+
+const AHRI_SEED_SPELLS = [
+  {
+    name: 'Orb of Deception',
+    description:
+      'Ahri sends out and pulls back her orb, dealing magic damage on the way out and true damage on the way back.',
+    imageFull: 'AhriQ.png',
+    cooldownBurn: '7',
+    costBurn: '55/65/75/85/95',
+    rangeBurn: '900',
+  },
+  {
+    name: 'Fox-Fire',
+    description: 'Ahri releases fox-fires that seek and damage nearby enemies.',
+    imageFull: 'AhriW.png',
+    cooldownBurn: '9/8/7/6/5',
+    costBurn: '30',
+    rangeBurn: '700',
+  },
+  {
+    name: 'Charm',
+    description: 'Ahri blows a kiss that damages and charms the first enemy hit.',
+    imageFull: 'AhriE.png',
+    cooldownBurn: '12',
+    costBurn: '60',
+    rangeBurn: '1000',
+  },
+  {
+    name: 'Spirit Rush',
+    description: 'Ahri dashes forward and fires essence bolts at nearby enemies.',
+    imageFull: 'AhriR.png',
+    cooldownBurn: '130/105/80',
+    costBurn: '100',
+    rangeBurn: '500',
+  },
+];
+
 async function main(): Promise<void> {
   const patch = await prisma.patch.upsert({
     where: { version: SEED_PATCH_VERSION },
@@ -114,6 +157,9 @@ async function main(): Promise<void> {
         title: champion.title,
         championKey: champion.championKey,
         tags: champion.tags,
+        ...(champion.championKey === 'Ahri'
+          ? { passive: AHRI_SEED_PASSIVE, spells: AHRI_SEED_SPELLS }
+          : { passive: {}, spells: [] }),
       },
       create: {
         patchId: patch.id,
@@ -123,8 +169,8 @@ async function main(): Promise<void> {
         title: champion.title,
         tags: champion.tags,
         baseStats: { hp: 500 },
-        passive: { name: 'SeedPassive' },
-        spells: [{ id: 'Q' }],
+        passive: champion.championKey === 'Ahri' ? AHRI_SEED_PASSIVE : {},
+        spells: champion.championKey === 'Ahri' ? AHRI_SEED_SPELLS : [],
         imageData: { full: `${champion.championKey}.png` },
       },
     });

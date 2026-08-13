@@ -1,10 +1,10 @@
 <template>
   <section
-    class="champion-detail-hero relative overflow-hidden rounded-xl"
+    class="champion-detail-hero relative rounded-xl"
     style="box-shadow: var(--lh-shadow-md)"
     aria-labelledby="champion-detail-heading"
   >
-    <div class="absolute inset-0" aria-hidden="true">
+    <div class="absolute inset-0 overflow-hidden rounded-xl" aria-hidden="true">
       <img
         v-if="champion.splashUrl && !splashFailed"
         :src="champion.splashUrl"
@@ -104,6 +104,8 @@
           </p>
         </div>
       </div>
+
+      <ChampionAbilityBar v-if="abilities.length" :abilities="abilities" />
     </div>
   </section>
 </template>
@@ -118,6 +120,7 @@ import {
 import { computed, ref, watch } from 'vue';
 import { championInitials } from '~/utils/champion-display';
 import { positionDisplayLabel } from '~/utils/champion-metrics';
+import ChampionAbilityBar from './ChampionAbilityBar.vue';
 
 const props = defineProps<{
   champion: ChampionDetail;
@@ -155,6 +158,8 @@ const tagsLabel = computed(() => {
   return props.champion.tags.join(' · ');
 });
 
+const abilities = computed(() => props.champion.abilities ?? []);
+
 /** Compact selected context — patch + position only to avoid filter-section duplication. */
 const contextSummary = computed(() => {
   const parts: string[] = [];
@@ -172,12 +177,12 @@ const contextSummary = computed(() => {
 
 <style scoped>
 .champion-detail-hero {
-  min-height: 11.5rem;
+  min-height: 13.5rem;
 }
 
 @media (min-width: 768px) {
   .champion-detail-hero {
-    min-height: 17rem;
+    min-height: 19rem;
   }
 }
 

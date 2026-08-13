@@ -230,7 +230,8 @@ pnpm riot:resolve --game-name "Example" --tag-line "NA1" --platform na1
 # List recent match IDs for a PUUID
 pnpm riot:match-ids --puuid "fake-or-real-puuid" --platform na1 --count 5
 
-# Sync champion static data from Data Dragon into Patch + ChampionStaticData (no API key)
+# Sync champion static data from Data Dragon into Patch + ChampionStaticData (no API key).
+# Re-run after champion ability UI so existing READY patches get passive/spell snapshots.
 pnpm champions:sync-static --dry-run
 pnpm champions:sync-static
 pnpm champions:sync-static --json

@@ -9,6 +9,7 @@ import {
   ChampionAggregateRowSchema,
   ChampionDetailSchema,
   ChampionSummarySchema,
+  extractChampionAbilities,
   type AggregateDimensions,
   type ChampionAggregateMetrics,
   type ChampionAggregateRow,
@@ -27,8 +28,7 @@ export function mapChampionSummary(
   media: DataDragonChampionService,
 ): ChampionSummary {
   const version = row.dataDragonVersion?.trim() || null;
-  const iconUrl =
-    version !== null ? media.buildChampionIconUrl(row.championKey, version) : null;
+  const iconUrl = version !== null ? media.buildChampionIconUrl(row.championKey, version) : null;
   const splashUrl = media.buildChampionSplashUrl(row.championKey);
 
   return ChampionSummarySchema.parse({
@@ -52,16 +52,30 @@ export function mapChampionDetail(
   const summary = mapChampionSummary(row, media);
   const requested = options.requestedKey?.trim();
   const canonical =
-    requested !== undefined &&
-    requested.length > 0 &&
-    requested !== row.championKey
+    requested !== undefined && requested.length > 0 && requested !== row.championKey
       ? row.championKey
       : undefined;
 
   return ChampionDetailSchema.parse({
     ...summary,
     ...(canonical !== undefined ? { canonicalChampionKey: canonical } : {}),
+    ...abilityFields(row, media),
   });
+}
+
+function abilityFields(
+  row: ChampionStaticRow,
+  media: DataDragonChampionService,
+): { abilities?: ChampionDetail['abilities'] } {
+  const abilities = extractChampionAbilities(
+    { passive: row.passive, spells: row.spells },
+    {
+      version: row.dataDragonVersion,
+      buildPassiveIconUrl: (imageFull, version) => media.buildPassiveIconUrl(imageFull, version),
+      buildSpellIconUrl: (imageFull, version) => media.buildSpellIconUrl(imageFull, version),
+    },
+  );
+  return abilities.length > 0 ? { abilities } : {};
 }
 
 export function toAccumulator(row: ChampionAggregate): ChampionAggregateAccumulator {
@@ -147,11 +161,7 @@ export function mapAggregateRow(input: {
   return ChampionAggregateRowSchema.parse({
     champion: mapChampionSummary(input.champion, input.media),
     dimensions: mapAggregateDimensions(input.aggregate, input.regionalRoute),
-    metrics: mapAggregateMetrics(
-      input.aggregate,
-      input.confidenceLevel,
-      input.insufficientBelow,
-    ),
+    metrics: mapAggregateMetrics(input.aggregate, input.confidenceLevel, input.insufficientBelow),
   });
 }
 

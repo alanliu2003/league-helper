@@ -33,6 +33,10 @@ const media = {
     `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${key}.png`,
   buildChampionSplashUrl: (key: string) =>
     `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${key}_0.jpg`,
+  buildPassiveIconUrl: (imageFull: string, version: string) =>
+    `https://ddragon.leagueoflegends.com/cdn/${version}/img/passive/${imageFull}`,
+  buildSpellIconUrl: (imageFull: string, version: string) =>
+    `https://ddragon.leagueoflegends.com/cdn/${version}/img/spell/${imageFull}`,
 };
 
 const redis = {
@@ -126,8 +130,45 @@ describe('champions API integration', () => {
           title: 'the Nine-Tailed Fox',
           tags: ['Mage'],
           baseStats: {},
-          passive: {},
-          spells: [],
+          passive: {
+            name: 'Essence Theft',
+            description: 'Whenever Ahri hits a champion with a spell, she gains a stack.',
+            imageFull: 'Ahri_SoulEater2.png',
+          },
+          spells: [
+            {
+              name: 'Orb of Deception',
+              description: 'Ahri sends out and pulls back her orb.',
+              imageFull: 'AhriQ.png',
+              cooldownBurn: '7',
+              costBurn: '55/65/75/85/95',
+              rangeBurn: '900',
+            },
+            {
+              name: 'Fox-Fire',
+              description: 'Ahri releases fox-fires that seek nearby enemies.',
+              imageFull: 'AhriW.png',
+              cooldownBurn: '9/8/7/6/5',
+              costBurn: '30',
+              rangeBurn: '700',
+            },
+            {
+              name: 'Charm',
+              description: 'Ahri blows a kiss that damages and charms the first enemy hit.',
+              imageFull: 'AhriE.png',
+              cooldownBurn: '12',
+              costBurn: '60',
+              rangeBurn: '1000',
+            },
+            {
+              name: 'Spirit Rush',
+              description: 'Ahri dashes forward and fires essence bolts.',
+              imageFull: 'AhriR.png',
+              cooldownBurn: '130/105/80',
+              costBurn: '100',
+              rangeBurn: '500',
+            },
+          ],
           imageData: {},
         },
         {
@@ -251,6 +292,20 @@ describe('champions API integration', () => {
     const detail = await staticService.getByKey('ahri');
     expect(detail.champion.championKey).toBe('Ahri');
     expect(detail.champion.canonicalChampionKey).toBe('Ahri');
+    expect(detail.champion.abilities?.map((ability) => ability.slot)).toEqual([
+      'PASSIVE',
+      'Q',
+      'W',
+      'E',
+      'R',
+    ]);
+    expect(detail.champion.abilities?.[0]?.name).toBe('Essence Theft');
+    expect(detail.champion.abilities?.[1]?.name).toBe('Orb of Deception');
+    expect(detail.champion.abilities?.[1]?.iconUrl).toContain('/img/spell/AhriQ.png');
+    expect(detail.champion.abilities?.[1]?.cooldown).toBe('7');
+
+    const annie = await staticService.getByKey('Annie');
+    expect(annie.champion.abilities).toBeUndefined();
   });
 
   it('hides League Classic champion detail routes', async () => {

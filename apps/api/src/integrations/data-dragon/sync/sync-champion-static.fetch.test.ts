@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChampionStaticSyncConfig } from './sync-champion-static.config';
 import {
   DataDragonSyncFetchError,
+  fetchChampionFullFile,
   fetchChampionStaticFile,
   resolveDataDragonVersion,
 } from './sync-champion-static.fetch';
@@ -147,5 +148,32 @@ describe('sync-champion-static.fetch', () => {
 
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(sleepFn).not.toHaveBeenCalled();
+  });
+
+  it('fetches and parses championFull.json ability fields', async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain('/championFull.json');
+      return jsonResponse({
+        version: '16.10.1',
+        data: {
+          Ahri: {
+            id: 'Ahri',
+            key: '103',
+            name: 'Ahri',
+            title: 'the Nine-Tailed Fox',
+            tags: ['Mage'],
+            passive: { name: 'Essence Theft', description: 'Heal.', image: { full: 'p.png' } },
+            spells: [{ name: 'Orb of Deception', description: 'Orb.', image: { full: 'q.png' } }],
+          },
+        },
+      });
+    });
+    const file = await fetchChampionFullFile(baseConfig, '16.10.1', {
+      fetchFn: fetchFn as unknown as typeof fetch,
+      sleepFn: async () => undefined,
+      randomFn: () => 0,
+    });
+    expect(file.data.Ahri?.passive?.name).toBe('Essence Theft');
+    expect(file.data.Ahri?.spells?.[0]?.name).toBe('Orb of Deception');
   });
 });
