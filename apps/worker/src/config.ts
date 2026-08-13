@@ -49,6 +49,7 @@ export type ChampionAggregationWorkerConfig = {
   jobAttempts: number;
   sourceNormalizationVersion: string;
   aggregationVersion: string;
+  matchupAggregationVersion: string;
   confidenceLevel: number;
 };
 
@@ -199,6 +200,11 @@ export function loadChampionAggregationWorkerConfig(
       env.CHAMPION_AGGREGATION_VERSION,
       '1',
       'CHAMPION_AGGREGATION_VERSION',
+    ),
+    matchupAggregationVersion: parseNonEmptyVersion(
+      env.CHAMPION_MATCHUP_AGGREGATION_VERSION,
+      '1',
+      'CHAMPION_MATCHUP_AGGREGATION_VERSION',
     ),
     confidenceLevel: parseConfidenceLevel(env.CHAMPION_AGGREGATION_CONFIDENCE_LEVEL, 0.95),
   };

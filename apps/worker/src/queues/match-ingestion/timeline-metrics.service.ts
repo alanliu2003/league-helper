@@ -1,3 +1,4 @@
+import { findUniqueSamePositionOpponent } from '@league-helper/match-analytics';
 import type { RiotTimelineEventDto, RiotTimelineFrameDto } from '@league-helper/server-riot';
 import type { TeamPosition } from '@league-helper/shared';
 
@@ -102,16 +103,10 @@ function findRoleOpponent(
   participant: ParticipantIdentityForMetrics,
   all: ParticipantIdentityForMetrics[],
 ): ParticipantIdentityForMetrics | null {
-  if (!RELIABLE_POSITIONS.has(participant.teamPosition)) {
-    return null;
-  }
-  const opponents = all.filter(
-    (other) =>
-      other.participantId !== participant.participantId &&
-      other.teamId !== participant.teamId &&
-      other.teamPosition === participant.teamPosition,
-  );
-  return opponents.length === 1 ? (opponents[0] ?? null) : null;
+  return findUniqueSamePositionOpponent(participant, all, {
+    getPosition: (row) => row.teamPosition,
+    reliablePositions: RELIABLE_POSITIONS,
+  });
 }
 
 function countDeaths(

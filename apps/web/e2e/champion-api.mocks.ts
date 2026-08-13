@@ -2,6 +2,7 @@ import type { Page, Request, Route } from '@playwright/test';
 import {
   CHAMPION_STATS_DISCLAIMER,
   ChampionBuildsResponseSchema,
+  ChampionMatchupsResponseSchema,
   ChampionDetailResponseSchema,
   ChampionListResponseSchema,
   ChampionStatsFiltersResponseSchema,
@@ -15,6 +16,7 @@ import {
   RANKED_FLEX_QUEUE_ID,
   RANKED_SOLO_QUEUE_ID,
   type ChampionBuildsResponse,
+  type ChampionMatchupsResponse,
   type ChampionDetailResponse,
   type ChampionListResponse,
   type ChampionRankingPosition,
@@ -42,6 +44,8 @@ export const MOCK_SPLASH_AATROX = 'https://cdn.example.test/splash/Aatrox_0.jpg'
 export const MOCK_SPLASH_ZED = 'https://cdn.example.test/splash/Zed_0.jpg';
 export const MOCK_ICON_JINX = 'https://cdn.example.test/champions/Jinx.png';
 export const MOCK_ICON_THRESH = 'https://cdn.example.test/champions/Thresh.png';
+export const MOCK_ICON_SYNDRA = 'https://cdn.example.test/champions/Syndra.png';
+export const MOCK_ICON_TRISTANA = 'https://cdn.example.test/champions/Tristana.png';
 
 const POSITIONS: ChampionRankingPosition[] = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'SUPPORT'];
 
@@ -98,6 +102,11 @@ function matchChampionStats(pathname: string): string | null {
 
 function matchChampionBuilds(pathname: string): string | null {
   const match = pathname.match(/\/api\/champions\/([^/]+)\/builds\/?$/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function matchChampionMatchups(pathname: string): string | null {
+  const match = pathname.match(/\/api\/champions\/([^/]+)\/matchups\/?$/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
@@ -419,6 +428,42 @@ function jinxDetail(): ChampionDetailResponse {
       splashUrl: 'https://cdn.example.test/splash/Jinx_0.jpg',
       staticDataPatch: '14.11',
       canonicalChampionKey: 'Jinx',
+    },
+  });
+}
+
+function syndraDetail(): ChampionDetailResponse {
+  return ChampionDetailResponseSchema.parse({
+    staticDataPatch: '14.11',
+    staticDataVersion: '14.11.1',
+    champion: {
+      championId: 134,
+      championKey: 'Syndra',
+      name: 'Syndra',
+      title: 'the Dark Sovereign',
+      tags: ['Mage'],
+      iconUrl: MOCK_ICON_SYNDRA,
+      splashUrl: 'https://cdn.example.test/splash/Syndra_0.jpg',
+      staticDataPatch: '14.11',
+      canonicalChampionKey: 'Syndra',
+    },
+  });
+}
+
+function tristanaDetail(): ChampionDetailResponse {
+  return ChampionDetailResponseSchema.parse({
+    staticDataPatch: '14.11',
+    staticDataVersion: '14.11.1',
+    champion: {
+      championId: 18,
+      championKey: 'Tristana',
+      name: 'Tristana',
+      title: 'the Yordle Gunner',
+      tags: ['Marksman', 'Assassin'],
+      iconUrl: MOCK_ICON_TRISTANA,
+      splashUrl: 'https://cdn.example.test/splash/Tristana_0.jpg',
+      staticDataPatch: '14.11',
+      canonicalChampionKey: 'Tristana',
     },
   });
 }
@@ -775,6 +820,93 @@ export function buildChampionBuildsResponse(options: {
   });
 }
 
+export function buildChampionMatchupsResponse(options: {
+  empty?: boolean;
+  position: ChampionRankingPosition;
+  platform?: 'na1' | 'euw1';
+  patch?: string;
+  queueId?: number;
+  tier?: 'ALL' | 'GOLD';
+}): ChampionMatchupsResponse {
+  const platform = options.platform ?? 'na1';
+  const patch = options.patch ?? '14.11';
+  const queueId = options.queueId ?? RANKED_SOLO_QUEUE_ID;
+  const tier = options.tier ?? 'ALL';
+  const position = options.position;
+
+  if (options.empty) {
+    return ChampionMatchupsResponseSchema.parse({
+      disclaimer: CHAMPION_STATS_DISCLAIMER,
+      rankTierSemantics: RANK_TIER_SEMANTICS,
+      sampleScope: { kind: 'COLLECTED_SAMPLE', platform, patch, queueId },
+      resolvedFilters: { platform, patch, queueId, tier, position },
+      emptyReason: 'NO_ELIGIBLE_MATCHUPS',
+      displayFloor: 10,
+      rankingPolicy: 'WILSON_LOWER_BOUND',
+      totalEligiblePairs: 0,
+      totalSourcePairs: 0,
+      strongAgainst: [],
+      weakAgainst: [],
+    });
+  }
+
+  return ChampionMatchupsResponseSchema.parse({
+    disclaimer: CHAMPION_STATS_DISCLAIMER,
+    rankTierSemantics: RANK_TIER_SEMANTICS,
+    sampleScope: { kind: 'COLLECTED_SAMPLE', platform, patch, queueId },
+    resolvedFilters: { platform, patch, queueId, tier, position },
+    emptyReason: null,
+    displayFloor: 10,
+    rankingPolicy: 'WILSON_LOWER_BOUND',
+    totalEligiblePairs: 2,
+    totalSourcePairs: 2,
+    strongAgainst: [
+      {
+        opponent: {
+          championId: 18,
+          championKey: 'Tristana',
+          name: 'Tristana',
+          iconUrl: MOCK_ICON_TRISTANA,
+        },
+        position,
+        sampleSize: 10,
+        wins: 7,
+        losses: 3,
+        winRate: 0.7,
+        wilsonInterval: { lowerBound: 0.4, upperBound: 0.89, confidenceLevel: 0.95 },
+        sampleConfidence: 'LOW',
+        lowSample: true,
+        averageGoldDifferenceAt10: null,
+        averageGoldDifferenceAt15: null,
+        averageCsDifferenceAt10: null,
+        averageCsDifferenceAt15: null,
+      },
+    ],
+    weakAgainst: [
+      {
+        opponent: {
+          championId: 134,
+          championKey: 'Syndra',
+          name: 'Syndra',
+          iconUrl: MOCK_ICON_SYNDRA,
+        },
+        position,
+        sampleSize: 10,
+        wins: 4,
+        losses: 6,
+        winRate: 0.4,
+        wilsonInterval: { lowerBound: 0.17, upperBound: 0.69, confidenceLevel: 0.95 },
+        sampleConfidence: 'LOW',
+        lowSample: true,
+        averageGoldDifferenceAt10: null,
+        averageGoldDifferenceAt15: null,
+        averageCsDifferenceAt10: null,
+        averageCsDifferenceAt15: null,
+      },
+    ],
+  });
+}
+
 export type InstalledChampionMocks = {
   requests: ChampionRequestLog[];
   rankingRequests: ChampionRequestLog[];
@@ -861,6 +993,36 @@ export async function installChampionApiMocks(
           queueId: Number(searchParams.get('queueId') ?? RANKED_SOLO_QUEUE_ID),
           tier: (searchParams.get('tier') as 'ALL' | 'GOLD') ?? 'ALL',
           empty: emptyRanking,
+        }),
+      );
+      return;
+    }
+
+    const matchupsKey = matchChampionMatchups(pathname);
+    if (matchupsKey) {
+      if (/^\d+$/.test(matchupsKey)) {
+        await json(route, 404, notFoundBody('Champion not found'));
+        return;
+      }
+      const positionParam = searchParams.get('position');
+      if (!positionParam || !POSITIONS.includes(positionParam as ChampionRankingPosition)) {
+        await json(route, 400, {
+          success: false,
+          error: { code: 'VALIDATION_FAILURE', message: 'position is required' },
+        });
+        return;
+      }
+      const emptyMatchups = emptyStats || matchupsKey.toLowerCase() === 'annie';
+      await json(
+        route,
+        200,
+        buildChampionMatchupsResponse({
+          empty: emptyMatchups,
+          position: positionParam as ChampionRankingPosition,
+          platform: (searchParams.get('platform') as 'na1' | 'euw1') ?? 'na1',
+          patch: searchParams.get('patch') ?? '14.11',
+          queueId: Number(searchParams.get('queueId') ?? RANKED_SOLO_QUEUE_ID),
+          tier: (searchParams.get('tier') as 'ALL' | 'GOLD') ?? 'ALL',
         }),
       );
       return;
@@ -956,6 +1118,14 @@ export async function installChampionApiMocks(
       }
       if (detailKey.toLowerCase() === 'jinx') {
         await json(route, 200, jinxDetail());
+        return;
+      }
+      if (detailKey.toLowerCase() === 'syndra') {
+        await json(route, 200, syndraDetail());
+        return;
+      }
+      if (detailKey.toLowerCase() === 'tristana') {
+        await json(route, 200, tristanaDetail());
         return;
       }
       if (detailKey.toLowerCase() === 'thresh') {

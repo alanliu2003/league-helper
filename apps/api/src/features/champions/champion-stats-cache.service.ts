@@ -4,11 +4,14 @@ import type { z, ZodTypeAny } from 'zod';
 import {
   buildChampionBuildCacheKey,
   buildChampionBuildGenerationKey,
+  buildChampionMatchupCacheKey,
+  buildChampionMatchupGenerationKey,
   buildChampionStatsChampionCacheKey,
   buildChampionStatsFiltersCacheKey,
   buildChampionStatsGenerationKey,
   buildChampionStatsTableCacheKey,
   type ChampionBuildCacheKeyInput,
+  type ChampionMatchupCacheKeyInput,
   type ChampionStatsChampionCacheKeyInput,
   type ChampionStatsFiltersCacheKeyInput,
   type ChampionStatsGenerationScope,
@@ -35,6 +38,10 @@ export class ChampionStatsCacheService {
 
   async getBuildGeneration(scope: ChampionStatsGenerationScope): Promise<number> {
     return this.readGeneration(buildChampionBuildGenerationKey(scope));
+  }
+
+  async getMatchupGeneration(scope: ChampionStatsGenerationScope): Promise<number> {
+    return this.readGeneration(buildChampionMatchupGenerationKey(scope));
   }
 
   private async readGeneration(key: string): Promise<number> {
@@ -133,6 +140,33 @@ export class ChampionStatsCacheService {
     }
   }
 
+  async setIfMatchupGenerationCurrent<T>(input: {
+    scope: ChampionStatsGenerationScope;
+    expectedGeneration: number;
+    buildKey: (generation: number) => string;
+    value: T;
+  }): Promise<'written' | 'skipped' | 'failed'> {
+    try {
+      const current = await this.getMatchupGeneration(input.scope);
+      if (current !== input.expectedGeneration) {
+        return 'skipped';
+      }
+      await this.redis.set(
+        input.buildKey(current),
+        JSON.stringify(input.value),
+        'EX',
+        this.config.cacheTtlSeconds,
+      );
+      return 'written';
+    } catch (error: unknown) {
+      this.logger.warn({
+        message: 'Champion matchups cache write failed',
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      return 'failed';
+    }
+  }
+
   tableKey(input: ChampionStatsTableCacheKeyInput): string {
     return buildChampionStatsTableCacheKey(input);
   }
@@ -147,5 +181,9 @@ export class ChampionStatsCacheService {
 
   buildsKey(input: ChampionBuildCacheKeyInput): string {
     return buildChampionBuildCacheKey(input);
+  }
+
+  matchupsKey(input: ChampionMatchupCacheKeyInput): string {
+    return buildChampionMatchupCacheKey(input);
   }
 }

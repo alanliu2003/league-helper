@@ -143,3 +143,45 @@ export {
   deriveParticipantBuildContributions,
   type BuildContribution,
 } from './builds/contributions';
+
+export {
+  RELIABLE_LANE_POSITIONS,
+  RELIABLE_LANE_POSITION_SET,
+  findUniqueSamePositionOpponent,
+  pairLaneOpponents,
+  type DirectionalMatchupObservation,
+  type LanePairSkipReason,
+  type LanePairableParticipant,
+  type LanePairingResult,
+  type ReliableLanePosition,
+  type UndirectedLanePair,
+} from './matchups/pairing';
+export {
+  DEFAULT_MATCHUP_AGGREGATION_VERSION,
+  MATCHUP_DISPLAY_FLOOR,
+  MATCHUP_DISPLAY_LIMITED_MAX,
+  MATCHUP_DISPLAY_MODERATE_MAX,
+  MATCHUP_RANKING_POLICY,
+  MATCHUP_RANKING_TOP_N,
+  MATCHUP_SAMPLE_CONFIDENCE_THRESHOLDS,
+  type MatchupRankingPolicy,
+} from './matchups/policy';
+export { expandMatchupRankTiers, subjectFeedsMatchupRankTier } from './matchups/rank-keys';
+export {
+  buildMatchupAggregateDimensionKey,
+  type MatchupAggregateDimensions,
+} from './matchups/keys';
+export {
+  accumulateMatchupContribution,
+  combineMatchupAccumulators,
+  emptyMatchupAccumulator,
+  type MatchupAggregateAccumulator,
+  type MatchupContribution,
+} from './matchups/accumulation';
+export { deriveMatchupMetrics, type DerivedMatchupMetrics } from './matchups/derivations';
+export {
+  rankStrongAndWeakMatchups,
+  type RankableMatchupRow,
+  type RankedMatchupLists,
+} from './matchups/ranking';
+export { mergeMatchupAccumulatorsByOpponent } from './matchups/merge';

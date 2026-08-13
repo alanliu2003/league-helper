@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildChampionBuildCacheKey,
   buildChampionBuildGenerationKey,
+  buildChampionMatchupCacheKey,
+  buildChampionMatchupGenerationKey,
   buildChampionStatsChampionCacheKey,
   buildChampionStatsFiltersCacheKey,
   buildChampionStatsGenerationKey,
@@ -155,5 +157,61 @@ describe('champion stats cache keys', () => {
     expect(all.startsWith('champ_builds:champion:')).toBe(true);
     expect(buildChampionBuildGenerationKey(baseScope).startsWith('champ_builds:gen:')).toBe(true);
     expect(new Set([stats, all, exact, segment]).size).toBe(4);
+  });
+
+  it('keeps matchup cache keys distinct across ALL / EXACT / SEGMENT and display floor', () => {
+    const all = buildChampionMatchupCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      rankScopeToken: 'ALL',
+      displayFloor: 10,
+    });
+    const exact = buildChampionMatchupCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      rankScopeToken: 'EXACT:GOLD',
+      displayFloor: 10,
+    });
+    const segment = buildChampionMatchupCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      rankScopeToken: 'SEGMENT:HIGH',
+      displayFloor: 10,
+    });
+    const diamond = buildChampionMatchupCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      rankScopeToken: 'EXACT:DIAMOND',
+      displayFloor: 10,
+    });
+    const mid = buildChampionMatchupCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      rankScopeToken: 'SEGMENT:MID',
+      displayFloor: 10,
+    });
+    const floor5 = buildChampionMatchupCacheKey({
+      scope: baseScope,
+      generation: 1,
+      championKey: 'Ahri',
+      position: 'MIDDLE',
+      rankScopeToken: 'ALL',
+      displayFloor: 5,
+    });
+    expect(all.startsWith('champ_matchups:champion:')).toBe(true);
+    expect(buildChampionMatchupGenerationKey(baseScope).startsWith('champ_matchups:gen:')).toBe(
+      true,
+    );
+    expect(new Set([all, exact, segment, diamond, mid, floor5]).size).toBe(6);
   });
 });

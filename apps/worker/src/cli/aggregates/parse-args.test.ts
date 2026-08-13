@@ -106,5 +106,11 @@ describe('root / worker script wiring', () => {
       'src/cli/audit-rank-coverage.ts',
     );
     expect(worker.scripts['aggregates:audit-champions']).toContain('src/cli/audit-champions.ts');
+    expect(root.scripts['aggregates:rebuild-champion-matchups']).toContain(
+      '@league-helper/worker aggregates:rebuild-champion-matchups',
+    );
+    expect(worker.scripts['aggregates:rebuild-champion-matchups']).toContain(
+      'src/cli/rebuild-champion-matchups.ts',
+    );
   });
 });

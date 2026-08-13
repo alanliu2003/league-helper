@@ -215,6 +215,28 @@
           />
         </div>
 
+        <div
+          v-show="activeTab === 'matchups'"
+          id="champion-tabpanel-matchups"
+          role="tabpanel"
+          aria-labelledby="champion-tab-matchups"
+        >
+          <p v-if="!filters.position" class="text-sm text-[var(--lh-muted)]" role="status">
+            Select a position to load Matchups for this champion.
+          </p>
+          <ChampionsChampionMatchupsPanel
+            v-else
+            :response="matchupsResponse"
+            :pending="matchupsPending"
+            :error="matchupsError"
+            :position="filters.position"
+            :platform="filters.platform"
+            :queue="filters.queue"
+            :tier="filters.tier"
+            :patch="filters.patch"
+          />
+        </div>
+
         <div class="min-w-0 border-t pt-6" style="border-color: var(--lh-border)">
           <ChampionsChampionLimitationsPanel
             :disclaimer="statsResponse?.disclaimer ?? filtersMeta?.disclaimer"
@@ -242,6 +264,7 @@
 import {
   getPlatformDisplayName,
   type ChampionBuildsResponse,
+  type ChampionMatchupsResponse,
   type ChampionRankingPosition,
   type ChampionStatsTierFilter,
   type PlatformRoute,
@@ -292,8 +315,12 @@ const activeTab = ref<ChampionDetailTabId>('overview');
 const buildsResponse = ref<ChampionBuildsResponse | null>(null);
 const buildsPending = ref(false);
 const buildsError = ref<string | null>(null);
-const { getChampionBuilds } = useChampionApi();
+const { getChampionBuilds, getChampionMatchups } = useChampionApi();
 let buildsRequestId = 0;
+let matchupsRequestId = 0;
+const matchupsResponse = ref<ChampionMatchupsResponse | null>(null);
+const matchupsPending = ref(false);
+const matchupsError = ref<string | null>(null);
 
 async function loadBuilds(): Promise<void> {
   if (
@@ -339,9 +366,56 @@ async function loadBuilds(): Promise<void> {
   }
 }
 
+async function loadMatchups(): Promise<void> {
+  if (
+    activeTab.value !== 'matchups' ||
+    !filters.position ||
+    !filters.platform ||
+    filters.queue === null
+  ) {
+    return;
+  }
+  const key = champion.value?.championKey;
+  if (!key) {
+    return;
+  }
+  const requestId = ++matchupsRequestId;
+  matchupsPending.value = true;
+  matchupsError.value = null;
+  try {
+    const response = await getChampionMatchups(key, {
+      platform: filters.platform,
+      queue: filters.queue,
+      position: filters.position,
+      tier: filters.tier ?? 'ALL',
+      patch: filters.patch ?? undefined,
+    });
+    if (requestId !== matchupsRequestId) {
+      return;
+    }
+    matchupsResponse.value = response;
+    matchupsPending.value = false;
+  } catch (error) {
+    if (requestId !== matchupsRequestId) {
+      return;
+    }
+    matchupsResponse.value = null;
+    matchupsPending.value = false;
+    matchupsError.value =
+      error instanceof ChampionApiError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : 'Unable to load champion matchups.';
+  }
+}
+
 watch(activeTab, () => {
   if (activeTab.value === 'builds') {
     void loadBuilds();
+  }
+  if (activeTab.value === 'matchups') {
+    void loadMatchups();
   }
 });
 
@@ -357,8 +431,12 @@ watch(
     ] as const,
   () => {
     buildsResponse.value = null;
+    matchupsResponse.value = null;
     if (activeTab.value === 'builds') {
       void loadBuilds();
+    }
+    if (activeTab.value === 'matchups') {
+      void loadMatchups();
     }
   },
 );

@@ -38,9 +38,6 @@ async function assertNoPuuidOrDeferredSections(page: Page): Promise<void> {
   const body = await page.locator('#main-content').innerText();
   expect(body).not.toMatch(/puuid/i);
   expect(body).not.toMatch(/\bPUUID\b/);
-  expect(body.toLowerCase()).not.toContain('matchup');
-  expect(body.toLowerCase()).not.toContain('strong against');
-  expect(body.toLowerCase()).not.toContain('weak against');
   expect(body.toLowerCase()).not.toContain('ai coaching');
   expect(body.toLowerCase()).not.toContain('counter pick');
   expect(body.toLowerCase()).not.toContain('pick rate');
@@ -560,6 +557,71 @@ test.describe('champions directory and detail', () => {
     await gotoApp(page, '/champions/Ahri?platform=na1&queue=420&patch=14.11&position=MIDDLE');
     await page.getByRole('tab', { name: 'Builds & Runes' }).click();
     await expect(page.getByTestId('builds-empty')).toBeVisible();
+  });
+
+  test('Matchups tab shows Weak Against, Strong Against, icons, and opponent navigation', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+
+    await gotoApp(page, '/champions/Ahri?platform=na1&queue=420&patch=14.11&position=MIDDLE');
+    await expect(page.getByRole('heading', { name: 'Ahri', level: 1 })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByRole('tab', { name: 'Matchups' }).click();
+    await expect(page.getByTestId('champion-matchups-panel')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Weak Against' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Strong Against' })).toBeVisible();
+    await expect(page.getByTestId('weak-against').getByText('Syndra')).toBeVisible();
+    await expect(page.getByTestId('strong-against').getByText('Tristana')).toBeVisible();
+    await expect(page.getByTestId('weak-against').locator('img[alt="Syndra"]')).toBeVisible();
+    await expect(
+      page
+        .getByTestId('champion-matchups-panel')
+        .getByText(/Limited sample/i)
+        .first(),
+    ).toBeVisible();
+    await expect(page.getByTestId('weak-against').getByText('40.0%')).toBeVisible();
+    await expect(page.getByTestId('strong-against').getByText('70.0%')).toBeVisible();
+    await expect(page.getByTestId('champion-matchups-panel').getByText(/\b134\b/)).toHaveCount(0);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId('weak-against').getByText('Syndra')).toBeVisible();
+    await expect(page.getByTestId('weak-against').getByText('40.0%')).toBeVisible();
+    await expect(page.getByTestId('weak-against').getByText(/10\s*games/i)).toBeVisible();
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+
+    await page
+      .getByTestId('weak-against')
+      .getByRole('link', { name: /Syndra/ })
+      .click();
+    await expect(page).toHaveURL(/\/champions\/Syndra/, { timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: 'Syndra', level: 1 })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page).toHaveURL(/position=MIDDLE/);
+  });
+
+  test('Matchups tab shows an honest empty state when no pair clears the floor', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+
+    await gotoApp(page, '/champions/Annie?platform=na1&queue=420&patch=14.11&position=MIDDLE');
+    await expect(page.getByRole('heading', { name: 'Annie', level: 1 })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByRole('tab', { name: 'Matchups' }).click();
+    await expect(page.getByTestId('matchups-empty')).toBeVisible();
+    await expect(page.getByTestId('matchups-empty')).toContainText(
+      /Not enough matchup data yet for reliable counter analysis/i,
+    );
+    await expect(page.getByTestId('strong-against')).toHaveCount(0);
+    await expect(page.getByTestId('weak-against')).toHaveCount(0);
   });
 });
 

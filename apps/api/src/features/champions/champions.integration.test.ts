@@ -12,9 +12,11 @@ import {
 import { loadChampionStatsConfig } from '../../config/champion-stats.config';
 import { ChampionAggregateReadRepository } from '../../persistence/champion-aggregate-read.repository';
 import { ChampionBuildReadRepository } from '../../persistence/champion-build-read.repository';
+import { ChampionMatchupReadRepository } from '../../persistence/champion-matchup-read.repository';
 import { ChampionStaticRepository } from '../../persistence/champion-static.repository';
 import { assertTablePositionPresent } from './champion-stats-filters';
 import { ChampionBuildsService } from './champion-builds.service';
+import { ChampionMatchupsService } from './champion-matchups.service';
 import { ChampionStatsCacheService } from './champion-stats-cache.service';
 import { ChampionStatsService } from './champion-stats.service';
 import { ChampionStaticService } from './champion-static.service';
@@ -30,6 +32,7 @@ const prisma = new PrismaClient({
 const staticRepo = new ChampionStaticRepository(prisma as never);
 const aggregateRepo = new ChampionAggregateReadRepository(prisma as never);
 const buildRepo = new ChampionBuildReadRepository(prisma as never);
+const matchupRepo = new ChampionMatchupReadRepository(prisma as never);
 
 const media = {
   buildChampionIconUrl: (key: string, version: string) =>
@@ -115,7 +118,16 @@ function createServices() {
     media as never,
     cache,
   );
-  return { staticService, statsService, buildsService };
+  const matchupsService = new ChampionMatchupsService(
+    config,
+    staticService,
+    staticRepo,
+    aggregateRepo,
+    matchupRepo,
+    media as never,
+    cache,
+  );
+  return { staticService, statsService, buildsService, matchupsService };
 }
 
 describe('champions API integration', () => {
@@ -652,5 +664,191 @@ describe('champions API integration', () => {
     expect(gold.summonerSpells[0]?.sampleSize).toBe(6);
     expect(gold.summonerSpells[0]?.wins).toBe(4);
     expect(gold.summonerSpells[0]?.spells[0]?.name).toBe('Flash');
+  });
+
+  describe('champion matchups API', () => {
+    async function seedAhriMatchups(): Promise<void> {
+      const patch = await prisma.patch.findFirstOrThrow({ where: { version: '16.10.1' } });
+      await prisma.championStaticData.create({
+        data: {
+          patchId: patch.id,
+          championId: 134,
+          championKey: 'Syndra',
+          name: 'Syndra',
+          title: 'the Dark Sovereign',
+          tags: ['Mage'],
+          baseStats: {},
+          passive: {},
+          spells: [],
+          imageData: {},
+        },
+      });
+      await prisma.matchupAggregate.createMany({
+        data: [
+          {
+            patch: '16.10',
+            platformRoute: 'na1',
+            regionalRoute: 'americas',
+            queueId: 420,
+            rankTier: 'ALL',
+            teamPosition: 'MIDDLE',
+            championId: 103,
+            opponentChampionId: 1,
+            sampleSize: 10,
+            wins: 7,
+            sourceNormalizationVersion: '1',
+            aggregationVersion: '1',
+            calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+          },
+          {
+            patch: '16.10',
+            platformRoute: 'na1',
+            regionalRoute: 'americas',
+            queueId: 420,
+            rankTier: 'ALL',
+            teamPosition: 'MIDDLE',
+            championId: 103,
+            opponentChampionId: 134,
+            sampleSize: 10,
+            wins: 3,
+            sourceNormalizationVersion: '1',
+            aggregationVersion: '1',
+            calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+          },
+          {
+            patch: '16.10',
+            platformRoute: 'na1',
+            regionalRoute: 'americas',
+            queueId: 420,
+            rankTier: 'DIAMOND',
+            teamPosition: 'MIDDLE',
+            championId: 103,
+            opponentChampionId: 1,
+            sampleSize: 4,
+            wins: 3,
+            sourceNormalizationVersion: '1',
+            aggregationVersion: '1',
+            calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+          },
+          {
+            patch: '16.10',
+            platformRoute: 'na1',
+            regionalRoute: 'americas',
+            queueId: 420,
+            rankTier: 'PLATINUM',
+            teamPosition: 'MIDDLE',
+            championId: 103,
+            opponentChampionId: 1,
+            sampleSize: 6,
+            wins: 4,
+            sourceNormalizationVersion: '1',
+            aggregationVersion: '1',
+            calculatedAt: new Date('2026-01-02T00:00:00.000Z'),
+          },
+        ],
+      });
+    }
+
+    it('returns Strong Against and Weak Against from subject win rate', async () => {
+      await seedAhriMatchups();
+      const { matchupsService } = createServices();
+      const response = await matchupsService.getMatchups('Ahri', {
+        position: 'MIDDLE',
+        tier: 'ALL',
+        patch: '16.10',
+      });
+      expect(response.emptyReason).toBeNull();
+      expect(response.displayFloor).toBe(10);
+      expect(response.strongAgainst.map((row) => row.opponent.championKey)).toEqual(['Annie']);
+      expect(response.weakAgainst.map((row) => row.opponent.championKey)).toEqual(['Syndra']);
+      expect(response.strongAgainst[0]?.wins).toBe(7);
+      expect(response.strongAgainst[0]?.losses).toBe(3);
+      expect(response.strongAgainst[0]?.opponent.iconUrl).toContain('/img/champion/Annie.png');
+      expect(response.weakAgainst[0]?.winRate).toBe(0.3);
+    });
+
+    it('hides pairs below the display floor', async () => {
+      await prisma.matchupAggregate.create({
+        data: {
+          patch: '16.10',
+          platformRoute: 'na1',
+          regionalRoute: 'americas',
+          queueId: 420,
+          rankTier: 'ALL',
+          teamPosition: 'MIDDLE',
+          championId: 103,
+          opponentChampionId: 1,
+          sampleSize: 2,
+          wins: 2,
+          sourceNormalizationVersion: '1',
+          aggregationVersion: '1',
+          calculatedAt: new Date(),
+        },
+      });
+      const { matchupsService } = createServices();
+      const response = await matchupsService.getMatchups('Ahri', {
+        position: 'MIDDLE',
+        tier: 'ALL',
+        patch: '16.10',
+      });
+      expect(response.emptyReason).toBe('NO_ELIGIBLE_MATCHUPS');
+      expect(response.strongAgainst).toEqual([]);
+      expect(response.totalSourcePairs).toBe(1);
+    });
+
+    it('does not present an even 50% pair as Strong or Weak', async () => {
+      await prisma.matchupAggregate.create({
+        data: {
+          patch: '16.10',
+          platformRoute: 'na1',
+          regionalRoute: 'americas',
+          queueId: 420,
+          rankTier: 'ALL',
+          teamPosition: 'MIDDLE',
+          championId: 103,
+          opponentChampionId: 1,
+          sampleSize: 10,
+          wins: 5,
+          sourceNormalizationVersion: '1',
+          aggregationVersion: '1',
+          calculatedAt: new Date(),
+        },
+      });
+      const { matchupsService } = createServices();
+      const response = await matchupsService.getMatchups('Ahri', {
+        position: 'MIDDLE',
+        tier: 'ALL',
+        patch: '16.10',
+      });
+      expect(response.emptyReason).toBe('NO_ELIGIBLE_MATCHUPS');
+      expect(response.totalEligiblePairs).toBe(1);
+      expect(response.strongAgainst).toEqual([]);
+      expect(response.weakAgainst).toEqual([]);
+    });
+
+    it('hides UNKNOWN rank from product UX', async () => {
+      const { matchupsService } = createServices();
+      const hidden = await matchupsService.getMatchups('Ahri', {
+        position: 'MIDDLE',
+        tier: 'UNKNOWN',
+        patch: '16.10',
+      });
+      expect(hidden.emptyReason).toBe('UNKNOWN_RANK_HIDDEN');
+      expect(hidden.strongAgainst).toEqual([]);
+    });
+
+    it('merges SEGMENT:HIGH exact tiers by summing sampleSize and wins', async () => {
+      await seedAhriMatchups();
+      const { matchupsService } = createServices();
+      const high = await matchupsService.getMatchups('Ahri', {
+        position: 'MIDDLE',
+        tier: 'ALL',
+        patch: '16.10',
+        rankScope: 'SEGMENT:HIGH',
+      });
+      expect(high.strongAgainst[0]?.opponent.championKey).toBe('Annie');
+      expect(high.strongAgainst[0]?.sampleSize).toBe(10);
+      expect(high.strongAgainst[0]?.wins).toBe(7);
+    });
   });
 });

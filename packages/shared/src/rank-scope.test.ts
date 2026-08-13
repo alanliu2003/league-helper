@@ -7,6 +7,7 @@ import {
   exactTiersForRankScope,
   legacyTierFilterToRankScope,
   parseRankScope,
+  parseRankScopeCacheToken,
   rankScopeEquals,
   serializeRankScopeCacheToken,
 } from './rank-scope';
@@ -113,5 +114,17 @@ describe('rank scope contract', () => {
       serializeRankScopeCacheToken({ kind: 'SEGMENT', segment: 'MID' }),
     ]);
     expect(tokens.size).toBe(6);
+  });
+
+  it('parses cache tokens back to the same rank scopes', () => {
+    expect(parseRankScopeCacheToken('ALL')).toEqual({ kind: 'ALL' });
+    expect(parseRankScopeCacheToken('UNKNOWN')).toEqual({ kind: 'UNKNOWN' });
+    expect(parseRankScopeCacheToken('EXACT:GOLD')).toEqual({ kind: 'EXACT', tier: 'GOLD' });
+    expect(parseRankScopeCacheToken('SEGMENT:HIGH')).toEqual({
+      kind: 'SEGMENT',
+      segment: 'HIGH',
+    });
+    expect(() => parseRankScopeCacheToken('FOO')).toThrow(/Invalid rank scope token/);
+    expect(() => parseRankScopeCacheToken('EXACT:PLAT')).toThrow();
   });
 });

@@ -1,12 +1,14 @@
 import {
   ApiErrorResponseSchema,
   ChampionBuildsResponseSchema,
+  ChampionMatchupsResponseSchema,
   ChampionDetailResponseSchema,
   ChampionListResponseSchema,
   ChampionStatsFiltersResponseSchema,
   ChampionStatsResponseSchema,
   ChampionStatsTableResponseSchema,
   type ChampionBuildsResponse,
+  type ChampionMatchupsResponse,
   type ChampionDetailResponse,
   type ChampionListResponse,
   type ChampionRankingPosition,
@@ -97,6 +99,15 @@ export type GetChampionStatsOptions = {
 };
 
 export type GetChampionBuildsOptions = {
+  platform: PlatformRoute;
+  queue: number;
+  position: ChampionRankingPosition;
+  tier?: ChampionStatsTierFilter;
+  patch?: string;
+  signal?: AbortSignal;
+};
+
+export type GetChampionMatchupsOptions = {
   platform: PlatformRoute;
   queue: number;
   position: ChampionRankingPosition;
@@ -227,6 +238,30 @@ export function useChampionApi() {
     }
   }
 
+  async function getChampionMatchups(
+    championKey: string,
+    options: GetChampionMatchupsOptions,
+  ): Promise<ChampionMatchupsResponse> {
+    try {
+      const response = await $fetch(
+        `${apiBase}/api/champions/${encodeURIComponent(championKey)}/matchups`,
+        {
+          query: {
+            platform: options.platform,
+            queueId: options.queue,
+            tier: options.tier,
+            position: options.position,
+            patch: options.patch,
+          },
+          signal: options.signal,
+        },
+      );
+      return ChampionMatchupsResponseSchema.parse(response);
+    } catch (error) {
+      throw parseApiError(error);
+    }
+  }
+
   return {
     apiBase,
     getFilters,
@@ -235,6 +270,7 @@ export function useChampionApi() {
     getChampionDetail,
     getChampionStats,
     getChampionBuilds,
+    getChampionMatchups,
   };
 }
 

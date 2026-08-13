@@ -28,7 +28,6 @@ test.describe('champion detail live smoke', () => {
     const ahriBody = await page.locator('#main-content').innerText();
     expect(ahriBody.toLowerCase()).not.toContain('pick rate');
     expect(ahriBody.toLowerCase()).not.toContain('ban rate');
-    expect(ahriBody.toLowerCase()).not.toContain('matchup');
     expect(ahriBody.toLowerCase()).not.toContain('puuid');
     expect(ahriBody.toLowerCase()).not.toContain('discoverydepth');
 

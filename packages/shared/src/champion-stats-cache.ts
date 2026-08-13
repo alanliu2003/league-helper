@@ -157,3 +157,33 @@ export function buildChampionBuildCacheKey(input: ChampionBuildCacheKeyInput): s
   const fingerprint = JSON.stringify([championKey, input.position, input.rankScopeToken]);
   return `champ_builds:champion:${generation}:${scopeKey}:${fingerprint}`;
 }
+
+export type ChampionMatchupCacheKeyInput = {
+  scope: ChampionStatsGenerationScope;
+  generation: number;
+  championKey: string;
+  position: string;
+  rankScopeToken: string;
+  displayFloor: number;
+};
+
+export function buildChampionMatchupGenerationKey(scope: ChampionStatsGenerationScope): string {
+  return `champ_matchups:gen:${serializeChampionStatsGenerationScope(scope)}`;
+}
+
+/**
+ * Response cache key for champion matchups.
+ * rankScopeToken must be serializeRankScopeCacheToken so ALL / EXACT:GOLD / SEGMENT:HIGH do not collide.
+ */
+export function buildChampionMatchupCacheKey(input: ChampionMatchupCacheKeyInput): string {
+  const scopeKey = serializeChampionStatsGenerationScope(input.scope);
+  const generation = assertGeneration(input.generation);
+  const championKey = z.string().min(1).parse(input.championKey);
+  const fingerprint = JSON.stringify([
+    championKey,
+    input.position,
+    input.rankScopeToken,
+    input.displayFloor,
+  ]);
+  return `champ_matchups:champion:${generation}:${scopeKey}:${fingerprint}`;
+}

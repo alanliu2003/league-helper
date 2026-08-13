@@ -66,6 +66,25 @@ export function serializeRankScopeCacheToken(scope: RankScope): string {
   }
 }
 
+export function parseRankScopeCacheToken(token: string): RankScope {
+  const value = token.trim();
+  if (value === 'ALL') {
+    return { kind: 'ALL' };
+  }
+  if (value === 'UNKNOWN') {
+    return { kind: 'UNKNOWN' };
+  }
+  if (value.startsWith('EXACT:')) {
+    const tier = RankTierSchema.parse(value.slice('EXACT:'.length));
+    return { kind: 'EXACT', tier };
+  }
+  if (value.startsWith('SEGMENT:')) {
+    const segment = z.enum(RANK_SEGMENT_IDS).parse(value.slice('SEGMENT:'.length));
+    return { kind: 'SEGMENT', segment };
+  }
+  throw new Error(`Invalid rank scope token: ${token}`);
+}
+
 /**
  * Exact Riot tiers contributing to a scope.
  * ALL / UNKNOWN return [] because they are materialized sentinels, not tier merges.

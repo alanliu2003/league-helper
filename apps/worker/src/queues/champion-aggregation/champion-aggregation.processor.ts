@@ -14,6 +14,10 @@ import {
   type ChampionAggregationRepository,
 } from './champion-aggregation.repository.js';
 import { recalculateForMatch } from './champion-aggregation.service.js';
+import {
+  recalculateMatchupsForMatch,
+  type RecalculateMatchupsForMatchInput,
+} from '../champion-matchup-aggregation/rebuild-core.js';
 
 export type ChampionAggregationProcessorDeps = {
   prisma: PrismaClient;
@@ -22,6 +26,11 @@ export type ChampionAggregationProcessorDeps = {
   repository?: ChampionAggregationRepository;
   /** Used for best-effort follow-up enqueue when scope remains after concurrent upsert. */
   aggregationQueue?: Queue<ChampionAggregationJobPayload>;
+  /** Override for tests. Defaults to source-derived matchup recompute. */
+  recalculateMatchups?: (input: RecalculateMatchupsForMatchInput) => Promise<{
+    upserts: number;
+    deletions: number;
+  }>;
 };
 
 export type ChampionAggregationJobResult = {
@@ -96,6 +105,17 @@ export async function processChampionAggregationJob(
       },
       { correlationId: payload.correlationId },
     );
+
+    if (result.outcome === 'completed') {
+      const recalculateMatchups = deps.recalculateMatchups ?? recalculateMatchupsForMatch;
+      await recalculateMatchups({
+        prisma: deps.prisma,
+        redis: deps.redis,
+        matchId: payload.matchId,
+        sourceNormalizationVersion: payload.sourceNormalizationVersion,
+        aggregationVersion: deps.config.matchupAggregationVersion,
+      });
+    }
 
     logger.info('champion_aggregation_job_finished', {
       jobId: safeJobId(job.id),
