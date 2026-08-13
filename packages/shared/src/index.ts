@@ -266,6 +266,8 @@ export {
   ChampionStatsTierFilterSchema,
   AggregateDimensionsSchema,
   ChampionSummarySchema,
+  ChampionAbilitySlotSchema,
+  ChampionAbilitySummarySchema,
   ChampionDetailSchema,
   ChampionAggregateMetricsSchema,
   ChampionAggregateRowSchema,
@@ -295,6 +297,8 @@ export {
   type ChampionStatsTierFilter,
   type AggregateDimensions,
   type ChampionSummary,
+  type ChampionAbilitySlot,
+  type ChampionAbilitySummary,
   type ChampionDetail,
   type ChampionAggregateMetrics,
   type ChampionAggregateRow,
@@ -314,6 +318,17 @@ export {
   type ChampionStatsFilterQueue,
   type ChampionStatsFiltersResponse,
 } from './champion-api';
+
+export {
+  ABILITY_SLOTS,
+  extractChampionAbilities,
+  normalizeAbilityDescription,
+  snapshotDataDragonAbilities,
+  type AbilityIconUrlBuilders,
+  type StoredChampionAbilities,
+  type StoredChampionPassive,
+  type StoredChampionSpell,
+} from './champion-abilities';
 
 export {
   PlayerRefreshStateSchema,

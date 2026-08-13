@@ -111,4 +111,60 @@ describe('ChampionDetailHero', () => {
     expect(wrapper.html()).not.toContain('/img/champion/splash/');
     expect(wrapper.find('[data-testid="hero-splash-fallback"]').exists()).toBe(true);
   });
+
+  it('renders the ability row from champion abilities', () => {
+    const wrapper = mount(ChampionDetailHero, {
+      props: {
+        champion: champion({
+          abilities: [
+            {
+              slot: 'PASSIVE',
+              name: 'Essence Theft',
+              description: 'Ahri heals.',
+              iconUrl: 'https://example.com/p.png',
+            },
+            {
+              slot: 'Q',
+              name: 'Orb of Deception',
+              description: 'Orb.',
+              iconUrl: 'https://example.com/q.png',
+              cooldown: '7',
+            },
+            {
+              slot: 'W',
+              name: 'Fox-Fire',
+              description: 'W.',
+              iconUrl: 'https://example.com/w.png',
+            },
+            {
+              slot: 'E',
+              name: 'Charm',
+              description: 'E.',
+              iconUrl: 'https://example.com/e.png',
+            },
+            {
+              slot: 'R',
+              name: 'Spirit Rush',
+              description: 'R.',
+              iconUrl: 'https://example.com/r.png',
+            },
+          ],
+        }),
+      },
+    });
+    expect(wrapper.find('[data-testid="champion-ability-bar"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="champion-ability-button-PASSIVE"]').text()).toContain('P');
+    expect(
+      wrapper.get('[data-testid="champion-ability-button-R"]').attributes('aria-label'),
+    ).toContain('Spirit Rush');
+  });
+
+  it('keeps identity and omits the ability row when abilities are missing', () => {
+    const wrapper = mount(ChampionDetailHero, {
+      props: { champion: champion({ abilities: undefined }) },
+    });
+    expect(wrapper.find('h1').text()).toContain('Ahri');
+    expect(wrapper.find('[data-testid="champion-ability-bar"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('the Nine-Tailed Fox');
+  });
 });

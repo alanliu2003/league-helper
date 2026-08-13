@@ -2,26 +2,30 @@ import { describe, expect, it, vi } from 'vitest';
 import { ChampionNotFoundError } from '@league-helper/shared';
 import { ChampionStaticService } from './champion-static.service';
 
-function createService(overrides: {
-  row?: {
-    championId: number;
-    championKey: string;
-    name: string;
-    title: string;
-    tags: string[];
-    patchVersion: string;
-    dataDragonVersion: string | null;
-  } | null;
-  listRows?: Array<{
-    championId: number;
-    championKey: string;
-    name: string;
-    title: string;
-    tags: string[];
-    patchVersion: string;
-    dataDragonVersion: string | null;
-  }>;
-} = {}) {
+function createService(
+  overrides: {
+    row?: {
+      championId: number;
+      championKey: string;
+      name: string;
+      title: string;
+      tags: string[];
+      patchVersion: string;
+      dataDragonVersion: string | null;
+      passive?: unknown;
+      spells?: unknown;
+    } | null;
+    listRows?: Array<{
+      championId: number;
+      championKey: string;
+      name: string;
+      title: string;
+      tags: string[];
+      patchVersion: string;
+      dataDragonVersion: string | null;
+    }>;
+  } = {},
+) {
   const row =
     overrides.row === undefined
       ? {
@@ -55,8 +59,15 @@ function createService(overrides: {
         `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${key}.png`,
     ),
     buildChampionSplashUrl: vi.fn(
-      (key: string) =>
-        `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${key}_0.jpg`,
+      (key: string) => `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${key}_0.jpg`,
+    ),
+    buildPassiveIconUrl: vi.fn(
+      (imageFull: string, version: string) =>
+        `https://ddragon.leagueoflegends.com/cdn/${version}/img/passive/${imageFull}`,
+    ),
+    buildSpellIconUrl: vi.fn(
+      (imageFull: string, version: string) =>
+        `https://ddragon.leagueoflegends.com/cdn/${version}/img/spell/${imageFull}`,
     ),
   };
 
@@ -81,6 +92,52 @@ describe('ChampionStaticService', () => {
     expect(response.champion.canonicalChampionKey).toBe('Ahri');
     expect(response.champion.iconUrl).toContain('/Ahri.png');
     expect(response.champion.splashUrl).toContain('/Ahri_0.jpg');
+  });
+
+  it('returns normalized P/Q/W/E/R abilities from stored static data', async () => {
+    const { service } = createService({
+      row: {
+        championId: 103,
+        championKey: 'Ahri',
+        name: 'Ahri',
+        title: 'the Nine-Tailed Fox',
+        tags: ['Mage'],
+        patchVersion: '16.10.1',
+        dataDragonVersion: '16.10.1',
+        passive: {
+          name: 'Essence Theft',
+          description: "Ahri's <font color='#FFF'>next spell</font> heals her.",
+          imageFull: 'Ahri_SoulEater2.png',
+        },
+        spells: [
+          {
+            name: 'Orb of Deception',
+            description: 'Ahri sends out her orb.',
+            imageFull: 'AhriQ.png',
+            cooldownBurn: '7',
+            costBurn: '55/65/75/85/95',
+            rangeBurn: '900',
+          },
+          { name: 'Fox-Fire', description: 'Fox-fires.', imageFull: 'AhriW.png' },
+          { name: 'Charm', description: 'Charm.', imageFull: 'AhriE.png' },
+          { name: 'Spirit Rush', description: 'Dash.', imageFull: 'AhriR.png' },
+        ],
+      },
+    });
+    const response = await service.getByKey('Ahri');
+    expect(response.champion.abilities?.map((ability) => ability.slot)).toEqual([
+      'PASSIVE',
+      'Q',
+      'W',
+      'E',
+      'R',
+    ]);
+    expect(response.champion.abilities?.[0]?.name).toBe('Essence Theft');
+    expect(response.champion.abilities?.[0]?.description).toBe("Ahri's next spell heals her.");
+    expect(response.champion.abilities?.[0]?.iconUrl).toContain('/img/passive/Ahri_SoulEater2.png');
+    expect(response.champion.abilities?.[1]?.cooldown).toBe('7');
+    expect(JSON.stringify(response)).not.toMatch(/<font/);
+    expect(JSON.stringify(response).toLowerCase()).not.toContain('puuid');
   });
 
   it('lists champions with static patch metadata', async () => {

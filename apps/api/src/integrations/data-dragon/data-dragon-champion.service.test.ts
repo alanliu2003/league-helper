@@ -111,6 +111,18 @@ describe('DataDragonChampionService', () => {
     expect(service.buildProfileIconUrl(1, '')).toBeNull();
   });
 
+  it('builds passive and spell icon URLs from image filenames and version', () => {
+    const service = new DataDragonChampionService(baseConfig, createRedisMock());
+    expect(service.buildPassiveIconUrl('Ahri_SoulEater2.png', MOCK_DDRAGON_VERSION)).toBe(
+      `https://ddragon.leagueoflegends.com/cdn/${MOCK_DDRAGON_VERSION}/img/passive/Ahri_SoulEater2.png`,
+    );
+    expect(service.buildSpellIconUrl('AhriQ.png', MOCK_DDRAGON_VERSION)).toBe(
+      `https://ddragon.leagueoflegends.com/cdn/${MOCK_DDRAGON_VERSION}/img/spell/AhriQ.png`,
+    );
+    expect(service.buildPassiveIconUrl('', MOCK_DDRAGON_VERSION)).toBeNull();
+    expect(service.buildSpellIconUrl('AhriQ.png', '')).toBeNull();
+  });
+
   it('returns null for unknown champion ids without throwing', async () => {
     const { fetchFn } = createMockFetch([
       { status: 200, body: MOCK_DDRAGON_VERSIONS },

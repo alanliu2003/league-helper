@@ -12,7 +12,7 @@ export type SyncFetchDeps = {
   randomFn?: () => number;
 };
 
-type UrlKind = 'versions' | 'champion.json';
+type UrlKind = 'versions' | 'champion.json' | 'championFull.json';
 
 export class DataDragonSyncFetchError extends Error {
   constructor(
@@ -141,6 +141,24 @@ export async function fetchChampionStaticFile(
     throw new DataDragonSyncFetchError(
       `Data Dragon champion.json failed validation: ${detail}`,
       'champion.json',
+    );
+  }
+}
+
+export async function fetchChampionFullFile(
+  config: ChampionStaticSyncConfig,
+  version: string,
+  deps: SyncFetchDeps = {},
+): Promise<SyncDataDragonChampionFile> {
+  const url = `${config.baseUrl}/cdn/${encodeURIComponent(version)}/data/${encodeURIComponent(config.locale)}/championFull.json`;
+  const body = await fetchJsonWithRetry(url, 'championFull.json', config, deps);
+  try {
+    return parseChampionStaticFile(body);
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : 'validation failed';
+    throw new DataDragonSyncFetchError(
+      `Data Dragon championFull.json failed validation: ${detail}`,
+      'championFull.json',
     );
   }
 }

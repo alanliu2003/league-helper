@@ -13,6 +13,8 @@ export type ChampionStaticRow = Pick<
 > & {
   patchVersion: string;
   dataDragonVersion: string | null;
+  passive?: unknown;
+  spells?: unknown;
 };
 
 export type ListChampionsQuery = {
@@ -125,6 +127,8 @@ export class ChampionStaticRepository {
         name: true,
         title: true,
         tags: true,
+        passive: true,
+        spells: true,
       },
     });
     if (exact && isPublicChampionEntry(exact)) {
@@ -146,6 +150,8 @@ export class ChampionStaticRepository {
         name: true,
         title: true,
         tags: true,
+        passive: true,
+        spells: true,
       },
       take: 2,
     });

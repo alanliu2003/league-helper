@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient, StaticDataStatus } from '@prisma/client';
 import type { ChampionStaticSyncConfig } from './sync-champion-static.config';
 import {
+  fetchChampionFullFile,
   fetchChampionStaticFile,
   resolveDataDragonVersion,
   type SyncFetchDeps,
@@ -8,6 +9,7 @@ import {
 import {
   mapDataDragonChampionEntry,
   normalizeMajorMinor,
+  overlayChampionAbilitySnapshots,
 } from './sync-champion-static.mapper';
 import type { MappedChampionStaticRow } from './sync-champion-static.types';
 
@@ -35,6 +37,8 @@ type ExistingChampionRow = {
   tags: string[];
   baseStats: unknown;
   imageData: unknown;
+  passive: unknown;
+  spells: unknown;
 };
 
 type PatchRow = {
@@ -96,6 +100,8 @@ export type ChampionStaticSyncPrisma = {
         tags?: boolean;
         baseStats?: boolean;
         imageData?: boolean;
+        passive?: boolean;
+        spells?: boolean;
       };
     }) => Promise<ExistingChampionRow[]>;
     upsert: (args: {
@@ -176,7 +182,9 @@ export function classifyChampionDiff(
       prior.title !== row.title ||
       !tagsEqual(prior.tags, row.tags) ||
       stableJson(prior.imageData) !== stableJson(row.imageData) ||
-      stableJson(prior.baseStats) !== stableJson(row.baseStats);
+      stableJson(prior.baseStats) !== stableJson(row.baseStats) ||
+      stableJson(prior.passive ?? {}) !== stableJson(row.passive ?? {}) ||
+      stableJson(prior.spells ?? []) !== stableJson(row.spells ?? []);
     if (changed) {
       changedCount += 1;
     } else {
@@ -188,9 +196,7 @@ export function classifyChampionDiff(
 }
 
 /** Reject duplicate identities before dry-run or DB writes. */
-export function findDuplicateChampionIdentities(
-  mapped: MappedChampionStaticRow[],
-): string | null {
+export function findDuplicateChampionIdentities(mapped: MappedChampionStaticRow[]): string | null {
   const seenIds = new Map<number, string>();
   const seenKeys = new Map<string, number>();
 
@@ -237,13 +243,17 @@ export async function syncChampionStatic(
     resolvedVersion = await resolveDataDragonVersion(input.config, input.fetchDeps);
     log(`Resolved Data Dragon version: ${resolvedVersion}`);
 
-    const file = await fetchChampionStaticFile(
-      input.config,
-      resolvedVersion,
-      input.fetchDeps,
-    );
+    const file = await fetchChampionStaticFile(input.config, resolvedVersion, input.fetchDeps);
     const mapped = Object.values(file.data).map((entry) => mapDataDragonChampionEntry(entry));
     discovered = mapped.length;
+
+    try {
+      const fullFile = await fetchChampionFullFile(input.config, resolvedVersion, input.fetchDeps);
+      overlayChampionAbilitySnapshots(mapped, fullFile);
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : 'unknown error';
+      log(`Champion ability overlay skipped: ${detail}`);
+    }
 
     if (discovered < input.config.minChampions) {
       return failureResult({
@@ -296,6 +306,8 @@ export async function syncChampionStatic(
             tags: true,
             baseStats: true,
             imageData: true,
+            passive: true,
+            spells: true,
           },
         })
       : [];
