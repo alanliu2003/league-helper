@@ -105,6 +105,9 @@ describe('deriveChampionAggregateMetrics', () => {
       for (const value of [
         d.winRate,
         d.aggregateKdaRatio,
+        d.averageKillsPerGame,
+        d.averageDeathsPerGame,
+        d.averageAssistsPerGame,
         d.averageCsPerMinute,
         d.averageDamagePerMinute,
         d.averageVisionScorePerMinute,
@@ -143,6 +146,25 @@ describe('deriveChampionAggregateMetrics', () => {
     );
     const derived = deriveChampionAggregateMetrics(acc, { confidenceLevel: 0.95 });
     expect(derived.averageGoldPerMinute).toBe(400);
+  });
+
+  it('derives average kills, deaths, and assists per game from totals', () => {
+    let acc = accumulateContribution(
+      emptyAccumulator(),
+      baseContribution({ kills: 10, deaths: 2, assists: 4 }),
+    );
+    acc = accumulateContribution(acc, baseContribution({ kills: 4, deaths: 6, assists: 8 }));
+    const d = deriveChampionAggregateMetrics(acc, deriveOptions);
+    expect(d.averageKillsPerGame).toBe(7);
+    expect(d.averageDeathsPerGame).toBe(4);
+    expect(d.averageAssistsPerGame).toBe(6);
+  });
+
+  it('returns null K/D/A per game when there are no samples', () => {
+    const d = deriveChampionAggregateMetrics(emptyAccumulator(), deriveOptions);
+    expect(d.averageKillsPerGame).toBeNull();
+    expect(d.averageDeathsPerGame).toBeNull();
+    expect(d.averageAssistsPerGame).toBeNull();
   });
 
   it('does not round derived values', () => {

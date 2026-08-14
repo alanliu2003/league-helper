@@ -197,3 +197,29 @@ export {
   classifyMetricDirection,
   type PlayerPlaystyleComparableDirection,
 } from './player-playstyle/comparison';
+export {
+  PLAYER_PLAYSTYLE_BASELINE_FIELDS,
+  baselineValueForMetric,
+  extractPlayerPlaystyleMatchMetrics,
+  isBaselineComparableForMetric,
+  isFiniteNumber,
+  resolvePlaystyleDurationSeconds,
+  toPlayerPlaystyleBaselineMetrics,
+  type BaselineLookupResult,
+  type PlayerPlaystyleBaselineMetrics,
+  type PlayerPlaystyleMatchInput,
+  type PlayerPlaystyleMatchMetrics,
+  type PlayerPlaystyleMatchMetricValues,
+  type PlayerPlaystyleMatchPosition,
+} from './player-playstyle/metrics';
+export {
+  PLAYER_PLAYSTYLE_OVERALL_METRICS,
+  PLAYER_PLAYSTYLE_SLICE_METRICS,
+  buildPlayerPlaystyleProfile,
+  type PlayerPlaystyleBaselinesByMatchId,
+  type PlayerPlaystyleChampionSlice,
+  type PlayerPlaystyleMixEntry,
+  type PlayerPlaystyleProfile,
+  type PlayerPlaystyleProfileInput,
+  type PlayerPlaystyleProfileSkippedInput,
+} from './player-playstyle/aggregate-profile';
