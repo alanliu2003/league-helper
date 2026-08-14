@@ -1,0 +1,96 @@
+{
+  "id": "high-sample-clear-matchup",
+  "description": "High-sample clear matchup: Ahri strongly favored vs Syndra in collected sample.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": true,
+  "expectBuildInsightAllowed": false,
+  "expectMatchupExplanationsAllowed": true,
+  "expectEvidenceContains": [
+    "CHAMPION_WIN_RATE",
+    "MATCHUP_STRONG_Syndra",
+    "ABILITY_Ahri_E"
+  ],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 220,
+      "wins": 128,
+      "winRate": 0.5818,
+      "wilsonInterval": {
+        "lowerBound": 0.515,
+        "upperBound": 0.645,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "HIGH",
+      "aggregateKdaRatio": 3.2,
+      "averageCsPerMinute": 8.1,
+      "averageDamagePerMinute": 620,
+      "averageVisionScorePerMinute": 1.2,
+      "averageGoldDifferenceAt10": 90,
+      "averageGoldDifferenceAt15": 160,
+      "averageCsDifferenceAt10": 4,
+      "averageCsDifferenceAt15": 6,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [
+        {
+          "opponent": {
+            "championId": 134,
+            "championKey": "Syndra",
+            "name": "Syndra",
+            "iconUrl": "https://example.com/syndra.png"
+          },
+          "position": "MIDDLE",
+          "sampleSize": 86,
+          "wins": 55,
+          "losses": 31,
+          "winRate": 0.6395,
+          "wilsonInterval": {
+            "lowerBound": 0.534,
+            "upperBound": 0.732,
+            "confidenceLevel": 0.95
+          },
+          "sampleConfidence": "HIGH",
+          "lowSample": false,
+          "averageGoldDifferenceAt10": 180,
+          "averageGoldDifferenceAt15": 320,
+          "averageCsDifferenceAt10": 6,
+          "averageCsDifferenceAt15": 10
+        }
+      ],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "E",
+        "name": "Charm",
+        "description": "Ahri blows a kiss that damages and charms the first enemy hit.",
+        "iconUrl": "https://example.com/charm.png",
+        "cooldown": "12/11/10",
+        "cost": "70/75/80",
+        "range": "900"
+      }
+    ]
+  }
+}

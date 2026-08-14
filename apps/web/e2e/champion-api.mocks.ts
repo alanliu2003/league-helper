@@ -1,6 +1,8 @@
 import type { Page, Request, Route } from '@playwright/test';
 import {
+  CHAMPION_AI_DISCLAIMER,
   CHAMPION_STATS_DISCLAIMER,
+  ChampionAiInsightsResponseSchema,
   ChampionBuildsResponseSchema,
   ChampionMatchupsResponseSchema,
   ChampionDetailResponseSchema,
@@ -15,6 +17,7 @@ import {
   RANK_TIER_SEMANTICS,
   RANKED_FLEX_QUEUE_ID,
   RANKED_SOLO_QUEUE_ID,
+  type ChampionAiInsightsResponse,
   type ChampionBuildsResponse,
   type ChampionMatchupsResponse,
   type ChampionDetailResponse,
@@ -107,6 +110,11 @@ function matchChampionBuilds(pathname: string): string | null {
 
 function matchChampionMatchups(pathname: string): string | null {
   const match = pathname.match(/\/api\/champions\/([^/]+)\/matchups\/?$/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function matchChampionInsights(pathname: string): string | null {
+  const match = pathname.match(/\/api\/champions\/([^/]+)\/insights\/?$/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
@@ -907,6 +915,53 @@ export function buildChampionMatchupsResponse(options: {
   });
 }
 
+export function buildChampionInsightsResponse(options: {
+  platform?: 'na1' | 'euw1';
+  patch?: string;
+  queueId?: number;
+  tier?: 'ALL' | 'GOLD';
+  position?: ChampionRankingPosition;
+}): ChampionAiInsightsResponse {
+  const platform = options.platform ?? 'na1';
+  const patch = options.patch ?? '14.11';
+  const queueId = options.queueId ?? RANKED_SOLO_QUEUE_ID;
+  const tier = options.tier ?? 'ALL';
+  const position = options.position ?? 'MIDDLE';
+
+  return ChampionAiInsightsResponseSchema.parse({
+    disclaimer: CHAMPION_STATS_DISCLAIMER,
+    aiDisclaimer: CHAMPION_AI_DISCLAIMER,
+    sampleScope: { kind: 'COLLECTED_SAMPLE', platform, patch, queueId },
+    resolvedFilters: { platform, patch, queueId, tier, position },
+    status: 'AVAILABLE',
+    insight: {
+      summary:
+        'Ahri looks slightly favored in this collected mid-lane sample, trading well when charm lands and orb control follows in the lane.',
+      strengths: [
+        'Charm-into-orb trades look like a consistent way she creates pressure in this sample.',
+      ],
+      weaknesses: [
+        'She can struggle when opponents keep the wave frozen and deny easy charm angles.',
+      ],
+      buildInsight:
+        'The common core in this sample leans into ability power and repeated poke after the first items.',
+      matchupInsights: [
+        {
+          opponentChampionKey: 'Syndra',
+          side: 'WEAK',
+          text: 'Syndra poke and wave control make it hard for Ahri to find safe charm windows in this sample.',
+        },
+        {
+          opponentChampionKey: 'Tristana',
+          side: 'STRONG',
+          text: 'Ahri can look for charm windows when Tristana overextends after using her jump in this sample.',
+        },
+      ],
+      generatedAt: '2026-08-13T07:00:00.000Z',
+    },
+  });
+}
+
 export type InstalledChampionMocks = {
   requests: ChampionRequestLog[];
   rankingRequests: ChampionRequestLog[];
@@ -993,6 +1048,34 @@ export async function installChampionApiMocks(
           queueId: Number(searchParams.get('queueId') ?? RANKED_SOLO_QUEUE_ID),
           tier: (searchParams.get('tier') as 'ALL' | 'GOLD') ?? 'ALL',
           empty: emptyRanking,
+        }),
+      );
+      return;
+    }
+
+    const insightsKey = matchChampionInsights(pathname);
+    if (insightsKey) {
+      if (/^\d+$/.test(insightsKey)) {
+        await json(route, 404, notFoundBody('Champion not found'));
+        return;
+      }
+      const positionParam = searchParams.get('position');
+      if (!positionParam || !POSITIONS.includes(positionParam as ChampionRankingPosition)) {
+        await json(route, 400, {
+          success: false,
+          error: { code: 'VALIDATION_FAILURE', message: 'position is required' },
+        });
+        return;
+      }
+      await json(
+        route,
+        200,
+        buildChampionInsightsResponse({
+          position: positionParam as ChampionRankingPosition,
+          platform: (searchParams.get('platform') as 'na1' | 'euw1') ?? 'na1',
+          patch: searchParams.get('patch') ?? '14.11',
+          queueId: Number(searchParams.get('queueId') ?? RANKED_SOLO_QUEUE_ID),
+          tier: (searchParams.get('tier') as 'ALL' | 'GOLD') ?? 'ALL',
         }),
       );
       return;

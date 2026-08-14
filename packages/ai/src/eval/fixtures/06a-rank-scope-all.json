@@ -1,0 +1,106 @@
+{
+  "id": "rank-scope-all",
+  "description": "Same champion slice as rank-scope-gold, with ALL rank scope.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": true,
+  "expectBuildInsightAllowed": true,
+  "expectMatchupExplanationsAllowed": true,
+  "expectEvidenceContains": ["SCOPE_RANK", "CHAMPION_WIN_RATE", "BUILD_CORE_PRIMARY", "MATCHUP_STRONG_Syndra"],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "ALL",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 410,
+      "wins": 214,
+      "winRate": 0.522,
+      "wilsonInterval": {
+        "lowerBound": 0.474,
+        "upperBound": 0.569,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "HIGH",
+      "aggregateKdaRatio": 2.95,
+      "averageCsPerMinute": 7.7,
+      "averageDamagePerMinute": 555,
+      "averageVisionScorePerMinute": 1.05,
+      "averageGoldDifferenceAt10": 25,
+      "averageGoldDifferenceAt15": 45,
+      "averageCsDifferenceAt10": 1,
+      "averageCsDifferenceAt15": 2,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [
+        {
+          "items": [
+            { "id": 3116, "name": "Rylai's Crystal Scepter", "iconUrl": "https://example.com/rylai.png" },
+            { "id": 6653, "name": "Liandry's Torment", "iconUrl": "https://example.com/liandry.png" },
+            { "id": 3157, "name": "Zhonya's Hourglass", "iconUrl": "https://example.com/zhonya.png" }
+          ],
+          "sampleSize": 90,
+          "pickRate": 0.22,
+          "wins": 48,
+          "winRate": 0.5333,
+          "lowSample": false,
+          "sampleBand": "CREDIBLE"
+        }
+      ],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [
+        {
+          "opponent": {
+            "championId": 134,
+            "championKey": "Syndra",
+            "name": "Syndra",
+            "iconUrl": "https://example.com/syndra.png"
+          },
+          "position": "MIDDLE",
+          "sampleSize": 54,
+          "wins": 31,
+          "losses": 23,
+          "winRate": 0.5741,
+          "wilsonInterval": {
+            "lowerBound": 0.442,
+            "upperBound": 0.697,
+            "confidenceLevel": 0.95
+          },
+          "sampleConfidence": "MEDIUM",
+          "lowSample": false,
+          "averageGoldDifferenceAt10": 60,
+          "averageGoldDifferenceAt15": 110,
+          "averageCsDifferenceAt10": 2,
+          "averageCsDifferenceAt15": 4
+        }
+      ],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "E",
+        "name": "Charm",
+        "description": "Ahri blows a kiss that damages and charms the first enemy hit.",
+        "iconUrl": "https://example.com/charm.png",
+        "cooldown": "12/11/10",
+        "cost": "70/75/80",
+        "range": "900"
+      }
+    ]
+  }
+}

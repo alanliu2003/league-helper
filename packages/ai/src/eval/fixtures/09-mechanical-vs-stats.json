@@ -1,0 +1,108 @@
+{
+  "id": "mechanical-vs-stats",
+  "description": "Charm sounds like a dash counter, but collected-sample stats mark Yasuo as a weak matchup. Follow statistics.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": true,
+  "expectBuildInsightAllowed": false,
+  "expectMatchupExplanationsAllowed": true,
+  "expectEvidenceContains": ["MATCHUP_WEAK_Yasuo", "ABILITY_Ahri_E", "ABILITY_Yasuo_E"],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 175,
+      "wins": 84,
+      "winRate": 0.48,
+      "wilsonInterval": {
+        "lowerBound": 0.407,
+        "upperBound": 0.554,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "HIGH",
+      "aggregateKdaRatio": 2.6,
+      "averageCsPerMinute": 7.2,
+      "averageDamagePerMinute": 510,
+      "averageVisionScorePerMinute": 1.0,
+      "averageGoldDifferenceAt10": -30,
+      "averageGoldDifferenceAt15": -70,
+      "averageCsDifferenceAt10": -2,
+      "averageCsDifferenceAt15": -4,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [],
+      "weakAgainst": [
+        {
+          "opponent": {
+            "championId": 157,
+            "championKey": "Yasuo",
+            "name": "Yasuo",
+            "iconUrl": "https://example.com/yasuo.png"
+          },
+          "position": "MIDDLE",
+          "sampleSize": 64,
+          "wins": 22,
+          "losses": 42,
+          "winRate": 0.3438,
+          "wilsonInterval": {
+            "lowerBound": 0.239,
+            "upperBound": 0.466,
+            "confidenceLevel": 0.95
+          },
+          "sampleConfidence": "MEDIUM",
+          "lowSample": false,
+          "averageGoldDifferenceAt10": -120,
+          "averageGoldDifferenceAt15": -240,
+          "averageCsDifferenceAt10": -5,
+          "averageCsDifferenceAt15": -8
+        }
+      ]
+    },
+    "abilities": [
+      {
+        "slot": "E",
+        "name": "Charm",
+        "description": "Ahri blows a kiss that damages and charms the first enemy hit. Charm looks like a hard counter to dashing melee champions if it lands.",
+        "iconUrl": "https://example.com/charm.png",
+        "cooldown": "12/11/10",
+        "cost": "70/75/80",
+        "range": "900"
+      }
+    ],
+    "opponentAbilities": [
+      {
+        "championKey": "Yasuo",
+        "abilities": [
+          {
+            "slot": "E",
+            "name": "Sweeping Blade",
+            "description": "Yasuo dashes through a target, making him difficult to hit with skillshots such as Charm when he keeps dashing.",
+            "iconUrl": "https://example.com/sweeping-blade.png",
+            "cooldown": "0.5/0.4/0.3",
+            "cost": "0",
+            "range": "475"
+          }
+        ]
+      }
+    ]
+  }
+}

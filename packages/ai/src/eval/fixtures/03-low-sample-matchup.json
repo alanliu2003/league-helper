@@ -1,0 +1,93 @@
+{
+  "id": "low-sample-matchup",
+  "description": "Low-sample matchup evidence is present but not citable.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": true,
+  "expectBuildInsightAllowed": false,
+  "expectMatchupExplanationsAllowed": false,
+  "expectEvidenceContains": ["MATCHUP_STRONG_Neeko", "CHAMPION_WIN_RATE"],
+  "expectEvidenceNotCitable": ["MATCHUP_STRONG_Neeko"],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 160,
+      "wins": 86,
+      "winRate": 0.5375,
+      "wilsonInterval": {
+        "lowerBound": 0.46,
+        "upperBound": 0.613,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "HIGH",
+      "aggregateKdaRatio": 3.0,
+      "averageCsPerMinute": 7.6,
+      "averageDamagePerMinute": 560,
+      "averageVisionScorePerMinute": 1.1,
+      "averageGoldDifferenceAt10": 40,
+      "averageGoldDifferenceAt15": 70,
+      "averageCsDifferenceAt10": 2,
+      "averageCsDifferenceAt15": 3,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [
+        {
+          "opponent": {
+            "championId": 518,
+            "championKey": "Neeko",
+            "name": "Neeko",
+            "iconUrl": "https://example.com/neeko.png"
+          },
+          "position": "MIDDLE",
+          "sampleSize": 6,
+          "wins": 4,
+          "losses": 2,
+          "winRate": 0.6667,
+          "wilsonInterval": {
+            "lowerBound": 0.3,
+            "upperBound": 0.9,
+            "confidenceLevel": 0.95
+          },
+          "sampleConfidence": "INSUFFICIENT",
+          "lowSample": true,
+          "averageGoldDifferenceAt10": 40,
+          "averageGoldDifferenceAt15": 80,
+          "averageCsDifferenceAt10": 1,
+          "averageCsDifferenceAt15": 2
+        }
+      ],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "W",
+        "name": "Fox-Fire",
+        "description": "Ahri releases fox-fires that lock onto nearby enemies.",
+        "iconUrl": "https://example.com/foxfire.png",
+        "cooldown": "9/8/7",
+        "cost": "40",
+        "range": "700"
+      }
+    ]
+  }
+}

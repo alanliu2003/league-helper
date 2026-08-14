@@ -1,0 +1,92 @@
+{
+  "id": "close-matchup",
+  "description": "Close matchup near 50% with overlapping Wilson intervals. Keep prose qualitative; do not restate analytics digits.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": true,
+  "expectBuildInsightAllowed": false,
+  "expectMatchupExplanationsAllowed": true,
+  "expectEvidenceContains": ["MATCHUP_STRONG_Orianna", "CHAMPION_WILSON_INTERVAL"],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 200,
+      "wins": 101,
+      "winRate": 0.505,
+      "wilsonInterval": {
+        "lowerBound": 0.436,
+        "upperBound": 0.574,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "HIGH",
+      "aggregateKdaRatio": 2.9,
+      "averageCsPerMinute": 7.8,
+      "averageDamagePerMinute": 540,
+      "averageVisionScorePerMinute": 1.0,
+      "averageGoldDifferenceAt10": 10,
+      "averageGoldDifferenceAt15": 20,
+      "averageCsDifferenceAt10": 0,
+      "averageCsDifferenceAt15": 1,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [
+        {
+          "opponent": {
+            "championId": 61,
+            "championKey": "Orianna",
+            "name": "Orianna",
+            "iconUrl": "https://example.com/orianna.png"
+          },
+          "position": "MIDDLE",
+          "sampleSize": 72,
+          "wins": 37,
+          "losses": 35,
+          "winRate": 0.5139,
+          "wilsonInterval": {
+            "lowerBound": 0.401,
+            "upperBound": 0.625,
+            "confidenceLevel": 0.95
+          },
+          "sampleConfidence": "MEDIUM",
+          "lowSample": false,
+          "averageGoldDifferenceAt10": 8,
+          "averageGoldDifferenceAt15": 12,
+          "averageCsDifferenceAt10": 0,
+          "averageCsDifferenceAt15": 1
+        }
+      ],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "Q",
+        "name": "Orb of Deception",
+        "description": "Ahri sends out and pulls back her orb, dealing magic then true damage.",
+        "iconUrl": "https://example.com/orb.png",
+        "cooldown": "7",
+        "cost": "55/60/65",
+        "range": "880"
+      }
+    ]
+  }
+}

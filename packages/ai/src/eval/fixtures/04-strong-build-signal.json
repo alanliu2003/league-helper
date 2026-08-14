@@ -1,0 +1,94 @@
+{
+  "id": "strong-build-signal",
+  "description": "STRONG-band core with a clear pick and win gap versus a secondary core. Explain observed statistical support only; do not invent item mechanics.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": true,
+  "expectBuildInsightAllowed": true,
+  "expectMatchupExplanationsAllowed": false,
+  "expectEvidenceContains": ["BUILD_CORE_PRIMARY", "BUILD_CORE_SECONDARY"],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 140,
+      "wins": 74,
+      "winRate": 0.5286,
+      "wilsonInterval": {
+        "lowerBound": 0.446,
+        "upperBound": 0.609,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "MEDIUM",
+      "aggregateKdaRatio": 2.8,
+      "averageCsPerMinute": 7.5,
+      "averageDamagePerMinute": 550,
+      "averageVisionScorePerMinute": 1.0,
+      "averageGoldDifferenceAt10": 30,
+      "averageGoldDifferenceAt15": 55,
+      "averageCsDifferenceAt10": 1,
+      "averageCsDifferenceAt15": 2,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [
+        {
+          "items": [
+            { "id": 3116, "name": "Rylai's Crystal Scepter", "iconUrl": "https://example.com/rylai.png" },
+            { "id": 6653, "name": "Liandry's Torment", "iconUrl": "https://example.com/liandry.png" },
+            { "id": 3157, "name": "Zhonya's Hourglass", "iconUrl": "https://example.com/zhonya.png" }
+          ],
+          "sampleSize": 72,
+          "pickRate": 0.51,
+          "wins": 43,
+          "winRate": 0.5972,
+          "lowSample": false,
+          "sampleBand": "STRONG"
+        },
+        {
+          "items": [
+            { "id": 6655, "name": "Luden's Companion", "iconUrl": "https://example.com/luden.png" },
+            { "id": 4645, "name": "Shadowflame", "iconUrl": "https://example.com/shadowflame.png" },
+            { "id": 3089, "name": "Rabadon's Deathcap", "iconUrl": "https://example.com/rabadon.png" }
+          ],
+          "sampleSize": 22,
+          "pickRate": 0.16,
+          "wins": 10,
+          "winRate": 0.4545,
+          "lowSample": false,
+          "sampleBand": "CREDIBLE"
+        }
+      ],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "R",
+        "name": "Spirit Rush",
+        "description": "Ahri dashes and fires essence bolts at nearby enemies.",
+        "iconUrl": "https://example.com/spirit-rush.png",
+        "cooldown": "130/105/80",
+        "cost": "100",
+        "range": "500"
+      }
+    ]
+  }
+}

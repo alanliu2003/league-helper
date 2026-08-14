@@ -75,6 +75,7 @@ async function resetTestData(): Promise<void> {
     TRUNCATE TABLE
       "AnalysisFinding",
       "PlayerAnalysisReport",
+      "ChampionAiInsight",
       "PlayerMetricSnapshot",
       "MatchupAggregate",
       "ChampionBuildAggregate",

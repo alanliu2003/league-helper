@@ -3,16 +3,19 @@ import { Queue } from 'bullmq';
 import { RiotSharedCooldownStore } from '@league-helper/server-riot';
 import {
   CHAMPION_AGGREGATION_JOB_NAME,
+  CHAMPION_AI_INSIGHT_JOB_NAME,
   MATCH_INGESTION_JOB_NAME,
   PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
   createHealthResponse,
   parseBullMqRedisConnectionInfo,
   resolveBullMqPrefix,
   type ChampionAggregationJobPayload,
+  type ChampionAiInsightJobPayload,
   type ParticipantRankEnrichmentJobPayload,
 } from '@league-helper/shared';
 import {
   loadChampionAggregationWorkerConfig,
+  loadChampionAiInsightWorkerConfig,
   loadMatchIngestionWorkerConfig,
   loadParticipantRankEnrichmentWorkerConfig,
   getRedisUrl,
@@ -22,6 +25,7 @@ import { disconnectPrisma, getPrismaClient } from './prisma.js';
 import { createGameDataProvider } from './provider.js';
 import { createRedisConnection } from './queues.js';
 import { createChampionAggregationWorker } from './queues/champion-aggregation/champion-aggregation.worker.js';
+import { createChampionAiInsightWorker } from './queues/champion-ai-insight/champion-ai-insight.worker.js';
 import { createMatchIngestionWorker } from './queues/match-ingestion/match-ingestion.worker.js';
 import { createParticipantRankEnrichmentWorker } from './queues/participant-rank-enrichment/participant-rank-enrichment.worker.js';
 
@@ -31,6 +35,7 @@ async function main(): Promise<void> {
   const matchIngestionConfig = loadMatchIngestionWorkerConfig();
   const championAggregationConfig = loadChampionAggregationWorkerConfig();
   const participantRankEnrichmentConfig = loadParticipantRankEnrichmentWorkerConfig();
+  const championAiInsightConfig = loadChampionAiInsightWorkerConfig();
   const connection = createRedisConnection();
   const prisma = getPrismaClient();
   await prisma.$connect();
@@ -54,6 +59,14 @@ async function main(): Promise<void> {
     },
   );
 
+  const championAiInsightQueue = new Queue<ChampionAiInsightJobPayload>(
+    championAiInsightConfig.queueName,
+    {
+      connection,
+      prefix: connectionInfo.prefix,
+    },
+  );
+
   logger.info('Worker starting', {
     matchIngestionQueue: matchIngestionConfig.queueName,
     matchIngestionJob: MATCH_INGESTION_JOB_NAME,
@@ -64,6 +77,10 @@ async function main(): Promise<void> {
     participantRankEnrichmentQueue: participantRankEnrichmentConfig.queueName,
     participantRankEnrichmentJob: PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
     participantRankEnrichmentConcurrency: participantRankEnrichmentConfig.concurrency,
+    championAiInsightQueue: championAiInsightConfig.queueName,
+    championAiInsightJob: CHAMPION_AI_INSIGHT_JOB_NAME,
+    championAiInsightConcurrency: championAiInsightConfig.concurrency,
+    championAiInsightEnabled: championAiInsightConfig.enabled,
     sourceNormalizationVersion: championAggregationConfig.sourceNormalizationVersion,
     aggregationVersion: championAggregationConfig.aggregationVersion,
     providerMode: riotConfig.providerMode,
@@ -78,6 +95,7 @@ async function main(): Promise<void> {
   let matchIngestionWorker;
   let championAggregationWorker;
   let participantRankEnrichmentWorker;
+  let championAiInsightWorker;
   try {
     matchIngestionWorker = createMatchIngestionWorker({
       connection,
@@ -120,12 +138,19 @@ async function main(): Promise<void> {
         sharedCooldown,
       },
     });
+
+    championAiInsightWorker = createChampionAiInsightWorker({
+      connection,
+      config: championAiInsightConfig,
+      prisma,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown worker init error';
     logger.error('Worker failed to initialize consumers', { error: message });
     await Promise.allSettled([
       championAggregationQueue.close(),
       participantRankEnrichmentQueue.close(),
+      championAiInsightQueue.close(),
       connection.quit(),
       disconnectPrisma(),
     ]);
@@ -147,10 +172,15 @@ async function main(): Promise<void> {
       connection: { url: redisUrl, maxRetriesPerRequest: null },
       prefix: connectionInfo.prefix,
     });
-    const [matchPaused, aggPaused, rankPaused] = await Promise.all([
+    const insightProbe = new Queue(championAiInsightConfig.queueName, {
+      connection: { url: redisUrl, maxRetriesPerRequest: null },
+      prefix: connectionInfo.prefix,
+    });
+    const [matchPaused, aggPaused, rankPaused, insightPaused] = await Promise.all([
       matchProbe.isPaused(),
       aggProbe.isPaused(),
       rankProbe.isPaused(),
+      insightProbe.isPaused(),
     ]);
     logger.info('Queue probes', {
       matchIngestionQueue: matchIngestionConfig.queueName,
@@ -162,9 +192,17 @@ async function main(): Promise<void> {
       participantRankEnrichmentQueue: participantRankEnrichmentConfig.queueName,
       participantRankEnrichmentPaused: rankPaused,
       participantRankEnrichmentJob: PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
+      championAiInsightQueue: championAiInsightConfig.queueName,
+      championAiInsightPaused: insightPaused,
+      championAiInsightJob: CHAMPION_AI_INSIGHT_JOB_NAME,
       readiness: 'all_consumers_initialized',
     });
-    await Promise.allSettled([matchProbe.close(), aggProbe.close(), rankProbe.close()]);
+    await Promise.allSettled([
+      matchProbe.close(),
+      aggProbe.close(),
+      rankProbe.close(),
+      insightProbe.close(),
+    ]);
   } catch (error: unknown) {
     logger.warn('Queue probe failed', {
       error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
@@ -182,10 +220,12 @@ async function main(): Promise<void> {
       matchIngestionWorker.close(),
       championAggregationWorker.close(),
       participantRankEnrichmentWorker.close(),
+      championAiInsightWorker.close(),
     ]);
     await Promise.allSettled([
       championAggregationQueue.close(),
       participantRankEnrichmentQueue.close(),
+      championAiInsightQueue.close(),
       providerHandle.close(),
       disconnectPrisma(),
       connection.quit(),

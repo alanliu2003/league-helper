@@ -1,5 +1,6 @@
 import {
   ApiErrorResponseSchema,
+  ChampionAiInsightsResponseSchema,
   ChampionBuildsResponseSchema,
   ChampionMatchupsResponseSchema,
   ChampionDetailResponseSchema,
@@ -7,6 +8,7 @@ import {
   ChampionStatsFiltersResponseSchema,
   ChampionStatsResponseSchema,
   ChampionStatsTableResponseSchema,
+  type ChampionAiInsightsResponse,
   type ChampionBuildsResponse,
   type ChampionMatchupsResponse,
   type ChampionDetailResponse,
@@ -108,6 +110,15 @@ export type GetChampionBuildsOptions = {
 };
 
 export type GetChampionMatchupsOptions = {
+  platform: PlatformRoute;
+  queue: number;
+  position: ChampionRankingPosition;
+  tier?: ChampionStatsTierFilter;
+  patch?: string;
+  signal?: AbortSignal;
+};
+
+export type GetChampionInsightsOptions = {
   platform: PlatformRoute;
   queue: number;
   position: ChampionRankingPosition;
@@ -262,6 +273,30 @@ export function useChampionApi() {
     }
   }
 
+  async function getChampionInsights(
+    championKey: string,
+    options: GetChampionInsightsOptions,
+  ): Promise<ChampionAiInsightsResponse> {
+    try {
+      const response = await $fetch(
+        `${apiBase}/api/champions/${encodeURIComponent(championKey)}/insights`,
+        {
+          query: {
+            platform: options.platform,
+            queueId: options.queue,
+            tier: options.tier,
+            position: options.position,
+            patch: options.patch,
+          },
+          signal: options.signal,
+        },
+      );
+      return ChampionAiInsightsResponseSchema.parse(response);
+    } catch (error) {
+      throw parseApiError(error);
+    }
+  }
+
   return {
     apiBase,
     getFilters,
@@ -271,6 +306,7 @@ export function useChampionApi() {
     getChampionStats,
     getChampionBuilds,
     getChampionMatchups,
+    getChampionInsights,
   };
 }
 

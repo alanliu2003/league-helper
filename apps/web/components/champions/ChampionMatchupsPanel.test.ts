@@ -5,6 +5,7 @@ import {
   RANK_TIER_SEMANTICS,
   type ChampionMatchupsResponse,
 } from '@league-helper/shared';
+import ChampionAiMatchupWhy from './ChampionAiMatchupWhy.vue';
 import ChampionMatchupsPanel from './ChampionMatchupsPanel.vue';
 
 const MOCK_ICON = 'https://cdn.example.test/champions/Syndra.png';
@@ -69,25 +70,53 @@ function response(overrides: Partial<ChampionMatchupsResponse> = {}): ChampionMa
   };
 }
 
+function mountPanel(
+  props: {
+    response?: ChampionMatchupsResponse | null;
+    pending?: boolean;
+    error?: string | null;
+    platform?: string | null;
+    queue?: number | null;
+    tier?: string | null;
+    patch?: string | null;
+    matchupInsights?: Array<{
+      opponentChampionKey: string;
+      side: 'STRONG' | 'WEAK';
+      text: string;
+    }>;
+  } = {},
+) {
+  return mount(ChampionMatchupsPanel, {
+    props: {
+      response: props.response === undefined ? response() : props.response,
+      pending: props.pending ?? false,
+      error: props.error ?? null,
+      position: 'MIDDLE',
+      platform: props.platform,
+      queue: props.queue,
+      tier: props.tier,
+      patch: props.patch,
+      matchupInsights: props.matchupInsights,
+    },
+    global: {
+      components: {
+        ChampionsChampionAiMatchupWhy: ChampionAiMatchupWhy,
+      },
+      stubs: {
+        NuxtLink: RouterLinkStub,
+        PlayerErrorBanner: { template: '<p class="error">{{ message }}</p>', props: ['message'] },
+      },
+    },
+  });
+}
+
 describe('ChampionMatchupsPanel', () => {
   it('renders Weak Against and Strong Against with icons and names', () => {
-    const wrapper = mount(ChampionMatchupsPanel, {
-      props: {
-        response: response(),
-        pending: false,
-        error: null,
-        position: 'MIDDLE',
-        platform: 'na1',
-        queue: 420,
-        tier: 'ALL',
-        patch: '16.15',
-      },
-      global: {
-        stubs: {
-          NuxtLink: RouterLinkStub,
-          PlayerErrorBanner: { template: '<p class="error">{{ message }}</p>', props: ['message'] },
-        },
-      },
+    const wrapper = mountPanel({
+      platform: 'na1',
+      queue: 420,
+      tier: 'ALL',
+      patch: '16.15',
     });
     expect(wrapper.get('[data-testid="weak-against"]').text()).toContain('Syndra');
     expect(wrapper.get('[data-testid="strong-against"]').text()).toContain('Tristana');
@@ -98,23 +127,11 @@ describe('ChampionMatchupsPanel', () => {
   });
 
   it('links opponents to champion pages by key, not numeric id', () => {
-    const wrapper = mount(ChampionMatchupsPanel, {
-      props: {
-        response: response(),
-        pending: false,
-        error: null,
-        position: 'MIDDLE',
-        platform: 'na1',
-        queue: 420,
-        tier: 'ALL',
-        patch: '16.15',
-      },
-      global: {
-        stubs: {
-          NuxtLink: RouterLinkStub,
-          PlayerErrorBanner: { template: '<p class="error">{{ message }}</p>', props: ['message'] },
-        },
-      },
+    const wrapper = mountPanel({
+      platform: 'na1',
+      queue: 420,
+      tier: 'ALL',
+      patch: '16.15',
     });
     const links = wrapper.findAllComponents(RouterLinkStub);
     expect(links[0]?.props('to')).toContain('/champions/Syndra');
@@ -123,26 +140,39 @@ describe('ChampionMatchupsPanel', () => {
   });
 
   it('shows an honest empty state when no pair clears the floor', () => {
-    const wrapper = mount(ChampionMatchupsPanel, {
-      props: {
-        response: response({
-          emptyReason: 'NO_ELIGIBLE_MATCHUPS',
-          strongAgainst: [],
-          weakAgainst: [],
-          totalEligiblePairs: 0,
-        }),
-        pending: false,
-        error: null,
-        position: 'MIDDLE',
-      },
-      global: {
-        stubs: {
-          NuxtLink: RouterLinkStub,
-          PlayerErrorBanner: { template: '<p class="error">{{ message }}</p>', props: ['message'] },
-        },
-      },
+    const wrapper = mountPanel({
+      response: response({
+        emptyReason: 'NO_ELIGIBLE_MATCHUPS',
+        strongAgainst: [],
+        weakAgainst: [],
+        totalEligiblePairs: 0,
+      }),
     });
     expect(wrapper.get('[data-testid="matchups-empty"]').text()).toMatch(/Not enough matchup data/);
     expect(wrapper.find('[data-testid="strong-against"]').exists()).toBe(false);
+  });
+
+  it('renders Why copy under a matching opponent without replacing stats', () => {
+    const why =
+      'Syndra poke and wave control make it hard for Ahri to find safe charm windows in this sample.';
+    const wrapper = mountPanel({
+      platform: 'na1',
+      queue: 420,
+      tier: 'ALL',
+      patch: '16.15',
+      matchupInsights: [
+        {
+          opponentChampionKey: 'Syndra',
+          side: 'WEAK',
+          text: why,
+        },
+      ],
+    });
+    const weak = wrapper.get('[data-testid="weak-against"]');
+    expect(weak.text()).toContain('Why?');
+    expect(weak.text()).toContain(why);
+    expect(weak.text()).toContain('40.0%');
+    expect(weak.text()).toContain('10 games');
+    expect(wrapper.get('[data-testid="strong-against"]').text()).not.toContain('Why?');
   });
 });
