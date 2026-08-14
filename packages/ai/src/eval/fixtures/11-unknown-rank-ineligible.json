@@ -1,0 +1,44 @@
+{
+  "id": "unknown-rank-ineligible",
+  "description": "UNKNOWN-rank-equivalent empty/hidden slice: fixture is generation-ineligible.",
+  "expectGenerationEligible": false,
+  "expectPerformanceConclusionsAllowed": false,
+  "expectBuildInsightAllowed": false,
+  "expectMatchupExplanationsAllowed": false,
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "UNKNOWN",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": null,
+    "builds": {
+      "coreBuilds": [],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "E",
+        "name": "Charm",
+        "description": "Ahri blows a kiss that damages and charms the first enemy hit.",
+        "iconUrl": "https://example.com/charm.png"
+      }
+    ]
+  }
+}

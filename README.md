@@ -11,6 +11,7 @@ League of Legends analytics and AI coaching monorepo.
 - `apps/worker` — BullMQ background worker
 - `packages/shared` — shared types, Zod schemas, constants
 - `packages/match-analytics` — pure champion aggregate math (Wilson, KDA, rollups)
+- `packages/ai` — champion AI insight generation (provider + validation + eval)
 - `packages/config` — shared TypeScript and ESLint config
 
 ## Prerequisites
@@ -881,6 +882,8 @@ Champions e2e (Task 11) uses **route mocks** for API responses so the suite does
 ## Notes
 
 - `RIOT_API_KEY` stays in backend/worker env only. Never use a `NUXT_PUBLIC_` prefix. Never log the value.
-- AI coaching generation is **not** implemented yet.
+- Champion AI insights are **off by default** (`AI_ENABLED=false`). For local Ollama: `ollama pull qwen2.5:7b` then `ollama serve`; set `AI_ENABLED=true` (and optionally `AI_MODEL`) in `apps/api/.env` and `apps/worker/.env`. Leave `AI_API_KEY` empty for local Ollama. Do not use `NUXT_PUBLIC_*` for any AI secret.
+- `GET /api/champions/:championKey/insights` uses the same filters as builds and requires `position`. AI copy is supplemental; collected-sample stats remain the source of truth. Player-specific AI coaching is still deferred.
+- Offline eval: `pnpm ai:eval`. Live eval: `pnpm ai:eval -- --live` (requires `AI_ENABLED=true`; docs default model `qwen2.5:7b`).
 - Prisma models are persistence internals — do not expose them directly as public API DTOs.
 - Frontend requires only `NUXT_PUBLIC_API_BASE` (default `http://localhost:3001`).

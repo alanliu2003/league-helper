@@ -1,0 +1,100 @@
+{
+  "id": "insufficient-data",
+  "description": "Insufficient champion sample with no citable build or matchup slice.",
+  "expectGenerationEligible": false,
+  "expectPerformanceConclusionsAllowed": false,
+  "expectBuildInsightAllowed": false,
+  "expectMatchupExplanationsAllowed": false,
+  "expectEvidenceContains": ["CHAMPION_WIN_RATE", "CHAMPION_SAMPLE_CONFIDENCE"],
+  "expectEvidenceNotCitable": ["CHAMPION_WIN_RATE", "CHAMPION_SAMPLE_SIZE", "CHAMPION_SAMPLE_CONFIDENCE"],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 8,
+      "wins": 3,
+      "winRate": 0.375,
+      "wilsonInterval": {
+        "lowerBound": 0.137,
+        "upperBound": 0.692,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "INSUFFICIENT",
+      "aggregateKdaRatio": 1.8,
+      "averageCsPerMinute": 6.1,
+      "averageDamagePerMinute": 390,
+      "averageVisionScorePerMinute": 0.7,
+      "averageGoldDifferenceAt10": -20,
+      "averageGoldDifferenceAt15": -40,
+      "averageCsDifferenceAt10": -1,
+      "averageCsDifferenceAt15": -2,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [
+        {
+          "items": [
+            { "id": 1056, "name": "Doran's Ring", "iconUrl": "https://example.com/doran.png" },
+            { "id": 2003, "name": "Health Potion", "iconUrl": "https://example.com/potion.png" },
+            { "id": 3340, "name": "Stealth Ward", "iconUrl": "https://example.com/ward.png" }
+          ],
+          "sampleSize": 3,
+          "pickRate": 0.38,
+          "wins": 1,
+          "winRate": 0.3333,
+          "lowSample": true,
+          "sampleBand": "EXPLORATORY"
+        }
+      ],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [
+        {
+          "opponent": {
+            "championId": 99,
+            "championKey": "Lux",
+            "name": "Lux",
+            "iconUrl": "https://example.com/lux.png"
+          },
+          "position": "MIDDLE",
+          "sampleSize": 4,
+          "wins": 2,
+          "losses": 2,
+          "winRate": 0.5,
+          "wilsonInterval": null,
+          "sampleConfidence": "INSUFFICIENT",
+          "lowSample": true,
+          "averageGoldDifferenceAt10": null,
+          "averageGoldDifferenceAt15": null,
+          "averageCsDifferenceAt10": null,
+          "averageCsDifferenceAt15": null
+        }
+      ],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "E",
+        "name": "Charm",
+        "description": "Ahri blows a kiss that damages and charms the first enemy hit.",
+        "iconUrl": "https://example.com/charm.png"
+      }
+    ]
+  }
+}

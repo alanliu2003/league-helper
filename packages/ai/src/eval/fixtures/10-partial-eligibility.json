@@ -1,0 +1,117 @@
+{
+  "id": "partial-eligibility",
+  "description": "INSUFFICIENT champion sample with one CREDIBLE build: generate allowed, performance conclusions not, build insight allowed. Partial eligibility must still work.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": false,
+  "expectBuildInsightAllowed": true,
+  "expectMatchupExplanationsAllowed": false,
+  "expectEvidenceContains": [
+    "CHAMPION_WIN_RATE",
+    "CHAMPION_SAMPLE_SIZE",
+    "CHAMPION_SAMPLE_CONFIDENCE",
+    "BUILD_CORE_PRIMARY",
+    "CONFIDENCE_WARNING"
+  ],
+  "expectEvidenceNotCitable": [
+    "CHAMPION_WIN_RATE",
+    "CHAMPION_SAMPLE_SIZE",
+    "CHAMPION_SAMPLE_CONFIDENCE",
+    "CHAMPION_WILSON_INTERVAL",
+    "CHAMPION_KDA",
+    "CHAMPION_CS_PER_MIN",
+    "CHAMPION_DPM"
+  ],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 8,
+      "wins": 3,
+      "winRate": 0.375,
+      "wilsonInterval": {
+        "lowerBound": 0.137,
+        "upperBound": 0.692,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "INSUFFICIENT",
+      "aggregateKdaRatio": 2.1,
+      "averageCsPerMinute": 6.2,
+      "averageDamagePerMinute": 400,
+      "averageVisionScorePerMinute": 0.8,
+      "averageGoldDifferenceAt10": 10,
+      "averageGoldDifferenceAt15": 20,
+      "averageCsDifferenceAt10": 1,
+      "averageCsDifferenceAt15": 2,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [
+        {
+          "items": [
+            { "id": 3116, "name": "Rylai's Crystal Scepter", "iconUrl": "https://example.com/rylai.png" },
+            { "id": 6653, "name": "Liandry's Torment", "iconUrl": "https://example.com/liandry.png" },
+            { "id": 3157, "name": "Zhonya's Hourglass", "iconUrl": "https://example.com/zhonya.png" }
+          ],
+          "sampleSize": 16,
+          "pickRate": 0.22,
+          "wins": 8,
+          "winRate": 0.5,
+          "lowSample": false,
+          "sampleBand": "CREDIBLE"
+        }
+      ],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "PASSIVE",
+        "name": "Essence Theft",
+        "description": "Ahri heals when she hits champions with her abilities.",
+        "iconUrl": "https://example.com/essence-theft.png"
+      },
+      {
+        "slot": "Q",
+        "name": "Orb of Deception",
+        "description": "Ahri sends out and pulls back her orb, dealing magic then true damage.",
+        "iconUrl": "https://example.com/orb.png"
+      },
+      {
+        "slot": "W",
+        "name": "Fox-Fire",
+        "description": "Ahri releases fox-fires that lock onto nearby enemies.",
+        "iconUrl": "https://example.com/foxfire.png"
+      },
+      {
+        "slot": "E",
+        "name": "Charm",
+        "description": "Ahri blows a kiss that damages and charms the first enemy hit.",
+        "iconUrl": "https://example.com/charm.png"
+      },
+      {
+        "slot": "R",
+        "name": "Spirit Rush",
+        "description": "Ahri dashes and fires essence bolts at nearby enemies.",
+        "iconUrl": "https://example.com/spirit-rush.png"
+      }
+    ]
+  }
+}

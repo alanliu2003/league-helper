@@ -1,0 +1,92 @@
+{
+  "id": "exploratory-only-builds",
+  "description": "EXPLORATORY cores are displayable but not interpretation-allowed; no firm buildInsight.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": true,
+  "expectBuildInsightAllowed": false,
+  "expectMatchupExplanationsAllowed": false,
+  "expectEvidenceContains": ["BUILD_CORE_PRIMARY", "CHAMPION_WIN_RATE"],
+  "expectEvidenceNotCitable": ["BUILD_CORE_PRIMARY"],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 120,
+      "wins": 62,
+      "winRate": 0.5167,
+      "wilsonInterval": {
+        "lowerBound": 0.428,
+        "upperBound": 0.604,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "MEDIUM",
+      "aggregateKdaRatio": 2.8,
+      "averageCsPerMinute": 7.4,
+      "averageDamagePerMinute": 520,
+      "averageVisionScorePerMinute": 1.0,
+      "averageGoldDifferenceAt10": 20,
+      "averageGoldDifferenceAt15": 35,
+      "averageCsDifferenceAt10": 1,
+      "averageCsDifferenceAt15": 2,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [
+        {
+          "items": [
+            { "id": 3116, "name": "Rylai's Crystal Scepter", "iconUrl": "https://example.com/rylai.png" },
+            { "id": 6653, "name": "Liandry's Torment", "iconUrl": "https://example.com/liandry.png" },
+            { "id": 3157, "name": "Zhonya's Hourglass", "iconUrl": "https://example.com/zhonya.png" }
+          ],
+          "sampleSize": 6,
+          "pickRate": 0.05,
+          "wins": 3,
+          "winRate": 0.5,
+          "lowSample": true,
+          "sampleBand": "EXPLORATORY"
+        }
+      ],
+      "startingItems": [
+        {
+          "items": [
+            { "id": 1056, "name": "Doran's Ring", "iconUrl": "https://example.com/doran.png" },
+            { "id": 2003, "name": "Health Potion", "iconUrl": "https://example.com/potion.png" }
+          ],
+          "sampleSize": 5,
+          "pickRate": 0.04,
+          "wins": 2,
+          "winRate": 0.4,
+          "lowSample": true,
+          "sampleBand": "EXPLORATORY"
+        }
+      ],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "Q",
+        "name": "Orb of Deception",
+        "description": "Ahri sends out and pulls back her orb, dealing magic then true damage.",
+        "iconUrl": "https://example.com/orb.png"
+      }
+    ]
+  }
+}

@@ -40,6 +40,13 @@
           recommendation.
         </p>
 
+        <ChampionsChampionAiInsightPanel
+          variant="builds"
+          :response="insight ?? null"
+          :pending="insightPending"
+          :error="insightError"
+        />
+
         <ChampionsChampionBuildSection
           heading-id="starting-items-heading"
           title="Starting items"
@@ -257,6 +264,7 @@
 
 <script setup lang="ts">
 import type {
+  ChampionAiInsightsResponse,
   ChampionBuildRowMetrics,
   ChampionBuildsResponse,
   ChampionCoreBuild,
@@ -269,6 +277,9 @@ const props = defineProps<{
   response: ChampionBuildsResponse | null;
   pending?: boolean;
   error?: string | null;
+  insight?: ChampionAiInsightsResponse | null;
+  insightPending?: boolean;
+  insightError?: string | null;
 }>();
 
 const EXPLORATORY_MIN = 5;

@@ -1,0 +1,91 @@
+{
+  "id": "two-similar-cores",
+  "description": "Two statistically similar CREDIBLE cores with overlapping pick and win rates. Do not claim one is universally better; explain that they perform similarly.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": true,
+  "expectBuildInsightAllowed": true,
+  "expectMatchupExplanationsAllowed": false,
+  "expectEvidenceContains": ["BUILD_CORE_PRIMARY", "BUILD_CORE_SECONDARY"],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 130,
+      "wins": 66,
+      "winRate": 0.5077,
+      "wilsonInterval": {
+        "lowerBound": 0.423,
+        "upperBound": 0.592,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "MEDIUM",
+      "aggregateKdaRatio": 2.7,
+      "averageCsPerMinute": 7.4,
+      "averageDamagePerMinute": 530,
+      "averageVisionScorePerMinute": 1.0,
+      "averageGoldDifferenceAt10": 15,
+      "averageGoldDifferenceAt15": 25,
+      "averageCsDifferenceAt10": 1,
+      "averageCsDifferenceAt15": 1,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [
+        {
+          "items": [
+            { "id": 3116, "name": "Rylai's Crystal Scepter", "iconUrl": "https://example.com/rylai.png" },
+            { "id": 6653, "name": "Liandry's Torment", "iconUrl": "https://example.com/liandry.png" },
+            { "id": 3157, "name": "Zhonya's Hourglass", "iconUrl": "https://example.com/zhonya.png" }
+          ],
+          "sampleSize": 34,
+          "pickRate": 0.26,
+          "wins": 18,
+          "winRate": 0.5294,
+          "lowSample": false,
+          "sampleBand": "CREDIBLE"
+        },
+        {
+          "items": [
+            { "id": 6655, "name": "Luden's Companion", "iconUrl": "https://example.com/luden.png" },
+            { "id": 4645, "name": "Shadowflame", "iconUrl": "https://example.com/shadowflame.png" },
+            { "id": 3089, "name": "Rabadon's Deathcap", "iconUrl": "https://example.com/rabadon.png" }
+          ],
+          "sampleSize": 32,
+          "pickRate": 0.25,
+          "wins": 17,
+          "winRate": 0.5313,
+          "lowSample": false,
+          "sampleBand": "CREDIBLE"
+        }
+      ],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "PASSIVE",
+        "name": "Essence Theft",
+        "description": "Ahri heals when she hits champions with her abilities.",
+        "iconUrl": "https://example.com/essence-theft.png"
+      }
+    ]
+  }
+}

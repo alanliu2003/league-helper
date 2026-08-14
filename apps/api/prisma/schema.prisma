@@ -40,6 +40,14 @@ enum AnalysisReportStatus {
   EXPIRED
 }
 
+/// DB row status: PENDING|READY|FAILED. Distinct from shared public API ChampionAiInsightStatus
+/// (DISABLED|PENDING|AVAILABLE|UNAVAILABLE|LOW_CONFIDENCE). Import Prisma as ChampionAiInsightRowStatus.
+enum ChampionAiInsightStatus {
+  PENDING
+  READY
+  FAILED
+}
+
 enum AnalysisReportType {
   PLAYER_OVERVIEW
   CHAMPION_FOCUS
@@ -704,6 +712,34 @@ model ChampionBuildAggregate {
   @@unique([patch, platformRoute, regionalRoute, queueId, rankTier, teamPosition, championId, category, signature, sourceNormalizationVersion, aggregationVersion], map: "ChampionBuildAggregate_dims_category_sig_key")
   @@index([championId, patch, queueId, rankTier, teamPosition, category], map: "ChampionBuildAggregate_champion_scope_idx")
   @@index([patch, platformRoute, queueId, aggregationVersion, category], map: "ChampionBuildAggregate_patch_platform_queue_idx")
+}
+
+/// Dedicated M16 table; do not reuse PlayerAnalysisReport.
+/// No FK to ChampionStaticData (patch-scoped); insights are analytics-scoped.
+model ChampionAiInsight {
+  id                 String                  @id @default(uuid())
+  championId         Int
+  championKey        String
+  patch              String
+  platformRoute      String
+  queueId            Int
+  rankTier           String                  // public filter: ALL | exact tier
+  teamPosition       String                  // ranking position
+  contextFingerprint String
+  promptVersion      String
+  provider           String
+  model              String
+  status             ChampionAiInsightStatus @default(PENDING)
+  inputContext       Json
+  structuredResult   Json?
+  failureReason      String?
+  generatedAt        DateTime?               @db.Timestamptz(3)
+  createdAt          DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                @updatedAt @db.Timestamptz(3)
+
+  @@unique([championId, patch, platformRoute, queueId, rankTier, teamPosition, contextFingerprint], map: "ChampionAiInsight_scope_fp_key")
+  @@index([championId, patch, status])
+  @@index([status, updatedAt])
 }
 
 // ---------------------------------------------------------------------------

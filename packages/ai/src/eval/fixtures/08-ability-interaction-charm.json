@@ -1,0 +1,112 @@
+{
+  "id": "ability-interaction-charm",
+  "description": "Ahri Charm versus a dash/unstoppable-style opponent ability description. Matchup stats establish the result; ability text may help explain without claiming causation.",
+  "expectGenerationEligible": true,
+  "expectPerformanceConclusionsAllowed": true,
+  "expectBuildInsightAllowed": false,
+  "expectMatchupExplanationsAllowed": true,
+  "expectEvidenceContains": [
+    "MATCHUP_STRONG_Malphite",
+    "ABILITY_Ahri_E",
+    "ABILITY_Malphite_R"
+  ],
+  "input": {
+    "champion": {
+      "championId": 103,
+      "championKey": "Ahri",
+      "name": "Ahri",
+      "position": "MIDDLE"
+    },
+    "scope": {
+      "patch": "16.15",
+      "platform": "na1",
+      "queueId": 420,
+      "tier": "GOLD",
+      "kind": "COLLECTED_SAMPLE"
+    },
+    "stats": {
+      "sampleSize": 150,
+      "wins": 82,
+      "winRate": 0.5467,
+      "wilsonInterval": {
+        "lowerBound": 0.467,
+        "upperBound": 0.624,
+        "confidenceLevel": 0.95
+      },
+      "sampleConfidence": "HIGH",
+      "aggregateKdaRatio": 3.1,
+      "averageCsPerMinute": 7.9,
+      "averageDamagePerMinute": 570,
+      "averageVisionScorePerMinute": 1.1,
+      "averageGoldDifferenceAt10": 50,
+      "averageGoldDifferenceAt15": 90,
+      "averageCsDifferenceAt10": 2,
+      "averageCsDifferenceAt15": 4,
+      "latestEligibleMatchAt": "2026-08-01T00:00:00.000Z"
+    },
+    "builds": {
+      "coreBuilds": [],
+      "startingItems": [],
+      "boots": [],
+      "runes": [],
+      "summonerSpells": [],
+      "skillOrder": []
+    },
+    "matchups": {
+      "strongAgainst": [
+        {
+          "opponent": {
+            "championId": 54,
+            "championKey": "Malphite",
+            "name": "Malphite",
+            "iconUrl": "https://example.com/malphite.png"
+          },
+          "position": "MIDDLE",
+          "sampleSize": 48,
+          "wins": 30,
+          "losses": 18,
+          "winRate": 0.625,
+          "wilsonInterval": {
+            "lowerBound": 0.483,
+            "upperBound": 0.749,
+            "confidenceLevel": 0.95
+          },
+          "sampleConfidence": "MEDIUM",
+          "lowSample": false,
+          "averageGoldDifferenceAt10": 70,
+          "averageGoldDifferenceAt15": 140,
+          "averageCsDifferenceAt10": 3,
+          "averageCsDifferenceAt15": 5
+        }
+      ],
+      "weakAgainst": []
+    },
+    "abilities": [
+      {
+        "slot": "E",
+        "name": "Charm",
+        "description": "Ahri blows a kiss that damages and charms the first enemy hit, interrupting dashes if it connects before they become unstoppable.",
+        "iconUrl": "https://example.com/charm.png",
+        "cooldown": "12/11/10",
+        "cost": "70/75/80",
+        "range": "900"
+      }
+    ],
+    "opponentAbilities": [
+      {
+        "championKey": "Malphite",
+        "abilities": [
+          {
+            "slot": "R",
+            "name": "Unstoppable Force",
+            "description": "Malphite dashes to a target location and becomes unstoppable during the charge, knocking up enemies on arrival.",
+            "iconUrl": "https://example.com/unstoppable-force.png",
+            "cooldown": "130/105/80",
+            "cost": "100",
+            "range": "1000"
+          }
+        ]
+      }
+    ]
+  }
+}

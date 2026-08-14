@@ -1,7 +1,12 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
-import type { ChampionBuildsResponse } from '@league-helper/shared';
-import { CHAMPION_STATS_DISCLAIMER, RANK_TIER_SEMANTICS } from '@league-helper/shared';
+import type { ChampionAiInsightsResponse, ChampionBuildsResponse } from '@league-helper/shared';
+import {
+  CHAMPION_AI_DISCLAIMER,
+  CHAMPION_STATS_DISCLAIMER,
+  RANK_TIER_SEMANTICS,
+} from '@league-helper/shared';
+import ChampionAiInsightPanel from './ChampionAiInsightPanel.vue';
 import ChampionBuildSection from './ChampionBuildSection.vue';
 import ChampionBuildsPanel from './ChampionBuildsPanel.vue';
 
@@ -83,6 +88,9 @@ function mountPanel(
     response?: ChampionBuildsResponse | null;
     pending?: boolean;
     error?: string | null;
+    insight?: ChampionAiInsightsResponse | null;
+    insightPending?: boolean;
+    insightError?: string | null;
   } = {},
 ) {
   return mount(ChampionBuildsPanel, {
@@ -90,10 +98,14 @@ function mountPanel(
       response: props.response === undefined ? response() : props.response,
       pending: props.pending,
       error: props.error,
+      insight: props.insight,
+      insightPending: props.insightPending,
+      insightError: props.insightError,
     },
     global: {
       components: {
         ChampionsChampionBuildSection: ChampionBuildSection,
+        ChampionsChampionAiInsightPanel: ChampionAiInsightPanel,
       },
       stubs: {
         PlayerErrorBanner: { template: '<p class="error">{{ message }}</p>', props: ['message'] },
@@ -258,7 +270,10 @@ describe('ChampionBuildsPanel', () => {
           { ...metrics, items: [identity(3116, "Rylai's Crystal Scepter")] },
           {
             ...metrics,
-            items: [identity(3116, "Rylai's Crystal Scepter"), identity(3089, "Rabadon's Deathcap")],
+            items: [
+              identity(3116, "Rylai's Crystal Scepter"),
+              identity(3089, "Rabadon's Deathcap"),
+            ],
           },
         ],
       }),
@@ -266,5 +281,39 @@ describe('ChampionBuildsPanel', () => {
     const text = wrapper.text();
     expect(text).not.toContain("Rylai's Crystal Scepter");
     expect(text).toContain('Not enough games reached a complete 3-item core build');
+  });
+
+  it('renders an AI explanation after the low-sample banner when insight is available', () => {
+    const buildInsight =
+      'The common core in this sample leans into ability power and repeated poke after the first items.';
+    const wrapper = mountPanel({
+      insight: {
+        disclaimer: CHAMPION_STATS_DISCLAIMER,
+        aiDisclaimer: CHAMPION_AI_DISCLAIMER,
+        sampleScope: { kind: 'COLLECTED_SAMPLE', platform: 'na1', patch: '16.15', queueId: 420 },
+        resolvedFilters: {
+          platform: 'na1',
+          patch: '16.15',
+          queueId: 420,
+          tier: 'ALL',
+          position: 'MIDDLE',
+        },
+        status: 'AVAILABLE',
+        insight: {
+          summary:
+            'Ahri looks slightly favored in this collected mid-lane sample, trading well when charm lands and orb control follows in the lane.',
+          strengths: [],
+          weaknesses: [],
+          buildInsight,
+          matchupInsights: [],
+          generatedAt: '2026-08-13T07:00:00.000Z',
+        },
+      },
+    });
+    const text = wrapper.text();
+    expect(text).toContain('AI explanation');
+    expect(text).toContain(buildInsight);
+    expect(text).toContain('Starting items');
+    expect(text).not.toMatch(/ai coaching/i);
   });
 });

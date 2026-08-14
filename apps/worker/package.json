@@ -26,6 +26,7 @@
     "aggregates:backfill-participant-ranks": "tsx src/cli/backfill-participant-ranks.ts"
   },
   "dependencies": {
+    "@league-helper/ai": "workspace:*",
     "@league-helper/match-analytics": "workspace:*",
     "@league-helper/server-riot": "workspace:*",
     "@league-helper/shared": "workspace:*",

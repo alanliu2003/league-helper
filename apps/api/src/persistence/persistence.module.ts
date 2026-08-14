@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ChampionAggregateReadRepository } from './champion-aggregate-read.repository';
+import { ChampionAiInsightRepository } from './champion-ai-insight.repository';
 import { ChampionBuildReadRepository } from './champion-build-read.repository';
 import { ChampionMatchupReadRepository } from './champion-matchup-read.repository';
 import { ChampionStaticRepository } from './champion-static.repository';
@@ -22,6 +23,7 @@ import { RankSnapshotRepository } from './rank-snapshot.repository';
     ChampionAggregateReadRepository,
     ChampionBuildReadRepository,
     ChampionMatchupReadRepository,
+    ChampionAiInsightRepository,
   ],
   exports: [
     PlayerAccountRepository,
@@ -33,6 +35,7 @@ import { RankSnapshotRepository } from './rank-snapshot.repository';
     ChampionAggregateReadRepository,
     ChampionBuildReadRepository,
     ChampionMatchupReadRepository,
+    ChampionAiInsightRepository,
   ],
 })
 export class PersistenceModule {}

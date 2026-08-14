@@ -5,17 +5,22 @@ import {
   StaticDataStatus,
 } from '@prisma/client';
 import {
+  ChampionAiInsightsQuerySchema,
   ChampionNotFoundError,
   ChampionStatsPositionRequiredError,
   ChampionStatsTableQuerySchema,
+  ValidationFailureError,
 } from '@league-helper/shared';
 import { loadChampionStatsConfig } from '../../config/champion-stats.config';
+import type { ChampionAiConfig } from '../../config/champion-ai.config';
 import { ChampionAggregateReadRepository } from '../../persistence/champion-aggregate-read.repository';
 import { ChampionBuildReadRepository } from '../../persistence/champion-build-read.repository';
 import { ChampionMatchupReadRepository } from '../../persistence/champion-matchup-read.repository';
 import { ChampionStaticRepository } from '../../persistence/champion-static.repository';
+import { parseRequest } from './champion.errors';
 import { assertTablePositionPresent } from './champion-stats-filters';
 import { ChampionBuildsService } from './champion-builds.service';
+import { ChampionInsightsService } from './champion-insights.service';
 import { ChampionMatchupsService } from './champion-matchups.service';
 import { ChampionStatsCacheService } from './champion-stats-cache.service';
 import { ChampionStatsService } from './champion-stats.service';
@@ -60,6 +65,7 @@ async function resetTestData(): Promise<void> {
     TRUNCATE TABLE
       "AnalysisFinding",
       "PlayerAnalysisReport",
+      "ChampionAiInsight",
       "PlayerMetricSnapshot",
       "MatchupAggregate",
       "ChampionAggregationRecalcScope",
@@ -85,6 +91,24 @@ async function resetTestData(): Promise<void> {
       "Patch"
     RESTART IDENTITY CASCADE;
   `);
+}
+
+function championAiConfig(enabled: boolean): ChampionAiConfig {
+  return {
+    enabled,
+    provider: 'openai_compatible',
+    baseUrl: 'http://localhost:11434/v1',
+    model: 'qwen2.5:7b',
+    apiKey: '',
+    timeoutMs: 60_000,
+    temperature: 0.2,
+    maxOutputTokens: 1200,
+    maxRepairAttempts: 1,
+    queueName: 'champion-ai-insight',
+    jobAttempts: 3,
+    stalePendingMs: 120_000,
+    failedRetryMs: 60_000,
+  };
 }
 
 function createServices() {
@@ -127,7 +151,31 @@ function createServices() {
     media as never,
     cache,
   );
-  return { staticService, statsService, buildsService, matchupsService };
+  const insightsRepo = {
+    findByScopeFingerprint: async () => null,
+    upsertPending: async () => ({ id: '11111111-1111-1111-1111-111111111111' }),
+    markReady: async () => undefined,
+    markFailed: async () => undefined,
+  };
+  const insightsProducer = {
+    enqueueInsight: async () => ({
+      published: false,
+      alreadyExists: false,
+      jobId: 'ai_champ_test',
+    }),
+  };
+  const insightsService = (aiEnabled: boolean) =>
+    new ChampionInsightsService(
+      championAiConfig(aiEnabled),
+      config,
+      staticService,
+      statsService,
+      buildsService,
+      matchupsService,
+      insightsRepo as never,
+      insightsProducer as never,
+    );
+  return { staticService, statsService, buildsService, matchupsService, insightsService };
 }
 
 describe('champions API integration', () => {
@@ -849,6 +897,35 @@ describe('champions API integration', () => {
       expect(high.strongAgainst[0]?.opponent.championKey).toBe('Annie');
       expect(high.strongAgainst[0]?.sampleSize).toBe(10);
       expect(high.strongAgainst[0]?.wins).toBe(7);
+    });
+  });
+
+  describe('champion AI insights', () => {
+    it('rejects missing position via ChampionAiInsightsQuerySchema', () => {
+      expect(() =>
+        parseRequest(ChampionAiInsightsQuerySchema, {}, 'champion insights query'),
+      ).toThrow(ValidationFailureError);
+    });
+
+    it('returns DISABLED when AI config is off without 404ing unknown keys', async () => {
+      const { insightsService } = createServices();
+      const response = await insightsService(false).getInsights('Jade_Ahri', {
+        position: 'MIDDLE',
+      });
+      expect(response.status).toBe('DISABLED');
+      expect(response.emptyReason).toBe('AI_DISABLED');
+      expect(response.insight).toBeNull();
+    });
+
+    it('throws ChampionNotFoundError for unknown and numeric keys when AI is enabled', async () => {
+      const { insightsService } = createServices();
+      const service = insightsService(true);
+      await expect(service.getInsights('Jade_Ahri', { position: 'MIDDLE' })).rejects.toBeInstanceOf(
+        ChampionNotFoundError,
+      );
+      await expect(service.getInsights('103', { position: 'MIDDLE' })).rejects.toBeInstanceOf(
+        ChampionNotFoundError,
+      );
     });
   });
 });

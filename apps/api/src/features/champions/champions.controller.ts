@@ -1,6 +1,7 @@
 import { Controller, Get, Inject, Param, Query, UseInterceptors } from '@nestjs/common';
 import { z } from 'zod';
 import {
+  ChampionAiInsightsQuerySchema,
   ChampionBuildsQuerySchema,
   ChampionMatchupsQuerySchema,
   ChampionStatsQuerySchema,
@@ -9,6 +10,7 @@ import {
 import { CorrelationIdInterceptor } from '../../common/correlation-id.interceptor';
 import { parseRequest } from './champion.errors';
 import { ChampionBuildsService } from './champion-builds.service';
+import { ChampionInsightsService } from './champion-insights.service';
 import { ChampionMatchupsService } from './champion-matchups.service';
 import { ChampionStaticService } from './champion-static.service';
 import { ChampionStatsService } from './champion-stats.service';
@@ -28,12 +30,23 @@ export class ChampionsController {
     @Inject(ChampionStatsService) private readonly statsService: ChampionStatsService,
     @Inject(ChampionBuildsService) private readonly buildsService: ChampionBuildsService,
     @Inject(ChampionMatchupsService) private readonly matchupsService: ChampionMatchupsService,
+    @Inject(ChampionInsightsService) private readonly insightsService: ChampionInsightsService,
   ) {}
 
   @Get()
   list(@Query() query: Record<string, unknown>) {
     const parsed = parseRequest(ChampionListQuerySchema, query, 'champions list query');
     return this.staticService.list(parsed);
+  }
+
+  @Get(':championKey/insights')
+  getInsights(@Param('championKey') championKey: string, @Query() query: Record<string, unknown>) {
+    const parsed = parseRequest(
+      ChampionAiInsightsQuerySchema,
+      query ?? {},
+      'champion insights query',
+    );
+    return this.insightsService.getInsights(championKey, parsed);
   }
 
   @Get(':championKey/builds')
@@ -44,7 +57,11 @@ export class ChampionsController {
 
   @Get(':championKey/matchups')
   getMatchups(@Param('championKey') championKey: string, @Query() query: Record<string, unknown>) {
-    const parsed = parseRequest(ChampionMatchupsQuerySchema, query ?? {}, 'champion matchups query');
+    const parsed = parseRequest(
+      ChampionMatchupsQuerySchema,
+      query ?? {},
+      'champion matchups query',
+    );
     return this.matchupsService.getMatchups(championKey, parsed);
   }
 

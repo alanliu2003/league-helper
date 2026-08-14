@@ -11,7 +11,7 @@
     "test": "pnpm db:test:prepare && vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run --exclude \"**/*.integration.test.ts\"",
-    "test:integration": "pnpm db:test:prepare && vitest run \"src/**/*.integration.test.ts\"",
+    "test:integration": "pnpm db:test:prepare && vitest run --config vitest.integration.config.mts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
@@ -43,6 +43,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@league-helper/ai": "workspace:*",
     "@league-helper/match-analytics": "workspace:*",
     "@league-helper/server-riot": "workspace:*",
     "@league-helper/shared": "workspace:*",

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { CHAMPION_STATS_DISCLAIMER } from '@league-helper/shared';
+import { CHAMPION_AI_DISCLAIMER, CHAMPION_STATS_DISCLAIMER } from '@league-helper/shared';
 import {
   installChampionApiMocks,
   installPlayerProfileMock,
@@ -260,6 +260,30 @@ test.describe('champions directory and detail', () => {
     await expect(back).toHaveAttribute('href', /\/champions\?/);
     await expect(back).toHaveAttribute('href', /platform=na1/);
     await expect(back).toHaveAttribute('href', /position=MIDDLE/);
+  });
+
+  test('detail Overview shows AI Insight and disclaimer without replacing stats', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+
+    await gotoApp(page, '/champions/Ahri?platform=na1&queue=420&tier=ALL&patch=14.11');
+    await expect(page.getByRole('heading', { name: 'Ahri', level: 1 })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await selectPositionMid(page, 'detail');
+    await expect(page).toHaveURL(/position=MIDDLE/);
+
+    const insight = page.getByTestId('champion-ai-insight');
+    await expect(insight).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: 'AI Insight' })).toBeVisible();
+    await expect(page.getByText(CHAMPION_AI_DISCLAIMER)).toBeVisible();
+
+    const primary = page.locator('[aria-labelledby="primary-stats-heading"]');
+    await expect(primary.getByText(/80\s*games/i)).toBeVisible();
+
+    await assertNoPuuidOrDeferredSections(page);
   });
 
   test('limited sample (n=18) shows win rate, games, and Limited sample without empty shell', async ({
@@ -572,8 +596,8 @@ test.describe('champions directory and detail', () => {
     await expect(page.getByTestId('champion-matchups-panel')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Weak Against' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Strong Against' })).toBeVisible();
-    await expect(page.getByTestId('weak-against').getByText('Syndra')).toBeVisible();
-    await expect(page.getByTestId('strong-against').getByText('Tristana')).toBeVisible();
+    await expect(page.getByTestId('weak-against').getByRole('link', { name: /Syndra/ })).toBeVisible();
+    await expect(page.getByTestId('strong-against').getByRole('link', { name: /Tristana/ })).toBeVisible();
     await expect(page.getByTestId('weak-against').locator('img[alt="Syndra"]')).toBeVisible();
     await expect(
       page
@@ -586,7 +610,7 @@ test.describe('champions directory and detail', () => {
     await expect(page.getByTestId('champion-matchups-panel').getByText(/\b134\b/)).toHaveCount(0);
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByTestId('weak-against').getByText('Syndra')).toBeVisible();
+    await expect(page.getByTestId('weak-against').getByRole('link', { name: /Syndra/ })).toBeVisible();
     await expect(page.getByTestId('weak-against').getByText('40.0%')).toBeVisible();
     await expect(page.getByTestId('weak-against').getByText(/10\s*games/i)).toBeVisible();
     expect(await hasHorizontalOverflow(page)).toBe(false);

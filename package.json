@@ -6,14 +6,15 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "postinstall": "pnpm --filter @league-helper/shared build && pnpm --filter @league-helper/match-analytics build && pnpm --filter @league-helper/server-riot build",
+    "postinstall": "pnpm --filter @league-helper/shared build && pnpm --filter @league-helper/ai build && pnpm --filter @league-helper/match-analytics build && pnpm --filter @league-helper/server-riot build",
     "dev": "pnpm -r --parallel --filter @league-helper/web --filter @league-helper/api --filter @league-helper/worker run dev",
     "dev:web": "pnpm --filter @league-helper/web dev",
     "dev:api": "pnpm --filter @league-helper/api dev",
     "dev:worker": "pnpm --filter @league-helper/worker dev",
     "worker:dev": "pnpm dev:worker",
     "worker:smoke": "pnpm --filter @league-helper/worker smoke",
-    "build": "pnpm --filter @league-helper/shared build && pnpm --filter @league-helper/match-analytics build && pnpm --filter @league-helper/server-riot build && pnpm --filter @league-helper/api build && pnpm --filter @league-helper/worker build && pnpm --filter @league-helper/web build",
+    "build": "pnpm --filter @league-helper/shared build && pnpm --filter @league-helper/ai build && pnpm --filter @league-helper/match-analytics build && pnpm --filter @league-helper/server-riot build && pnpm --filter @league-helper/api build && pnpm --filter @league-helper/worker build && pnpm --filter @league-helper/web build",
+    "ai:eval": "pnpm --filter @league-helper/ai eval",
     "lint": "pnpm -r --filter \"@league-helper/*\" run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

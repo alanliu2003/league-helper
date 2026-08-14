@@ -4,6 +4,7 @@ import {
 } from '@league-helper/server-riot';
 import {
   CHAMPION_AGGREGATION_QUEUE_NAME,
+  CHAMPION_AI_INSIGHT_QUEUE_NAME,
   MATCH_INGESTION_QUEUE_NAME,
   PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
   PARTICIPANT_RANK_OBSERVATION_FRESHNESS_MS,
@@ -258,5 +259,101 @@ export function loadParticipantRankEnrichmentWorkerConfig(
         name: RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV,
       },
     ),
+  };
+}
+
+export type ChampionAiProviderId = 'openai_compatible';
+
+export type ChampionAiInsightWorkerConfig = {
+  enabled: boolean;
+  queueName: string;
+  concurrency: number;
+  jobAttempts: number;
+  provider: ChampionAiProviderId;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  timeoutMs: number;
+  temperature: number;
+  maxOutputTokens: number;
+  maxRepairAttempts: number;
+};
+
+const DEFAULT_AI_BASE_URL = 'http://localhost:11434/v1';
+const DEFAULT_AI_MODEL = 'qwen2.5:7b';
+
+function parseFiniteNumber(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new ValidationFailureError(`${name} must be a finite number.`, { received: raw });
+  }
+  return value;
+}
+
+function parseNonEmptyString(raw: string | undefined, fallback: string): string {
+  if (raw === undefined) {
+    return fallback;
+  }
+  const value = raw.trim();
+  if (value.length === 0) {
+    return fallback;
+  }
+  return value;
+}
+
+function parseAiProvider(raw: string | undefined): ChampionAiProviderId {
+  if (raw === undefined || raw.trim() === '') {
+    return 'openai_compatible';
+  }
+  const value = raw.trim();
+  if (value === 'openai_compatible') {
+    return value;
+  }
+  throw new ValidationFailureError('AI_PROVIDER must be openai_compatible.', { received: raw });
+}
+
+/**
+ * Load champion AI insight worker settings from environment.
+ * Never contacts a provider — a down Ollama instance must not prevent startup.
+ */
+export function loadChampionAiInsightWorkerConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): ChampionAiInsightWorkerConfig {
+  return {
+    enabled: parseBoolean(env.AI_ENABLED, false, 'AI_ENABLED'),
+    queueName: parseNonEmptyString(env.CHAMPION_AI_INSIGHT_QUEUE_NAME, CHAMPION_AI_INSIGHT_QUEUE_NAME),
+    concurrency: parseBoundedInt(env.CHAMPION_AI_INSIGHT_WORKER_CONCURRENCY, 1, {
+      min: 1,
+      max: 8,
+      name: 'CHAMPION_AI_INSIGHT_WORKER_CONCURRENCY',
+    }),
+    jobAttempts: parseBoundedInt(env.CHAMPION_AI_INSIGHT_JOB_ATTEMPTS, 3, {
+      min: 1,
+      max: 20,
+      name: 'CHAMPION_AI_INSIGHT_JOB_ATTEMPTS',
+    }),
+    provider: parseAiProvider(env.AI_PROVIDER),
+    baseUrl: parseNonEmptyString(env.AI_BASE_URL, DEFAULT_AI_BASE_URL),
+    model: parseNonEmptyString(env.AI_MODEL, DEFAULT_AI_MODEL),
+    apiKey: env.AI_API_KEY ?? '',
+    timeoutMs: parseBoundedInt(env.AI_TIMEOUT_MS, 60_000, {
+      min: 1_000,
+      max: 600_000,
+      name: 'AI_TIMEOUT_MS',
+    }),
+    temperature: parseFiniteNumber(env.AI_TEMPERATURE, 0.2, 'AI_TEMPERATURE'),
+    maxOutputTokens: parseBoundedInt(env.AI_MAX_OUTPUT_TOKENS, 1200, {
+      min: 1,
+      max: 16_000,
+      name: 'AI_MAX_OUTPUT_TOKENS',
+    }),
+    maxRepairAttempts: parseBoundedInt(env.AI_MAX_REPAIR_ATTEMPTS, 1, {
+      min: 0,
+      max: 5,
+      name: 'AI_MAX_REPAIR_ATTEMPTS',
+    }),
   };
 }

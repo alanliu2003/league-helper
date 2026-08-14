@@ -32,8 +32,8 @@
 
       <template v-else>
         <p class="text-sm text-[var(--lh-muted)]">
-          Display floor {{ response.displayFloor }} games. Ranked by Wilson lower bound, not raw
-          win rate.
+          Display floor {{ response.displayFloor }} games. Ranked by Wilson lower bound, not raw win
+          rate.
         </p>
 
         <section aria-labelledby="weak-against-heading" data-testid="weak-against">
@@ -66,12 +66,20 @@
                     {{ row.sampleSize }} {{ row.sampleSize === 1 ? 'game' : 'games' }}
                   </p>
                   <p
-                    :class="row.lowSample ? 'text-[var(--lh-muted)]' : confidenceToneClass(row.sampleConfidence)"
+                    :class="
+                      row.lowSample
+                        ? 'text-[var(--lh-muted)]'
+                        : confidenceToneClass(row.sampleConfidence)
+                    "
                   >
                     {{ row.lowSample ? 'Limited sample' : row.sampleConfidence }}
                   </p>
                 </div>
               </NuxtLink>
+              <ChampionsChampionAiMatchupWhy
+                v-if="whyByOpponent[row.opponent.championKey]"
+                :text="whyByOpponent[row.opponent.championKey] ?? ''"
+              />
             </li>
           </ul>
         </section>
@@ -106,12 +114,20 @@
                     {{ row.sampleSize }} {{ row.sampleSize === 1 ? 'game' : 'games' }}
                   </p>
                   <p
-                    :class="row.lowSample ? 'text-[var(--lh-muted)]' : confidenceToneClass(row.sampleConfidence)"
+                    :class="
+                      row.lowSample
+                        ? 'text-[var(--lh-muted)]'
+                        : confidenceToneClass(row.sampleConfidence)
+                    "
                   >
                     {{ row.lowSample ? 'Limited sample' : row.sampleConfidence }}
                   </p>
                 </div>
               </NuxtLink>
+              <ChampionsChampionAiMatchupWhy
+                v-if="whyByOpponent[row.opponent.championKey]"
+                :text="whyByOpponent[row.opponent.championKey] ?? ''"
+              />
             </li>
           </ul>
         </section>
@@ -121,7 +137,11 @@
 </template>
 
 <script setup lang="ts">
-import type { ChampionMatchupsResponse, ChampionRankingPosition } from '@league-helper/shared';
+import type {
+  ChampionAiPublicInsight,
+  ChampionMatchupsResponse,
+  ChampionRankingPosition,
+} from '@league-helper/shared';
 import { computed } from 'vue';
 import { buildChampionPath } from '~/utils/champion-links';
 import {
@@ -139,9 +159,18 @@ const props = defineProps<{
   queue?: number | null;
   tier?: string | null;
   patch?: string | null;
+  matchupInsights?: ChampionAiPublicInsight['matchupInsights'];
 }>();
 
 const positionLabel = computed(() => positionDisplayLabel(props.position));
+
+const whyByOpponent = computed((): Record<string, string> => {
+  const map: Record<string, string> = {};
+  for (const entry of props.matchupInsights ?? []) {
+    map[entry.opponentChampionKey] = entry.text;
+  }
+  return map;
+});
 
 function opponentPath(championKey: string): string {
   return buildChampionPath(championKey, {

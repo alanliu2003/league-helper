@@ -223,6 +223,11 @@ export {
   ParticipantRankEnrichmentJobPayloadSchema,
   ParticipantRankEnrichmentJobTypeSchema,
   buildParticipantRankEnrichmentBullMqJobId,
+  CHAMPION_AI_INSIGHT_QUEUE_NAME,
+  CHAMPION_AI_INSIGHT_JOB_NAME,
+  ChampionAiInsightJobPayloadSchema,
+  ChampionAiInsightJobTypeSchema,
+  buildChampionAiInsightBullMqJobId,
   BULLMQ_DEFAULT_PREFIX,
   parseBullMqRedisConnectionInfo,
   createBullMqConnectionOptions,
@@ -239,6 +244,10 @@ export {
   type ParticipantRankEnrichmentJobName,
   type ParticipantRankEnrichmentJobPayload,
   type ParticipantRankEnrichmentJobType,
+  type ChampionAiInsightQueueName,
+  type ChampionAiInsightJobName,
+  type ChampionAiInsightJobPayload,
+  type ChampionAiInsightJobType,
   type BullMqRedisConnectionInfo,
 } from './job-queues';
 
@@ -367,6 +376,25 @@ export {
   type ChampionMatchupsQuery,
   type ChampionMatchupsResponse,
 } from './champion-matchups';
+
+export {
+  CHAMPION_AI_DISCLAIMER,
+  CHAMPION_AI_PROMPT_VERSION,
+  ChampionAiInsightStatusSchema,
+  ChampionAiInsightsEmptyReasonSchema,
+  ChampionAiInsightsQuerySchema,
+  ChampionAiPublicInsightSchema,
+  ChampionAiInsightsResponseSchema,
+  ChampionAiGroundedClaimSchema,
+  ChampionAiStoredInsightSchema,
+  type ChampionAiInsightStatus,
+  type ChampionAiInsightsEmptyReason,
+  type ChampionAiInsightsQuery,
+  type ChampionAiPublicInsight,
+  type ChampionAiInsightsResponse,
+  type ChampionAiGroundedClaim,
+  type ChampionAiStoredInsight,
+} from './champion-insights';
 
 export {
   ABILITY_SLOTS,

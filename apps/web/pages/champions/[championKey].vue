@@ -190,6 +190,14 @@
             <template v-if="statsResponse || !statsPending">
               <ChampionsChampionPerformanceCards v-if="filters.position" :metrics="exactMetrics" />
 
+              <ChampionsChampionAiInsightPanel
+                v-if="filters.position"
+                variant="overview"
+                :response="insightsResponse"
+                :pending="insightsPending"
+                :error="insightsError"
+              />
+
               <ChampionsChampionPositionBreakdown
                 :entries="positionBreakdown"
                 :selected-position="filters.position"
@@ -212,6 +220,9 @@
             :response="buildsResponse"
             :pending="buildsPending"
             :error="buildsError"
+            :insight="insightsResponse"
+            :insight-pending="insightsPending"
+            :insight-error="insightsError"
           />
         </div>
 
@@ -234,6 +245,7 @@
             :queue="filters.queue"
             :tier="filters.tier"
             :patch="filters.patch"
+            :matchup-insights="matchupInsights"
           />
         </div>
 
@@ -263,16 +275,21 @@
 <script setup lang="ts">
 import {
   getPlatformDisplayName,
+  type ChampionAiInsightsResponse,
   type ChampionBuildsResponse,
   type ChampionMatchupsResponse,
   type ChampionRankingPosition,
   type ChampionStatsTierFilter,
   type PlatformRoute,
 } from '@league-helper/shared';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useChampionDetailPage } from '~/composables/useChampionDetailPage';
 import { ChampionApiError, useChampionApi } from '~/composables/useChampionApi';
 import { championFreshnessBanner } from '~/utils/champion-freshness';
+import {
+  nextChampionInsightPollDelayMs,
+  shouldContinueChampionInsightPoll,
+} from '~/utils/champion-insights-poll';
 import { buildChampionsDirectoryPath } from '~/utils/champion-links';
 import { positionDisplayLabel } from '~/utils/champion-metrics';
 import type { ChampionDetailTabId } from '~/components/champions/ChampionDetailTabs.vue';
@@ -315,12 +332,31 @@ const activeTab = ref<ChampionDetailTabId>('overview');
 const buildsResponse = ref<ChampionBuildsResponse | null>(null);
 const buildsPending = ref(false);
 const buildsError = ref<string | null>(null);
-const { getChampionBuilds, getChampionMatchups } = useChampionApi();
+const { getChampionBuilds, getChampionMatchups, getChampionInsights } = useChampionApi();
 let buildsRequestId = 0;
 let matchupsRequestId = 0;
+let insightsRequestId = 0;
+let insightsPollTimers: ReturnType<typeof setTimeout>[] = [];
 const matchupsResponse = ref<ChampionMatchupsResponse | null>(null);
 const matchupsPending = ref(false);
 const matchupsError = ref<string | null>(null);
+const insightsResponse = ref<ChampionAiInsightsResponse | null>(null);
+const insightsPending = ref(false);
+const insightsError = ref<string | null>(null);
+
+const matchupInsights = computed(() => {
+  if (insightsResponse.value?.status !== 'AVAILABLE') {
+    return undefined;
+  }
+  return insightsResponse.value.insight?.matchupInsights;
+});
+
+function clearInsightsPoll(): void {
+  for (const timer of insightsPollTimers) {
+    clearTimeout(timer);
+  }
+  insightsPollTimers = [];
+}
 
 async function loadBuilds(): Promise<void> {
   if (
@@ -410,6 +446,87 @@ async function loadMatchups(): Promise<void> {
   }
 }
 
+async function fetchInsights(requestId: number, startedAt: number): Promise<void> {
+  const key = champion.value?.championKey;
+  if (!key || !filters.position || !filters.platform || filters.queue === null) {
+    if (requestId === insightsRequestId) {
+      insightsPending.value = false;
+    }
+    return;
+  }
+  try {
+    const response = await getChampionInsights(key, {
+      platform: filters.platform,
+      queue: filters.queue,
+      position: filters.position,
+      tier: filters.tier ?? 'ALL',
+      patch: filters.patch ?? undefined,
+    });
+    if (requestId !== insightsRequestId) {
+      return;
+    }
+    insightsError.value = null;
+    const elapsed = Date.now() - startedAt;
+    if (shouldContinueChampionInsightPoll(response.status, elapsed)) {
+      insightsResponse.value = response;
+      insightsPending.value = true;
+      const delay = nextChampionInsightPollDelayMs(elapsed);
+      const timer = setTimeout(() => {
+        void fetchInsights(requestId, startedAt);
+      }, delay);
+      insightsPollTimers.push(timer);
+      return;
+    }
+    if (response.status === 'PENDING') {
+      insightsResponse.value = {
+        ...response,
+        status: 'UNAVAILABLE',
+        emptyReason: 'GENERATION_FAILED',
+        insight: null,
+      };
+      insightsPending.value = false;
+      return;
+    }
+    insightsResponse.value = response;
+    insightsPending.value = false;
+  } catch (error) {
+    if (requestId !== insightsRequestId) {
+      return;
+    }
+    insightsResponse.value = null;
+    insightsPending.value = false;
+    insightsError.value =
+      error instanceof ChampionApiError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : 'Unable to load champion insights.';
+  }
+}
+
+async function loadInsights(): Promise<void> {
+  clearInsightsPoll();
+  if (!filters.position || !filters.platform || filters.queue === null) {
+    insightsRequestId += 1;
+    insightsResponse.value = null;
+    insightsPending.value = false;
+    insightsError.value = null;
+    return;
+  }
+  const key = champion.value?.championKey;
+  if (!key) {
+    insightsRequestId += 1;
+    insightsResponse.value = null;
+    insightsPending.value = false;
+    insightsError.value = null;
+    return;
+  }
+  const requestId = ++insightsRequestId;
+  insightsPending.value = true;
+  insightsError.value = null;
+  await fetchInsights(requestId, Date.now());
+}
+
 watch(activeTab, () => {
   if (activeTab.value === 'builds') {
     void loadBuilds();
@@ -438,6 +555,7 @@ watch(
     if (activeTab.value === 'matchups') {
       void loadMatchups();
     }
+    void loadInsights();
   },
 );
 
@@ -477,6 +595,11 @@ const freshnessBanner = computed(() =>
 
 onMounted(() => {
   void initialize();
+});
+
+onUnmounted(() => {
+  clearInsightsPoll();
+  insightsRequestId += 1;
 });
 
 watch(routeKey, async (next, prev) => {
