@@ -36,7 +36,7 @@ describe('worker bootstrap (dev:worker)', () => {
     expect(config.queueName).toBe(CHAMPION_AGGREGATION_QUEUE_NAME);
     expect(CHAMPION_AGGREGATION_JOB_NAME).toBe('RECALCULATE_CHAMPION_AGGREGATES');
     expect(config.sourceNormalizationVersion).toBe('1');
-    expect(config.aggregationVersion).toBe('1');
+    expect(config.aggregationVersion).toBe('2');
   });
 
   it('registers participant-rank-enrichment with developer-key concurrency 1', () => {

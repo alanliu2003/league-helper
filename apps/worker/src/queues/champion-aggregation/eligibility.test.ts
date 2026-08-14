@@ -47,6 +47,7 @@ function baseParticipant(
     timePlayedSeconds: 1800,
     totalDamageDealtToChampions: 20_000,
     visionScore: 30,
+    goldEarned: 12_000,
     goldDifferenceAt10: 100,
     goldDifferenceAt15: 200,
     csDifferenceAt10: 5,
@@ -294,6 +295,34 @@ describe('evaluateMatchEligibility', () => {
       expect(result.contributors[0]?.exact.position).toBe('UNKNOWN');
       expect(result.contributors[0]?.rankClassification.contributesToUnknown).toBe(false);
     }
+  });
+
+  it('passes valid goldEarned through to the contributor', () => {
+    const result = evaluateMatchEligibility(baseMatch(), [baseParticipant()], VERSIONS);
+    expect(result.eligible).toBe(true);
+    if (result.eligible) {
+      expect(result.contributors[0]?.goldEarned).toBe(12_000);
+    }
+  });
+
+  it('rejects participants with negative goldEarned', () => {
+    const result = evaluateMatchEligibility(
+      baseMatch(),
+      [baseParticipant({ goldEarned: -1 })],
+      VERSIONS,
+    );
+    expect(result).toEqual({ eligible: false, reason: 'NO_ELIGIBLE_PARTICIPANTS' });
+  });
+
+  it('rejects participants with missing goldEarned', () => {
+    const participant = baseParticipant();
+    const { goldEarned: _omitted, ...withoutGold } = participant;
+    const result = evaluateMatchEligibility(
+      baseMatch(),
+      [withoutGold as ParticipantEligibilityRow],
+      VERSIONS,
+    );
+    expect(result).toEqual({ eligible: false, reason: 'NO_ELIGIBLE_PARTICIPANTS' });
   });
 
   it('rejects participants with non-positive championId', () => {

@@ -17,6 +17,7 @@ function baseMetrics(
     averageCsPerMinute: 8,
     averageDamagePerMinute: 700,
     averageVisionScorePerMinute: 0.8,
+    averageGoldPerMinute: 400,
     averageGoldDifferenceAt10: 100,
     averageGoldDifferenceAt15: null,
     averageCsDifferenceAt10: 2,

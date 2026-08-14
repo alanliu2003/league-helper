@@ -199,7 +199,7 @@ export function loadChampionAggregationWorkerConfig(
     ),
     aggregationVersion: parseNonEmptyVersion(
       env.CHAMPION_AGGREGATION_VERSION,
-      '1',
+      '2',
       'CHAMPION_AGGREGATION_VERSION',
     ),
     matchupAggregationVersion: parseNonEmptyVersion(

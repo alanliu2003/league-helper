@@ -715,6 +715,7 @@ describe('champion aggregate CLIs', () => {
       totalGameSeconds: 0,
       totalDamageToChampions: 0,
       totalVisionScore: 0,
+      totalGoldEarned: 0,
       totalGoldDifferenceAt10: null,
       goldDifferenceAt10Samples: 0,
       totalGoldDifferenceAt15: null,

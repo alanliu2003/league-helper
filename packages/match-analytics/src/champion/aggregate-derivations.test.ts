@@ -20,6 +20,7 @@ function baseContribution(
     gameSeconds: 60,
     damageToChampions: 0,
     visionScore: 0,
+    goldEarned: 0,
     goldDifferenceAt10: null,
     goldDifferenceAt15: null,
     csDifferenceAt10: null,
@@ -46,6 +47,7 @@ describe('deriveChampionAggregateMetrics', () => {
       gameSeconds: 60,
       damageToChampions: 0,
       visionScore: 0,
+      goldEarned: 0,
       goldDifferenceAt10: null,
       goldDifferenceAt15: null,
       csDifferenceAt10: null,
@@ -106,6 +108,7 @@ describe('deriveChampionAggregateMetrics', () => {
         d.averageCsPerMinute,
         d.averageDamagePerMinute,
         d.averageVisionScorePerMinute,
+        d.averageGoldPerMinute,
         d.averageGoldDifferenceAt10,
         d.averageGoldDifferenceAt15,
         d.averageCsDifferenceAt10,
@@ -131,6 +134,15 @@ describe('deriveChampionAggregateMetrics', () => {
     expect(d.averageCsDifferenceAt15).toBe(0);
     expect(d.averageGoldDifferenceAt15).toBeNull();
     expect(d.averageCsDifferenceAt10).toBeNull();
+  });
+
+  it('derives averageGoldPerMinute from totalGoldEarned and totalGameSeconds', () => {
+    const acc = accumulateContribution(
+      emptyAccumulator(),
+      baseContribution({ goldEarned: 12_000, gameSeconds: 1800 }),
+    );
+    const derived = deriveChampionAggregateMetrics(acc, { confidenceLevel: 0.95 });
+    expect(derived.averageGoldPerMinute).toBe(400);
   });
 
   it('does not round derived values', () => {

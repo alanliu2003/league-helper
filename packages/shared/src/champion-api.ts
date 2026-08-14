@@ -147,6 +147,7 @@ export const ChampionAggregateMetricsSchema = z.object({
   averageCsPerMinute: FiniteNumberSchema.nullable(),
   averageDamagePerMinute: FiniteNumberSchema.nullable(),
   averageVisionScorePerMinute: FiniteNumberSchema.nullable(),
+  averageGoldPerMinute: FiniteNumberSchema.nullable(),
   averageGoldDifferenceAt10: FiniteNumberSchema.nullable(),
   averageGoldDifferenceAt15: FiniteNumberSchema.nullable(),
   averageCsDifferenceAt10: FiniteNumberSchema.nullable(),

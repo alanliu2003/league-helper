@@ -54,6 +54,7 @@ function baseAggregate(overrides: Record<string, unknown> = {}) {
     totalGameSeconds: 12_000,
     totalDamageToChampions: 90_000,
     totalVisionScore: 400,
+    totalGoldEarned: 80_000,
     totalGoldDifferenceAt10: 400,
     goldDifferenceAt10Samples: 40,
     totalGoldDifferenceAt15: 800,

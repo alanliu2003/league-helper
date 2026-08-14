@@ -26,6 +26,7 @@ export type DerivedChampionAggregateMetrics = {
   readonly averageCsPerMinute: number | null;
   readonly averageDamagePerMinute: number | null;
   readonly averageVisionScorePerMinute: number | null;
+  readonly averageGoldPerMinute: number | null;
   readonly averageGoldDifferenceAt10: number | null;
   readonly averageGoldDifferenceAt15: number | null;
   readonly averageCsDifferenceAt10: number | null;
@@ -99,6 +100,7 @@ export function deriveChampionAggregateMetrics(
       accumulator.totalVisionScore,
       accumulator.totalGameSeconds,
     ),
+    averageGoldPerMinute: perMinute(accumulator.totalGoldEarned, accumulator.totalGameSeconds),
     averageGoldDifferenceAt10: averageFromSamples(
       accumulator.totalGoldDifferenceAt10,
       accumulator.goldDifferenceAt10Samples,

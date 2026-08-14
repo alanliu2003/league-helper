@@ -591,6 +591,7 @@ model ChampionAggregate {
   totalGameSeconds           Int       @default(0)
   totalDamageToChampions     Int       @default(0)
   totalVisionScore           Int       @default(0)
+  totalGoldEarned            Int       @default(0)
   totalGoldDifferenceAt10    Int?
   goldDifferenceAt10Samples  Int       @default(0)
   totalGoldDifferenceAt15    Int?

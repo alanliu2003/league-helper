@@ -167,6 +167,7 @@ function metrics(
     averageCsPerMinute: number;
     averageDamagePerMinute: number;
     averageVisionScorePerMinute: number;
+    averageGoldPerMinute: number;
     averageGoldDifferenceAt10: number | null;
     averageGoldDifferenceAt15: number | null;
     averageCsDifferenceAt10: number | null;
@@ -193,6 +194,7 @@ function metrics(
     averageCsPerMinute: overrides.averageCsPerMinute ?? 7.4,
     averageDamagePerMinute: overrides.averageDamagePerMinute ?? 620,
     averageVisionScorePerMinute: overrides.averageVisionScorePerMinute ?? 1.1,
+    averageGoldPerMinute: overrides.averageGoldPerMinute ?? 400,
     averageGoldDifferenceAt10:
       overrides.averageGoldDifferenceAt10 === undefined ? 90 : overrides.averageGoldDifferenceAt10,
     averageGoldDifferenceAt15:

@@ -10,6 +10,7 @@ export type ChampionAggregateContribution = {
   readonly gameSeconds: number;
   readonly damageToChampions: number;
   readonly visionScore: number;
+  readonly goldEarned: number;
   readonly goldDifferenceAt10: number | null;
   readonly goldDifferenceAt15: number | null;
   readonly csDifferenceAt10: number | null;
@@ -27,6 +28,7 @@ export type ChampionAggregateAccumulator = {
   totalGameSeconds: number;
   totalDamageToChampions: number;
   totalVisionScore: number;
+  totalGoldEarned: number;
   totalGoldDifferenceAt10: number | null;
   goldDifferenceAt10Samples: number;
   totalGoldDifferenceAt15: number | null;
@@ -116,6 +118,7 @@ function assertContribution(contribution: ChampionAggregateContribution): void {
   assertNonNegativeInteger(contribution.gameSeconds, 'gameSeconds');
   assertNonNegativeInteger(contribution.damageToChampions, 'damageToChampions');
   assertNonNegativeInteger(contribution.visionScore, 'visionScore');
+  assertNonNegativeInteger(contribution.goldEarned, 'goldEarned');
   assertOptionalSignedFinite(contribution.goldDifferenceAt10, 'goldDifferenceAt10');
   assertOptionalSignedFinite(contribution.goldDifferenceAt15, 'goldDifferenceAt15');
   assertOptionalSignedFinite(contribution.csDifferenceAt10, 'csDifferenceAt10');
@@ -158,6 +161,7 @@ export function emptyAccumulator(): ChampionAggregateAccumulator {
     totalGameSeconds: 0,
     totalDamageToChampions: 0,
     totalVisionScore: 0,
+    totalGoldEarned: 0,
     totalGoldDifferenceAt10: null,
     goldDifferenceAt10Samples: 0,
     totalGoldDifferenceAt15: null,
@@ -207,6 +211,7 @@ export function accumulateContribution(
     totalGameSeconds: accumulator.totalGameSeconds + contribution.gameSeconds,
     totalDamageToChampions: accumulator.totalDamageToChampions + contribution.damageToChampions,
     totalVisionScore: accumulator.totalVisionScore + contribution.visionScore,
+    totalGoldEarned: accumulator.totalGoldEarned + contribution.goldEarned,
     totalGoldDifferenceAt10: gold10.total,
     goldDifferenceAt10Samples: gold10.samples,
     totalGoldDifferenceAt15: gold15.total,
@@ -279,6 +284,7 @@ export function combineAccumulators(
     totalGameSeconds: left.totalGameSeconds + right.totalGameSeconds,
     totalDamageToChampions: left.totalDamageToChampions + right.totalDamageToChampions,
     totalVisionScore: left.totalVisionScore + right.totalVisionScore,
+    totalGoldEarned: left.totalGoldEarned + right.totalGoldEarned,
     totalGoldDifferenceAt10: gold10.total,
     goldDifferenceAt10Samples: gold10.samples,
     totalGoldDifferenceAt15: gold15.total,

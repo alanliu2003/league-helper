@@ -115,6 +115,7 @@ describe('champion response schemas', () => {
     averageCsPerMinute: 7.1,
     averageDamagePerMinute: 600,
     averageVisionScorePerMinute: 1.2,
+    averageGoldPerMinute: 400,
     averageGoldDifferenceAt10: 120,
     averageGoldDifferenceAt15: 200,
     averageCsDifferenceAt10: 5,
@@ -130,6 +131,12 @@ describe('champion response schemas', () => {
     tags: ['Mage', 'Assassin'],
     iconUrl: 'https://example.com/ahri.png',
   };
+
+  it('requires and parses averageGoldPerMinute', () => {
+    expect(ChampionAggregateMetricsSchema.parse(metrics).averageGoldPerMinute).toBe(400);
+    const { averageGoldPerMinute: _omitted, ...withoutGold } = metrics;
+    expect(() => ChampionAggregateMetricsSchema.parse(withoutGold)).toThrow();
+  });
 
   it('rejects NaN and Infinity in numeric metric fields', () => {
     expect(() =>

@@ -166,6 +166,7 @@ describe('recalculateForMatch scope race', () => {
       timePlayedSeconds: 1800,
       totalDamageDealtToChampions: 20_000,
       visionScore: 30,
+      goldEarned: 12_000,
       goldDifferenceAt10: null,
       goldDifferenceAt15: null,
       csDifferenceAt10: null,
