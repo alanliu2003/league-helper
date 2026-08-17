@@ -50,7 +50,7 @@ describe('MatchParticipantRow', () => {
       }),
     );
     expect(wrapper.findAll('[aria-label="Empty item slot"]').length).toBe(6);
-    expect(wrapper.get('img[alt="Infinity Edge"]').exists()).toBe(true);
+    expect(wrapper.find('img[alt="Infinity Edge"]').exists()).toBe(true);
     expect(wrapper.text()).not.toContain('Gold diff @10');
   });
 });

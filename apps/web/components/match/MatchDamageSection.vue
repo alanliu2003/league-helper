@@ -33,7 +33,6 @@ const props = defineProps<{
   teams: PublicMatchTeam[];
   ingestionStatus: PublicMatchIngestionStatus;
   originPlayerId?: string | null;
-  remake?: boolean;
 }>();
 
 const participants = computed(() => props.teams.flatMap((team) => team.participants));

@@ -49,7 +49,6 @@
         :teams="detail.teams"
         :ingestion-status="detail.match.ingestionStatus"
         :origin-player-id="originPlayerId"
-        :remake="detail.match.remake"
       />
 
       <MatchEarlyGameSection

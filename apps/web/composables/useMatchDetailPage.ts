@@ -101,7 +101,8 @@ export function useMatchDetailPage(): MatchDetailPageController {
   const api = useMatchApi();
   const playerQuery = computed(() => {
     const value = route.query.player;
-    return Array.isArray(value) ? value[0] : value;
+    const raw = Array.isArray(value) ? value[0] : value;
+    return raw ?? undefined;
   });
 
   return createMatchDetailPageController(
