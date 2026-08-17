@@ -81,6 +81,20 @@ export function findDisallowedNumericToken(
   return undefined;
 }
 
+export function findDisallowedNumericTokenForTexts(
+  texts: string[],
+  allowlist: Set<string>,
+): string | undefined {
+  for (const text of texts) {
+    for (const token of extractNumericTokens(text)) {
+      if (!allowlist.has(token)) {
+        return token;
+      }
+    }
+  }
+  return undefined;
+}
+
 export function isAnalyticsTimingToken(token: string, texts: readonly string[]): boolean {
   const escaped = escapeRegExp(token);
   const patterns = [

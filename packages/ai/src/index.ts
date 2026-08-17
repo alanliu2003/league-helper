@@ -39,6 +39,19 @@ export type {
   PlayerPlaystyleInternalContext,
 } from './context/player-playstyle-types';
 export { PLAYER_PLAYSTYLE_PROMPT_VERSION } from '@league-helper/shared';
+export {
+  buildPlayerPlaystyleSystemPrompt,
+  buildPlayerPlaystyleUserPrompt,
+} from './prompts/player-playstyle-v1';
+export {
+  PlayerPlaystyleValidationError,
+  validatePlayerPlaystyleInsight,
+} from './validation/player-playstyle-output';
+export type {
+  PlayerPlaystyleValidationCode,
+  PlayerPlaystyleValidationDetails,
+  PlayerPlaystyleValidationReason,
+} from './validation/player-playstyle-output';
 export { ChampionAiInsightValidationError, validateChampionAiInsight } from './validation/output';
 export type {
   ChampionAiInsightValidationCode,
@@ -78,10 +91,19 @@ export {
   CHAMPION_AI_STORED_INSIGHT_JSON_SCHEMA_NAME,
 } from './generation/stored-insight.json-schema';
 export {
+  PLAYER_PLAYSTYLE_STORED_INSIGHT_JSON_SCHEMA,
+  PLAYER_PLAYSTYLE_STORED_INSIGHT_JSON_SCHEMA_NAME,
+} from './generation/stored-player-playstyle.json-schema';
+export {
   AiOutputValidationError,
   generateChampionInsight,
 } from './generation/generate-champion-insight';
+export { generatePlayerPlaystyle } from './generation/generate-player-playstyle';
 export type {
   GenerateChampionInsightConfig,
   GenerateChampionInsightInput,
 } from './generation/generate-champion-insight';
+export type {
+  GeneratePlayerPlaystyleConfig,
+  GeneratePlayerPlaystyleInput,
+} from './generation/generate-player-playstyle';
