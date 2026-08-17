@@ -120,6 +120,7 @@ async function resetTestData(): Promise<void> {
       "AnalysisFinding",
       "PlayerAnalysisReport",
       "ChampionAiInsight",
+      "PlayerPlaystyleInsight",
       "PlayerMetricSnapshot",
       "MatchupAggregate",
       "ChampionBuildAggregate",
