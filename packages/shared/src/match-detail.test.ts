@@ -45,9 +45,9 @@ describe('ordering', () => {
   });
 
   it('orders teams 100 then 200 then others', () => {
-    expect(sortMatchTeams([{ teamId: 200 }, { teamId: 100 }, { teamId: 300 }]).map((t) => t.teamId)).toEqual([
-      100, 200, 300,
-    ]);
+    expect(
+      sortMatchTeams([{ teamId: 200 }, { teamId: 100 }, { teamId: 300 }]).map((t) => t.teamId),
+    ).toEqual([100, 200, 300]);
   });
 
   it('orders positions TOP…SUPPORT then UNKNOWN by participantId', () => {
@@ -86,6 +86,18 @@ describe('PublicMatchDetailSchema', () => {
     const parsed = PublicMatchDetailSchema.parse(validDetail({ remake: true, winningSide: null }));
     expect(parsed.match.remake).toBe(true);
     expect(parsed.match.winningSide).toBeNull();
+    expect(parsed.timeline.productCoverage).toBe('NONE');
+    expect(parsed.timeline.productAvailable).toBe(false);
+  });
+
+  it('keeps per-feature coverage off the overview timeline', () => {
+    const parsed = PublicMatchDetailSchema.parse(validDetail());
+    expect(parsed.timeline).not.toHaveProperty('items');
+    expect(parsed.timeline).not.toHaveProperty('skills');
+    expect(parsed.timeline).not.toHaveProperty('kills');
+    expect(parsed.timeline).not.toHaveProperty('objectives');
+    expect(parsed.timeline).not.toHaveProperty('frames');
+    expect(parsed.timeline).not.toHaveProperty('coverage');
   });
 
   it('requires seven item slots', () => {
@@ -95,9 +107,7 @@ describe('PublicMatchDetailSchema', () => {
   });
 
   it('preserves UNKNOWN team positions', () => {
-    const parsed = PublicMatchDetailSchema.parse(
-      validDetail({ participantPosition: 'UNKNOWN' }),
-    );
+    const parsed = PublicMatchDetailSchema.parse(validDetail({ participantPosition: 'UNKNOWN' }));
     expect(parsed.teams[0]!.participants[0]!.teamPosition).toBe('UNKNOWN');
   });
 });
@@ -184,7 +194,12 @@ function validDetail(
       ingestionStatus: 'COMPLETED',
       winningSide: overrides.winningSide === undefined ? 'BLUE' : overrides.winningSide,
     },
-    timeline: { status: 'UNAVAILABLE', metricsAvailable: false },
+    timeline: {
+      status: 'UNAVAILABLE',
+      metricsAvailable: false,
+      productCoverage: 'NONE',
+      productAvailable: false,
+    },
     teams: [
       {
         teamId: 100,
@@ -192,7 +207,14 @@ function validDetail(
         win: !(overrides.remake ?? false),
         bans: [],
         objectives: [],
-        totals: { kills: 1, deaths: 0, assists: 1, goldEarned: 8000, damageDealtToChampions: 10000, visionScore: 10 },
+        totals: {
+          kills: 1,
+          deaths: 0,
+          assists: 1,
+          goldEarned: 8000,
+          damageDealtToChampions: 10000,
+          visionScore: 10,
+        },
         participants: [
           participant({
             teamPosition: overrides.participantPosition ?? 'TOP',
@@ -205,7 +227,14 @@ function validDetail(
         win: false,
         bans: [],
         objectives: [],
-        totals: { kills: 0, deaths: 1, assists: 0, goldEarned: 7000, damageDealtToChampions: 8000, visionScore: 8 },
+        totals: {
+          kills: 0,
+          deaths: 1,
+          assists: 0,
+          goldEarned: 7000,
+          damageDealtToChampions: 8000,
+          visionScore: 8,
+        },
         participants: [
           participant({
             participantId: 6,

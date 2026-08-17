@@ -100,9 +100,14 @@ export const PublicMatchTeamSchema = z.object({
 });
 export type PublicMatchTeam = z.infer<typeof PublicMatchTeamSchema>;
 
+export const PublicMatchProductCoverageSchema = z.enum(['NONE', 'STORED', 'INELIGIBLE']);
+export type PublicMatchProductCoverage = z.infer<typeof PublicMatchProductCoverageSchema>;
+
 export const PublicMatchTimelineSchema = z.object({
   status: PublicMatchTimelineStatusSchema,
   metricsAvailable: z.boolean(),
+  productCoverage: PublicMatchProductCoverageSchema,
+  productAvailable: z.boolean(),
 });
 export type PublicMatchTimeline = z.infer<typeof PublicMatchTimelineSchema>;
 
@@ -172,7 +177,11 @@ export function parseMatchTeamObjectives(value: unknown): PublicMatchObjective[]
     }
 
     const objective = entry as Record<string, unknown>;
-    if (typeof objective.kills !== 'number' || !Number.isInteger(objective.kills) || objective.kills < 0) {
+    if (
+      typeof objective.kills !== 'number' ||
+      !Number.isInteger(objective.kills) ||
+      objective.kills < 0
+    ) {
       continue;
     }
 
@@ -184,16 +193,18 @@ export function parseMatchTeamObjectives(value: unknown): PublicMatchObjective[]
   }
 
   const displayIndex = (type: KnownObjectiveType) => {
-    const index = MATCH_OBJECTIVE_DISPLAY_ORDER.indexOf(type as (typeof MATCH_OBJECTIVE_DISPLAY_ORDER)[number]);
+    const index = MATCH_OBJECTIVE_DISPLAY_ORDER.indexOf(
+      type as (typeof MATCH_OBJECTIVE_DISPLAY_ORDER)[number],
+    );
     return index === -1 ? MATCH_OBJECTIVE_DISPLAY_ORDER.length : index;
   };
 
   return parsed.sort((a, b) => displayIndex(a.type) - displayIndex(b.type));
 }
 
-export function sortMatchParticipants<T extends { teamPosition: NormalizedPosition; participantId: number }>(
-  rows: T[],
-): T[] {
+export function sortMatchParticipants<
+  T extends { teamPosition: NormalizedPosition; participantId: number },
+>(rows: T[]): T[] {
   return [...rows].sort((a, b) => {
     const d = POSITION_ORDER.indexOf(a.teamPosition) - POSITION_ORDER.indexOf(b.teamPosition);
     return d !== 0 ? d : a.participantId - b.participantId;

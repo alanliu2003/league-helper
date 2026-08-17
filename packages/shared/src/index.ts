@@ -448,6 +448,7 @@ export {
 export {
   PublicMatchTeamSideSchema,
   PublicMatchTimelineStatusSchema,
+  PublicMatchProductCoverageSchema,
   PublicMatchItemSlotSchema,
   PublicMatchObjectiveSchema,
   PublicMatchParticipantSchema,
@@ -464,6 +465,7 @@ export {
   participantHasTimelineMetrics,
   type PublicMatchTeamSide,
   type PublicMatchTimelineStatus,
+  type PublicMatchProductCoverage,
   type PublicMatchItemSlot,
   type PublicMatchObjective,
   type PublicMatchParticipant,
@@ -472,6 +474,36 @@ export {
   type PublicMatchTimeline,
   type PublicMatchDetail,
 } from './match-detail';
+
+export {
+  PublicMatchTimelineCoverageSchema,
+  PERSISTED_TIMELINE_EVENT_TYPES,
+  PublicMatchTimelineEventTypeSchema,
+  PublicMatchTimelineParticipantSchema,
+  PublicMatchPositionSchema,
+  PublicMatchTimelineEventSchema,
+  PublicMatchKillEventSchema,
+  PublicMatchObjectiveEventTypeSchema,
+  PublicMatchObjectiveEventSchema,
+  PublicMatchTimelineFrameSchema,
+  PublicMatchGoldSeriesSchema,
+  PublicMatchTimelineDetailSchema,
+  mapPublicObjectiveType,
+  publicSkillSlotLabel,
+  deriveTeamGoldSeries,
+  coverageFromEventAndFrameRows,
+  type PublicMatchTimelineCoverage,
+  type PublicMatchTimelineEventType,
+  type PublicMatchTimelineParticipant,
+  type PublicMatchPosition,
+  type PublicMatchTimelineEvent,
+  type PublicMatchKillEvent,
+  type PublicMatchObjectiveEventType,
+  type PublicMatchObjectiveEvent,
+  type PublicMatchTimelineFrame,
+  type PublicMatchGoldSeries,
+  type PublicMatchTimelineDetail,
+} from './match-timeline';
 
 export {
   PlayerRefreshStateSchema,
