@@ -232,5 +232,19 @@ export function participantHasTimelineMetrics(p: {
   xpDifferenceAt15: number | null;
   killParticipation: number | null;
 }): boolean {
-  return Object.values(p).some((v) => v != null);
+  return (
+    p.goldAt10 != null ||
+    p.goldAt15 != null ||
+    p.csAt10 != null ||
+    p.csAt15 != null ||
+    p.xpAt10 != null ||
+    p.xpAt15 != null ||
+    p.goldDifferenceAt10 != null ||
+    p.goldDifferenceAt15 != null ||
+    p.csDifferenceAt10 != null ||
+    p.csDifferenceAt15 != null ||
+    p.xpDifferenceAt10 != null ||
+    p.xpDifferenceAt15 != null ||
+    p.killParticipation != null
+  );
 }

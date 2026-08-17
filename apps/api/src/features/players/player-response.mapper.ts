@@ -108,6 +108,16 @@ export function computeCsPerMinute(
   return totalCs / (gameDurationSeconds / 60);
 }
 
+export function computeGoldPerMinute(
+  goldEarned: number | null | undefined,
+  gameDurationSeconds: number,
+): number | null {
+  if (goldEarned == null || gameDurationSeconds <= 0) {
+    return null;
+  }
+  return goldEarned / (gameDurationSeconds / 60);
+}
+
 function buildItemIconUrl(
   itemId: number,
   version: string | null | undefined,
