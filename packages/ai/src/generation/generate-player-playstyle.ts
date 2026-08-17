@@ -9,8 +9,7 @@ import {
   PlayerPlaystyleValidationError,
   validatePlayerPlaystyleInsight,
 } from '../validation/player-playstyle-output';
-import { AiOutputValidationError } from './generate-champion-insight';
-import type { ChampionAiInsightValidationError } from '../validation/output';
+import { AiOutputValidationError } from './ai-output-validation-error';
 import {
   PLAYER_PLAYSTYLE_STORED_INSIGHT_JSON_SCHEMA,
   PLAYER_PLAYSTYLE_STORED_INSIGHT_JSON_SCHEMA_NAME,
@@ -80,15 +79,10 @@ export async function generatePlayerPlaystyle(
   }
 
   throw new AiOutputValidationError('Player playstyle insight output failed validation.', {
-    cause: asOutputCause(
+    cause:
       lastValidationError ??
-        new PlayerPlaystyleValidationError('SCHEMA', 'Insight output is invalid.'),
-    ),
+      new PlayerPlaystyleValidationError('SCHEMA', 'Insight output is invalid.'),
   });
-}
-
-function asOutputCause(error: PlayerPlaystyleValidationError): ChampionAiInsightValidationError {
-  return error as unknown as ChampionAiInsightValidationError;
 }
 
 function unknownHandleLabel(error: PlayerPlaystyleValidationError): string {
@@ -134,7 +128,9 @@ function buildPlayerPlaystyleRepairMessage(error: PlayerPlaystyleValidationError
     case 'COMBAT_NOT_ALLOWED':
       return ['combat MUST be null because combatAllowed is false.'].join('\n');
     case 'CHAMPION_TENDENCIES_NOT_ALLOWED':
-      return ['championTendencies MUST be [] because championTendenciesAllowed is false.'].join('\n');
+      return ['championTendencies MUST be [] because championTendenciesAllowed is false.'].join(
+        '\n',
+      );
     case 'DISALLOWED_CHAMPION_TENDENCY':
       return [
         'championTendencies may only use championKey and position pairs from the supplied slices.',

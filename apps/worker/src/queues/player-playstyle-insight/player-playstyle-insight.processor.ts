@@ -5,6 +5,7 @@ import {
   OpenAiCompatibleProvider,
   PlayerPlaystyleInternalContextSchema,
   generatePlayerPlaystyle,
+  readAiValidationDiagnostic,
   type AiProvider,
   type GeneratePlayerPlaystyleConfig,
 } from '@league-helper/ai';
@@ -105,30 +106,8 @@ function formatFailureReason(code: string, detail?: string): string {
   return truncateFailureReason(raw);
 }
 
-function readValidationCause(error: AiOutputValidationError): {
-  code?: string;
-  reason?: string;
-  handle?: string;
-  token?: string;
-} {
-  const cause = error.cause as unknown;
-  if (!cause || typeof cause !== 'object') {
-    return {};
-  }
-  const record = cause as {
-    code?: unknown;
-    details?: { reason?: unknown; handle?: unknown; token?: unknown };
-  };
-  return {
-    code: typeof record.code === 'string' ? record.code : undefined,
-    reason: typeof record.details?.reason === 'string' ? record.details.reason : undefined,
-    handle: typeof record.details?.handle === 'string' ? record.details.handle : undefined,
-    token: typeof record.details?.token === 'string' ? record.details.token : undefined,
-  };
-}
-
 function validationFailureCode(error: AiOutputValidationError): 'GROUNDING' | 'VALIDATION' {
-  const causeCode = readValidationCause(error).code;
+  const causeCode = readAiValidationDiagnostic(error.cause).code;
   if (causeCode && GROUNDING_CODES.has(causeCode)) {
     return 'GROUNDING';
   }
@@ -276,7 +255,7 @@ export async function processPlayerPlaystyleInsightJob(
     structuredResult = await runGenerate(deps, config, parsedContext.data);
   } catch (error: unknown) {
     if (error instanceof AiOutputValidationError) {
-      const diagnostic = readValidationCause(error);
+      const diagnostic = readAiValidationDiagnostic(error.cause);
       logger.error('Player playstyle validation failed', {
         jobId: safeJobId(job.id),
         kind: diagnostic.code ?? 'SCHEMA',

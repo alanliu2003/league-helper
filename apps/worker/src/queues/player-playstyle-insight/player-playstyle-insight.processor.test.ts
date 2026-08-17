@@ -244,7 +244,7 @@ describe('processPlayerPlaystyleInsightJob', () => {
   it('marks FAILED with VALIDATION then throws UnrecoverableError on schema validation errors', async () => {
     const generate = vi.fn().mockRejectedValue(
       new AiOutputValidationError('Player playstyle insight output failed validation.', {
-        cause: new PlayerPlaystyleValidationError('SCHEMA', 'Insight output is invalid.') as never,
+        cause: new PlayerPlaystyleValidationError('SCHEMA', 'Insight output is invalid.'),
       }),
     );
     const store = createStore();
@@ -264,7 +264,7 @@ describe('processPlayerPlaystyleInsightJob', () => {
   it('marks FAILED with GROUNDING then throws UnrecoverableError on numeric grounding errors', async () => {
     const generate = vi.fn().mockRejectedValue(
       new AiOutputValidationError('Player playstyle insight output failed validation.', {
-        cause: new PlayerPlaystyleValidationError('NUMERIC', 'Disallowed numeric token.') as never,
+        cause: new PlayerPlaystyleValidationError('NUMERIC', 'Disallowed numeric token.'),
       }),
     );
     const store = createStore();

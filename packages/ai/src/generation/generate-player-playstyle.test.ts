@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { PlayerMetricComparison, PlayerPlaystyleMetricId, PlayerPlaystyleStoredInsight } from '@league-helper/shared';
+import type {
+  PlayerMetricComparison,
+  PlayerPlaystyleMetricId,
+  PlayerPlaystyleStoredInsight,
+} from '@league-helper/shared';
 import { buildPlayerPlaystyleContext } from '../context/player-playstyle-builder';
 import { buildPlayerPlaystyleEvidenceHandleMapping } from '../context/player-playstyle-evidence';
-import type { PlayerPlaystyleBuilderInput, PlayerPlaystyleBuilderProfile } from '../context/player-playstyle-types';
+import type {
+  PlayerPlaystyleBuilderInput,
+  PlayerPlaystyleBuilderProfile,
+} from '../context/player-playstyle-types';
 import { PlayerPlaystyleValidationError } from '../validation/player-playstyle-output';
 import {
   buildPlayerPlaystyleSystemPrompt,
@@ -202,6 +209,7 @@ describe('generatePlayerPlaystyle', () => {
     const validationError = thrown as AiOutputValidationError;
     expect(validationError.retryable).toBe(false);
     expect(validationError.cause).toBeInstanceOf(PlayerPlaystyleValidationError);
+    expect(validationError.cause.code).toBe('EVIDENCE');
     expect(provider.requests).toHaveLength(2);
   });
 });

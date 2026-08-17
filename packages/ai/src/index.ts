@@ -107,7 +107,9 @@ export {
 export {
   AiOutputValidationError,
   generateChampionInsight,
+  readAiValidationDiagnostic,
 } from './generation/generate-champion-insight';
+export type { AiValidationDiagnostic } from './generation/generate-champion-insight';
 export { generatePlayerPlaystyle } from './generation/generate-player-playstyle';
 export type {
   GenerateChampionInsightConfig,
