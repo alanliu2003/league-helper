@@ -33,10 +33,23 @@ export type {
   ChampionInsightFingerprintInput,
   PlayerPlaystyleFingerprintInput,
 } from './context/fingerprint';
+export {
+  PlayerPlaystyleChampionSliceSchema,
+  PlayerPlaystyleEvidenceEntrySchema,
+  PlayerPlaystyleInternalContextSchema,
+  PlayerPlaystyleMatchIdentitySchema,
+  PlayerPlaystyleMixEntrySchema,
+  PlayerPlaystyleOutputPolicySchema,
+} from './context/player-playstyle-types';
 export type {
   PlayerPlaystyleBuilderInput,
+  PlayerPlaystyleChampionSlice,
+  PlayerPlaystyleEvidenceEntry,
   PlayerPlaystyleGenerationPayload,
   PlayerPlaystyleInternalContext,
+  PlayerPlaystyleMatchIdentity,
+  PlayerPlaystyleMixEntry,
+  PlayerPlaystyleOutputPolicy,
 } from './context/player-playstyle-types';
 export { PLAYER_PLAYSTYLE_PROMPT_VERSION } from '@league-helper/shared';
 export {
@@ -69,10 +82,7 @@ export {
   buildChampionInsightOutputPolicy,
   buildEvidenceHandleMapping,
 } from './context/evidence-handles';
-export type {
-  ChampionInsightOutputPolicy,
-  GenerationEvidence,
-} from './context/evidence-handles';
+export type { ChampionInsightOutputPolicy, GenerationEvidence } from './context/evidence-handles';
 export {
   CHAMPION_AI_PROMPT_VERSION,
   buildChampionInsightSystemPrompt,

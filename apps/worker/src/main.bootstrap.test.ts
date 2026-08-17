@@ -12,6 +12,8 @@ import {
   MATCH_INGESTION_QUEUE_NAME,
   PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
   PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
+  PLAYER_AI_PLAYSTYLE_JOB_NAME,
+  PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
   resolveBullMqPrefix,
 } from '@league-helper/shared';
 import {
@@ -20,6 +22,7 @@ import {
   loadChampionAiInsightWorkerConfig,
   loadMatchIngestionWorkerConfig,
   loadParticipantRankEnrichmentWorkerConfig,
+  loadPlayerPlaystyleInsightWorkerConfig,
 } from './config.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -56,7 +59,24 @@ describe('worker bootstrap (dev:worker)', () => {
     expect(config.jobAttempts).toBe(3);
     expect(config.provider).toBe('openai_compatible');
     expect(config.baseUrl).toBe('http://localhost:11434/v1');
-    expect(config.model).toBe('qwen2.5:7b');
+    expect(config.model).toBe('qwen2.5:14b');
+    expect(config.apiKey).toBe('');
+    expect(config.timeoutMs).toBe(60_000);
+    expect(config.temperature).toBe(0.2);
+    expect(config.maxOutputTokens).toBe(1200);
+    expect(config.maxRepairAttempts).toBe(1);
+  });
+
+  it('registers player-ai-playstyle with concurrency 1 and AI disabled by default', () => {
+    const config = loadPlayerPlaystyleInsightWorkerConfig({});
+    expect(config.queueName).toBe(PLAYER_AI_PLAYSTYLE_QUEUE_NAME);
+    expect(PLAYER_AI_PLAYSTYLE_JOB_NAME).toBe('GENERATE_PLAYER_PLAYSTYLE_INSIGHT');
+    expect(config.enabled).toBe(false);
+    expect(config.concurrency).toBe(1);
+    expect(config.jobAttempts).toBe(3);
+    expect(config.provider).toBe('openai_compatible');
+    expect(config.baseUrl).toBe('http://localhost:11434/v1');
+    expect(config.model).toBe('qwen2.5:14b');
     expect(config.apiKey).toBe('');
     expect(config.timeoutMs).toBe(60_000);
     expect(config.temperature).toBe(0.2);
@@ -70,6 +90,8 @@ describe('worker bootstrap (dev:worker)', () => {
     expect(QUEUE_NAME).not.toBe(CHAMPION_AGGREGATION_QUEUE_NAME);
     expect(QUEUE_NAME).not.toBe(PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME);
     expect(QUEUE_NAME).not.toBe(CHAMPION_AI_INSIGHT_QUEUE_NAME);
+    expect(QUEUE_NAME).not.toBe(PLAYER_AI_PLAYSTYLE_QUEUE_NAME);
+    expect(CHAMPION_AI_INSIGHT_QUEUE_NAME).not.toBe(PLAYER_AI_PLAYSTYLE_QUEUE_NAME);
   });
 
   it('shares the default BullMQ prefix with the API', () => {
@@ -83,10 +105,12 @@ describe('worker bootstrap (dev:worker)', () => {
     expect(source).toContain('createChampionAggregationWorker');
     expect(source).toContain('createParticipantRankEnrichmentWorker');
     expect(source).toContain('createChampionAiInsightWorker');
+    expect(source).toContain('createPlayerPlaystyleInsightWorker');
     expect(source).toContain('MATCH_INGESTION_JOB_NAME');
     expect(source).toContain('CHAMPION_AGGREGATION_JOB_NAME');
     expect(source).toContain('PARTICIPANT_RANK_ENRICHMENT_JOB_NAME');
     expect(source).toContain('CHAMPION_AI_INSIGHT_JOB_NAME');
+    expect(source).toContain('PLAYER_AI_PLAYSTYLE_JOB_NAME');
     expect(source).not.toContain('createDefaultWorker');
     expect(source).not.toContain('createDefaultQueue');
     expect(source).toContain('all_consumers_initialized');
@@ -94,8 +118,10 @@ describe('worker bootstrap (dev:worker)', () => {
     expect(source).toContain('championAggregationWorker.close()');
     expect(source).toContain('participantRankEnrichmentWorker.close()');
     expect(source).toContain('championAiInsightWorker.close()');
+    expect(source).toContain('playerPlaystyleInsightWorker.close()');
     expect(source).not.toContain('AI_API_KEY');
     expect(source).not.toContain('championAiInsightConfig.apiKey');
+    expect(source).not.toContain('playerPlaystyleInsightConfig.apiKey');
   });
 
   it('smoke CLI remains available separately', () => {
