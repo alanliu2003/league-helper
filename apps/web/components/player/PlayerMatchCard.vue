@@ -3,97 +3,89 @@
     class="overflow-hidden rounded-xl border"
     :class="resultBorderClass"
     style="background: var(--lh-surface)"
-    :aria-label="`${resultLabel} as ${championDisplayName}`"
   >
-    <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
-      <div class="flex min-w-0 flex-1 items-start gap-3">
-        <component
-          :is="championPath ? 'NuxtLink' : 'div'"
-          v-bind="championPath ? { to: championPath } : {}"
-          class="shrink-0"
-        >
+    <NuxtLink
+      :to="matchPath"
+      class="block p-4 text-inherit no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--lh-accent)]"
+      :aria-label="cardAriaLabel"
+    >
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <div class="flex min-w-0 flex-1 items-start gap-3">
           <img
             v-if="match.championIconUrl && !championImageFailed"
             :src="match.championIconUrl"
-            :alt="`${championDisplayName} icon`"
+            :alt="championDisplayName"
             width="48"
             height="48"
-            class="h-12 w-12 rounded-md object-cover"
+            class="h-12 w-12 shrink-0 rounded-md object-cover"
             style="background: var(--lh-surface-inset)"
             loading="lazy"
             @error="championImageFailed = true"
           />
           <div
             v-else
-            class="flex h-12 w-12 items-center justify-center rounded-md text-xs font-semibold text-[var(--lh-muted)]"
+            class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-xs font-semibold text-[var(--lh-muted)]"
             style="background: var(--lh-surface-inset)"
             aria-hidden="true"
           >
             {{ championInitials }}
           </div>
-        </component>
 
-        <div class="min-w-0 flex-1 space-y-1.5">
-          <div class="flex flex-wrap items-center gap-2">
-            <span
-              class="rounded px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide"
-              :class="resultBadgeClass"
-            >
-              {{ resultLabel }}
-            </span>
-            <NuxtLink
-              v-if="championPath"
-              :to="championPath"
-              class="truncate font-medium text-[var(--lh-text)] no-underline hover:text-[var(--lh-accent)]"
-            >
-              {{ championDisplayName }}
-            </NuxtLink>
-            <span v-else class="truncate font-medium">{{ championDisplayName }}</span>
-            <span v-if="roleLabel" :class="roleLabelClass">{{ roleLabel }}</span>
-          </div>
-
-          <p class="text-sm">
-            <span class="font-semibold tabular-nums">{{ kdaLabel }}</span>
-            <span class="text-[var(--lh-muted)]"> KDA</span>
-            <span class="mx-2 text-[var(--lh-muted)]">·</span>
-            <span class="tabular-nums">{{ csLabel }}</span>
-            <span v-if="kpLabel" class="text-[var(--lh-muted)]">
-              <span class="mx-2">·</span>{{ kpLabel }} KP
-            </span>
-          </p>
-
-          <ul v-if="visibleItems.length > 0" class="flex flex-wrap gap-1" aria-label="Items">
-            <li v-for="(item, index) in visibleItems" :key="`${item.id}-${index}`">
-              <img
-                v-if="item.iconUrl"
-                :src="item.iconUrl"
-                :alt="`Item ${item.id}`"
-                width="24"
-                height="24"
-                class="h-6 w-6 rounded-sm object-cover"
-                style="background: var(--lh-surface-inset)"
-                loading="lazy"
-              />
+          <div class="min-w-0 flex-1 space-y-1.5">
+            <div class="flex flex-wrap items-center gap-2">
               <span
-                v-else
-                class="flex h-6 w-6 items-center justify-center rounded-sm text-[10px] text-[var(--lh-muted)]"
-                style="background: var(--lh-surface-inset)"
-                :title="`Item ${item.id}`"
+                class="rounded px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide"
+                :class="resultBadgeClass"
               >
-                {{ item.id }}
+                {{ resultLabel }}
               </span>
-            </li>
-          </ul>
+              <span class="truncate font-medium text-[var(--lh-text)]">{{ championDisplayName }}</span>
+              <span v-if="roleLabel" :class="roleLabelClass">{{ roleLabel }}</span>
+            </div>
+
+            <p class="text-sm">
+              <span class="font-semibold tabular-nums">{{ kdaLabel }}</span>
+              <span class="text-[var(--lh-muted)]"> KDA</span>
+              <span class="mx-2 text-[var(--lh-muted)]">·</span>
+              <span class="tabular-nums">{{ csLabel }}</span>
+              <span v-if="kpLabel" class="text-[var(--lh-muted)]">
+                <span class="mx-2">·</span>{{ kpLabel }} KP
+              </span>
+            </p>
+
+            <ul v-if="visibleItems.length > 0" class="flex flex-wrap gap-1" aria-label="Items">
+              <li v-for="(item, index) in visibleItems" :key="`${item.id}-${index}`">
+                <img
+                  v-if="item.iconUrl"
+                  :src="item.iconUrl"
+                  :alt="`Item ${item.id}`"
+                  width="24"
+                  height="24"
+                  class="h-6 w-6 rounded-sm object-cover"
+                  style="background: var(--lh-surface-inset)"
+                  loading="lazy"
+                />
+                <span
+                  v-else
+                  class="flex h-6 w-6 items-center justify-center rounded-sm text-[10px] text-[var(--lh-muted)]"
+                  style="background: var(--lh-surface-inset)"
+                  :title="`Item ${item.id}`"
+                >
+                  {{ item.id }}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="shrink-0 space-y-0.5 text-right text-xs text-[var(--lh-muted)] sm:min-w-[7rem]">
+          <p>{{ queueLabel }}</p>
+          <p>{{ durationLabel }}</p>
+          <p>{{ relativeTimeLabel }}</p>
+          <p v-if="patchLabel">Patch {{ patchLabel }}</p>
         </div>
       </div>
-
-      <div class="shrink-0 space-y-0.5 text-right text-xs text-[var(--lh-muted)] sm:min-w-[7rem]">
-        <p>{{ queueLabel }}</p>
-        <p>{{ durationLabel }}</p>
-        <p>{{ relativeTimeLabel }}</p>
-        <p v-if="patchLabel">Patch {{ patchLabel }}</p>
-      </div>
-    </div>
+    </NuxtLink>
   </article>
 </template>
 
@@ -108,10 +100,11 @@ import {
   championDisplayName as getChampionName,
   championInitials as getChampionInitials,
 } from '~/utils/champion-display';
-import { buildChampionPath } from '~/utils/champion-links';
+import { buildMatchPath } from '~/utils/match-links';
 
 const props = defineProps<{
   match: PublicMatchSummary;
+  playerId?: string | null;
 }>();
 
 const championImageFailed = ref(false);
@@ -124,10 +117,11 @@ const championInitials = computed(() =>
   getChampionInitials(props.match.championName, props.match.championId ?? 0),
 );
 
-const championPath = computed(() => {
-  const key = props.match.championKey?.trim();
-  return key ? buildChampionPath(key) : null;
-});
+const matchPath = computed(() => buildMatchPath(props.match.id, props.playerId));
+
+const cardAriaLabel = computed(
+  () => `View match details, ${resultLabel.value} as ${championDisplayName.value}`,
+);
 
 const resultLabel = computed(() => {
   switch (props.match.result) {

@@ -47,6 +47,7 @@
         :queue-category="queueCategory"
         :show-manual-refresh="pollTimedOut || !isPolling"
         :last-updated="profileMeta.player.lastResolvedAt"
+        :player-id="playerId"
         @refresh="onRefresh"
         @update:queue-category="onQueueCategory"
       />
