@@ -579,6 +579,7 @@ Match IDs are queued for the worker (Milestone 6). Search/refresh responses retu
 - Redis lock + `PLAYER_REFRESH_COOLDOWN_SECONDS` prevent duplicate Riot calls.
 - Profile DTOs are cached in Redis (`PLAYER_PROFILE_CACHE_TTL_SECONDS`) and invalidated after writes.
 - Read endpoints (`GET` profile/ranks/mastery/matches/refresh-status/playstyle) use the database/cache only — they never call Riot.
+- `GET /api/matches/:matchId` returns a dedicated match-detail DTO (League Helper match UUID, not Riot match id). Match cards on the player page navigate to `/matches/:matchId?player=:playerId`. There is no Riot match-id search.
 
 ### Player playstyle (Milestone 17)
 
@@ -589,6 +590,14 @@ Baselines are collected-sample `ChampionAggregate` rows (champion + normalized p
 Deterministic direction cards render when `AI_ENABLED=false`; the AI panel is omitted. Mixed-role overall rows show the direction of mean per-match deltas — never a raw blended CS/min, GPM, or DPM. Champion slices use matched per-match baseline means, not a modal aggregate. Overall has no KDA row; slice KDA is a ratio-of-sums vs the mean matched aggregate KDA.
 
 The player page still loads match history if playstyle GET fails. AI copy is an interpretation layer only — Qwen does not compute metrics or choose ABOVE/NEAR/BELOW.
+
+### Match detail (Milestone 18)
+
+`GET /api/matches/:matchId` loads one stored match (teams, participants, public account names, timeline fetch status) and maps items/runes/spells from the match patch with a latest-static fallback. The public id is `Match.id` (UUID already present on match cards). The DTO omits `externalMatchId`, PUUIDs, raw payloads, and rank internals.
+
+The page is `/matches/:matchId`. Player-page match cards are a single link to that route with `?player=` for origin-row highlight only. Opening the URL without a query still renders both teams. Incomplete ingestions return HTTP 200 with a banner. Remakes are labeled Remake, not a winning side.
+
+This endpoint does not write player rows, call Riot, use Redis, or read `rawPayload`.
 
 ### Mock browser testing
 
