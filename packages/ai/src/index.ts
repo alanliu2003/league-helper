@@ -1,5 +1,17 @@
 export { buildChampionInsightContext, listEvidenceIds } from './context/builder';
-export { fingerprintChampionInsightContext } from './context/fingerprint';
+export {
+  FINGERPRINT_VOLATILE_KEYS,
+  fingerprintCanonicalPayload,
+} from './context/canonical-fingerprint';
+export {
+  fingerprintChampionInsightContext,
+  fingerprintPlayerPlaystyleContext,
+} from './context/fingerprint';
+export { buildPlayerPlaystyleContext } from './context/player-playstyle-builder';
+export {
+  buildPlayerPlaystyleEvidenceHandleMapping,
+  buildPlayerPlaystyleGenerationPayload,
+} from './context/player-playstyle-evidence';
 export {
   ChampionInsightAbilitySchema,
   ChampionInsightBuildRowSchema,
@@ -17,7 +29,16 @@ export type {
   ChampionInsightMatchupRow,
   ChampionInsightPerformance,
 } from './context/types';
-export type { ChampionInsightFingerprintInput } from './context/fingerprint';
+export type {
+  ChampionInsightFingerprintInput,
+  PlayerPlaystyleFingerprintInput,
+} from './context/fingerprint';
+export type {
+  PlayerPlaystyleBuilderInput,
+  PlayerPlaystyleGenerationPayload,
+  PlayerPlaystyleInternalContext,
+} from './context/player-playstyle-types';
+export { PLAYER_PLAYSTYLE_PROMPT_VERSION } from '@league-helper/shared';
 export { ChampionAiInsightValidationError, validateChampionAiInsight } from './validation/output';
 export type {
   ChampionAiInsightValidationCode,
