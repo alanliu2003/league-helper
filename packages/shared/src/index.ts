@@ -446,6 +446,34 @@ export {
 } from './champion-abilities';
 
 export {
+  PublicMatchTeamSideSchema,
+  PublicMatchTimelineStatusSchema,
+  PublicMatchItemSlotSchema,
+  PublicMatchObjectiveSchema,
+  PublicMatchParticipantSchema,
+  PublicMatchTeamTotalsSchema,
+  PublicMatchTeamSchema,
+  PublicMatchTimelineSchema,
+  PublicMatchDetailSchema,
+  MATCH_OBJECTIVE_DISPLAY_ORDER,
+  matchTeamSide,
+  parseMatchTeamObjectives,
+  sortMatchParticipants,
+  sortMatchTeams,
+  winningSideFromTeams,
+  participantHasTimelineMetrics,
+  type PublicMatchTeamSide,
+  type PublicMatchTimelineStatus,
+  type PublicMatchItemSlot,
+  type PublicMatchObjective,
+  type PublicMatchParticipant,
+  type PublicMatchTeamTotals,
+  type PublicMatchTeam,
+  type PublicMatchTimeline,
+  type PublicMatchDetail,
+} from './match-detail';
+
+export {
   PlayerRefreshStateSchema,
   PlayerSafeWarningSchema,
   PublicPlayerSchema,

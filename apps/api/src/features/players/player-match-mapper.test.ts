@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MatchIngestionStatus } from '@prisma/client';
 import type { PlayerMatchListRow } from '../../persistence/match.repository';
-import { assertNoPuuidLeak, computePublicKda, mapPublicMatch } from './player-response.mapper';
+import { assertNoPuuidLeak, computePublicKda, computeGoldPerMinute, mapPublicMatch } from './player-response.mapper';
 
 function matchRow(overrides: Partial<PlayerMatchListRow> = {}): PlayerMatchListRow {
   const base = {
@@ -126,6 +126,11 @@ describe('mapPublicMatch', () => {
   it('uses perfect-game KDA when deaths are zero', () => {
     expect(computePublicKda(4, 0, 2)).toBe(6);
     expect(computePublicKda(4, 2, 2)).toBe(3);
+  });
+
+  it('computes gold per minute from match duration', () => {
+    expect(computeGoldPerMinute(8000, 1800)).toBeCloseTo(8000 / 30);
+    expect(computeGoldPerMinute(8000, 0)).toBeNull();
   });
 
   it('keeps Riot champion name when Data Dragon is unavailable but never invents a numeric icon URL', () => {

@@ -57,9 +57,9 @@ const nuxtLinkStub = {
   template: '<a :href="to"><slot /></a>',
 };
 
-function mountCard(matchProp: ReturnType<typeof match>) {
+function mountCard(matchProp: ReturnType<typeof match>, playerId?: string) {
   return mount(PlayerMatchCard, {
-    props: { match: matchProp },
+    props: { match: matchProp, playerId },
     global: { stubs: { NuxtLink: nuxtLinkStub } },
   });
 }
@@ -79,25 +79,35 @@ describe('PlayerMatchCard', () => {
     expect(wrapper.html().toLowerCase()).not.toContain('puuid');
   });
 
-  it('links champion name to detail path when championKey is present', () => {
-    const wrapper = mountCard(match());
-    const links = wrapper.findAll('a').filter((a) => a.attributes('href') === '/champions/Tryndamere');
-    expect(links.length).toBeGreaterThanOrEqual(1);
+  it('links the card to match detail with the origin player query', () => {
+    const wrapper = mountCard(match(), 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+    const href = wrapper.get('a').attributes('href');
+    expect(href).toBe(
+      '/matches/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?player=bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    );
+    expect(wrapper.get('a').attributes('aria-label')).toContain('View match details');
   });
 
-  it('does not link when championKey is null', () => {
-    const wrapper = mountCard(match({ championKey: null }));
-    expect(wrapper.findAll('a').length).toBe(0);
+  it('omits the player query when playerId is not passed', () => {
+    const wrapper = mountCard(match());
+    expect(wrapper.get('a').attributes('href')).toBe('/matches/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  });
+
+  it('does not nest champion page links on the card', () => {
+    const wrapper = mountCard(match(), 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+    const hrefs = wrapper.findAll('a').map((a) => a.attributes('href') ?? '');
+    expect(hrefs.some((href) => href.includes('/champions/'))).toBe(false);
+    expect(wrapper.findAll('a')).toHaveLength(1);
   });
 
   it('uses Data Dragon champion icon src and falls back on image error', async () => {
     const wrapper = mountCard(match());
-    const championImg = wrapper.get('img[alt="Tryndamere icon"]');
+    const championImg = wrapper.get('img[alt="Tryndamere"]');
     expect(championImg.attributes('src')).toBe(
       'https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/Tryndamere.png',
     );
     await championImg.trigger('error');
-    expect(wrapper.find('img[alt="Tryndamere icon"]').exists()).toBe(false);
+    expect(wrapper.find('img[alt="Tryndamere"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('Tryndamere');
     expect(wrapper.text()).toContain('T');
   });

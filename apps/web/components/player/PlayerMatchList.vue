@@ -29,7 +29,7 @@
 
     <ul v-else-if="matches.length > 0" class="space-y-2" :aria-busy="matchesLoading">
       <li v-for="match in matches" :key="match.id">
-        <PlayerMatchCard :match="match" />
+        <PlayerMatchCard :match="match" :player-id="playerId" />
       </li>
     </ul>
   </section>
@@ -56,6 +56,7 @@ const props = defineProps<{
   queueCategory?: PlayerMatchQueueCategory;
   showManualRefresh?: boolean;
   lastUpdated?: string | null;
+  playerId?: string | null;
 }>();
 
 defineEmits<{

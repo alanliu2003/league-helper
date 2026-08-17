@@ -107,6 +107,92 @@ export type PlayerPlaystyleParticipantSummary = {
   csDifferenceAt15: number | null;
 };
 
+export const matchDetailParticipantSelect = {
+  participantId: true,
+  teamId: true,
+  riotIdGameName: true,
+  riotIdTagLine: true,
+  championId: true,
+  championName: true,
+  teamPosition: true,
+  individualPosition: true,
+  lane: true,
+  role: true,
+  win: true,
+  kills: true,
+  deaths: true,
+  assists: true,
+  totalMinionsKilled: true,
+  neutralMinionsKilled: true,
+  totalCs: true,
+  goldEarned: true,
+  totalDamageDealtToChampions: true,
+  totalDamageTaken: true,
+  visionScore: true,
+  wardsPlaced: true,
+  wardsKilled: true,
+  controlWardsPurchased: true,
+  itemIds: true,
+  perkIds: true,
+  statPerkIds: true,
+  primaryPerkStyleId: true,
+  secondaryPerkStyleId: true,
+  summonerSpell1Id: true,
+  summonerSpell2Id: true,
+  goldAt10: true,
+  goldAt15: true,
+  csAt10: true,
+  csAt15: true,
+  xpAt10: true,
+  xpAt15: true,
+  goldDifferenceAt10: true,
+  goldDifferenceAt15: true,
+  csDifferenceAt10: true,
+  csDifferenceAt15: true,
+  xpDifferenceAt10: true,
+  xpDifferenceAt15: true,
+  deathsBefore10: true,
+  deathsBetween10And20: true,
+  killParticipation: true,
+  playerAccount: {
+    select: {
+      playerId: true,
+      currentGameName: true,
+      currentTagLine: true,
+    },
+  },
+} as const;
+
+export const matchDetailSelect = {
+  id: true,
+  provider: true,
+  platformRoute: true,
+  regionalRoute: true,
+  queueId: true,
+  mapId: true,
+  gameMode: true,
+  gameCreation: true,
+  gameEndTimestamp: true,
+  gameDurationSeconds: true,
+  gameVersion: true,
+  normalizedPatch: true,
+  remake: true,
+  earlySurrender: true,
+  ingestionStatus: true,
+  teams: {
+    select: {
+      teamId: true,
+      win: true,
+      bans: true,
+      objectives: true,
+    },
+  },
+  participants: { select: matchDetailParticipantSelect },
+  timeline: { select: { fetchStatus: true } },
+} as const;
+
+export type MatchDetailRow = Prisma.MatchGetPayload<{ select: typeof matchDetailSelect }>;
+
 export type PlayerPlaystyleWindowRow = {
   id: string;
   queueId: number;
@@ -217,6 +303,13 @@ export type CreateMatchIdempotentInput = {
 @Injectable()
 export class MatchRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
+  findDetailById(id: string): Promise<MatchDetailRow | null> {
+    return this.prisma.match.findUnique({
+      where: { id },
+      select: matchDetailSelect,
+    });
+  }
 
   findByProviderExternalId(provider: string, externalMatchId: string): Promise<Match | null> {
     return this.prisma.match.findUnique({
