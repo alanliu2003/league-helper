@@ -338,4 +338,55 @@ describe('createPlayerProfilePageController', () => {
 
     page.stopPlaystylePolling();
   });
+
+  it('refetches playstyle after a completed match refresh', async () => {
+    const api = createApi({
+      refresh: vi.fn(async () =>
+        refresh({
+          state: 'IDLE',
+          queuedMatchCount: 0,
+          activeMatchCount: 0,
+          delayedMatchCount: 0,
+          completedMatchCount: 1,
+        }),
+      ),
+    });
+    const page = createPlayerProfilePageController(() => 'player-1', api);
+    await loadUntilPlaystyleSettled(page, api);
+    const callsAfterLoad = vi.mocked(api.getPlaystyle).mock.calls.length;
+
+    await page.onRefresh();
+    const refreshResults = vi.mocked(api.getPlaystyle).mock.results.slice(callsAfterLoad);
+    await Promise.all(
+      refreshResults.map((result) => Promise.resolve(result.value).catch(() => undefined)),
+    );
+
+    expect(vi.mocked(api.getPlaystyle).mock.calls.length).toBeGreaterThan(callsAfterLoad);
+    expect(page.playstyle.value).not.toBeNull();
+  });
+
+  it('refetches playstyle when match polling completes', async () => {
+    const api = createApi({
+      getRefreshStatus: vi.fn(async () =>
+        refresh({
+          state: 'IDLE',
+          queuedMatchCount: 0,
+          activeMatchCount: 0,
+          delayedMatchCount: 0,
+          completedMatchCount: 2,
+        }),
+      ),
+    });
+    const page = createPlayerProfilePageController(() => 'player-1', api);
+    await loadUntilPlaystyleSettled(page, api);
+    const callsAfterLoad = vi.mocked(api.getPlaystyle).mock.calls.length;
+
+    await page.pollOnce();
+    const pollResults = vi.mocked(api.getPlaystyle).mock.results.slice(callsAfterLoad);
+    await Promise.all(
+      pollResults.map((result) => Promise.resolve(result.value).catch(() => undefined)),
+    );
+
+    expect(vi.mocked(api.getPlaystyle).mock.calls.length).toBeGreaterThan(callsAfterLoad);
+  });
 });

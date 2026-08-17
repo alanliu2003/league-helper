@@ -131,6 +131,7 @@ export function createPlayerProfilePageController(
       if (!shouldPollMatchProgress(status)) {
         await fetchMatches({ preserveOnError: true });
         stopMatchPolling();
+        void loadPlaystyle();
       }
     } catch {
       // Keep cards; stop aggressive polling on transport failures.
@@ -263,6 +264,9 @@ export function createPlayerProfilePageController(
       }
 
       startPollingIfNeeded();
+      if (refreshStatus.value && !shouldPollMatchProgress(refreshStatus.value)) {
+        void loadPlaystyle();
+      }
     } catch (error) {
       if (error instanceof PlayerApiError) {
         if (error.code === 'REFRESH_COOLDOWN') {
