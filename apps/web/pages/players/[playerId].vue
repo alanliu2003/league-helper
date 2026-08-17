@@ -25,6 +25,17 @@
 
       <PlayerRankedOverview :ranks="profileMeta.ranks" />
 
+      <PlayerErrorBanner v-if="playstyleError" :message="playstyleError" variant="info" />
+
+      <div
+        v-if="playstylePending && !playstyle"
+        class="lh-skeleton h-48"
+        role="status"
+        aria-label="Loading playstyle"
+      />
+
+      <PlayerPlaystylePanel v-else-if="playstyle" :playstyle="playstyle" />
+
       <PlayerMasteryShowcase :mastery="profileMeta.mastery" />
 
       <PlayerMatchList
@@ -70,6 +81,9 @@ const {
   pollTimedOut,
   queueCategory,
   matchesLoading,
+  playstyle,
+  playstyleError,
+  playstylePending,
   loadProfile,
   onRefresh,
   setQueueCategory,

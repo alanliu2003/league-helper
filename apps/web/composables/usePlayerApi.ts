@@ -1,11 +1,13 @@
 import {
   ApiErrorResponseSchema,
   CursorPageSchema,
+  PlayerPlaystyleResponseSchema,
   PlayerProfileResponseSchema,
   PlayerRefreshStatusSchema,
   PlayerSearchResponseSchema,
   PublicMatchSummarySchema,
   type PlayerMatchQueueCategory,
+  type PlayerPlaystyleResponse,
   type PlayerProfileResponse,
   type PlayerRefreshRequest,
   type PlayerRefreshStatus,
@@ -133,6 +135,15 @@ export function usePlayerApi() {
     }
   }
 
+  async function getPlaystyle(playerId: string): Promise<PlayerPlaystyleResponse> {
+    try {
+      const response = await $fetch(`${apiBase}/api/players/${playerId}/playstyle`);
+      return PlayerPlaystyleResponseSchema.parse(response);
+    } catch (error) {
+      throw parseApiError(error);
+    }
+  }
+
   return {
     apiBase,
     search,
@@ -140,5 +151,6 @@ export function usePlayerApi() {
     getMatches,
     refresh,
     getRefreshStatus,
+    getPlaystyle,
   };
 }
