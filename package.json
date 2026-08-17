@@ -15,6 +15,7 @@
     "worker:smoke": "pnpm --filter @league-helper/worker smoke",
     "build": "pnpm --filter @league-helper/shared build && pnpm --filter @league-helper/ai build && pnpm --filter @league-helper/match-analytics build && pnpm --filter @league-helper/server-riot build && pnpm --filter @league-helper/api build && pnpm --filter @league-helper/worker build && pnpm --filter @league-helper/web build",
     "ai:eval": "pnpm --filter @league-helper/ai eval",
+    "ai:eval:playstyle": "pnpm --filter @league-helper/ai eval:playstyle",
     "lint": "pnpm -r --filter \"@league-helper/*\" run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
