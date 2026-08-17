@@ -4,6 +4,7 @@ import {
   CHAMPION_AI_INSIGHT_JOB_NAME,
   CHAMPION_AI_INSIGHT_QUEUE_NAME,
   CHAMPION_AI_PROMPT_VERSION,
+  DEFAULT_AI_MODEL,
   CHAMPION_STATS_DISCLAIMER,
   ChampionAiGroundedClaimSchema,
   ChampionAiInsightsQuerySchema,
@@ -175,6 +176,7 @@ describe('champion AI shared exports', () => {
       'AI explanations are generated from League Helper statistical data and champion ability information.',
     );
     expect(CHAMPION_AI_PROMPT_VERSION).toBe('champion-insight-v1.3');
+    expect(DEFAULT_AI_MODEL).toBe('qwen2.5:14b');
     expect(CHAMPION_AI_INSIGHT_QUEUE_NAME).toBe('champion-ai-insight');
     expect(CHAMPION_AI_INSIGHT_JOB_NAME).toBe('GENERATE_CHAMPION_AI_INSIGHT');
     expect(buildChampionAiInsightBullMqJobId).toBeTypeOf('function');

@@ -386,6 +386,8 @@ export {
   type ChampionMatchupsResponse,
 } from './champion-matchups';
 
+export { DEFAULT_AI_MODEL } from './ai-runtime';
+
 export {
   CHAMPION_AI_DISCLAIMER,
   CHAMPION_AI_PROMPT_VERSION,

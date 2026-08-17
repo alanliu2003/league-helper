@@ -1,3 +1,4 @@
+import { DEFAULT_AI_MODEL } from '@league-helper/shared';
 import { buildChampionInsightContext } from '../context/builder';
 import {
   AiOutputValidationError,
@@ -14,7 +15,6 @@ import { defaultWrite, type EvalWriter } from './io';
 import { resolveEvalFixtures } from './load-fixtures';
 
 const DEFAULT_BASE_URL = 'http://localhost:11434/v1';
-const DEFAULT_MODEL = 'qwen2.5:7b';
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1200;
 const DEFAULT_TEMPERATURE = 0.2;
@@ -93,7 +93,7 @@ function parseOptionalApiKey(raw: string | undefined): string | undefined {
 
 function readModel(env: NodeJS.ProcessEnv): string {
   const value = env.AI_MODEL?.trim();
-  return value && value.length > 0 ? value : DEFAULT_MODEL;
+  return value && value.length > 0 ? value : DEFAULT_AI_MODEL;
 }
 
 function createProviderFromEnv(env: NodeJS.ProcessEnv): AiProvider {
@@ -144,10 +144,7 @@ function emptyMetrics(model: string, fixtures: number): LiveEvalMetrics {
 
 function percentile(values: number[], p: number): number {
   const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
-  );
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
   return Math.round(sorted[index] ?? 0);
 }
 
@@ -165,7 +162,10 @@ function validationCause(error: unknown): ChampionAiInsightValidationError | und
   if (error instanceof ChampionAiInsightValidationError) {
     return error;
   }
-  if (error instanceof AiOutputValidationError && error.cause instanceof ChampionAiInsightValidationError) {
+  if (
+    error instanceof AiOutputValidationError &&
+    error.cause instanceof ChampionAiInsightValidationError
+  ) {
     return error.cause;
   }
   return undefined;
@@ -311,7 +311,10 @@ export async function runLiveEval(options?: {
       }
 
       const message = error instanceof Error ? error.message : String(error);
-      if (error instanceof AiOutputValidationError || error instanceof ChampionAiInsightValidationError) {
+      if (
+        error instanceof AiOutputValidationError ||
+        error instanceof ChampionAiInsightValidationError
+      ) {
         recordProviderContent(metrics, wrapped);
         recordValidationFailure(metrics, error);
         const cause = validationCause(error);
@@ -341,8 +344,6 @@ export async function runLiveEval(options?: {
   printMetrics(metrics, write);
 
   const exitCode =
-    metrics.validation_fail > 0 || metrics.retryable_provider_fail > 0 || hardProviderFail
-      ? 1
-      : 0;
+    metrics.validation_fail > 0 || metrics.retryable_provider_fail > 0 || hardProviderFail ? 1 : 0;
   return { exitCode, skipped: false, metrics };
 }

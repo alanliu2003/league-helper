@@ -1,3 +1,4 @@
+import { DEFAULT_AI_MODEL } from '@league-helper/shared';
 import { buildPlayerPlaystyleContext } from '../context/player-playstyle-builder';
 import {
   AiOutputValidationError,
@@ -13,7 +14,6 @@ import type { PlayerPlaystyleEvalFixture } from './player-playstyle-fixture-sche
 import { resolvePlayerPlaystyleEvalFixtures } from './player-playstyle-offline';
 
 const DEFAULT_BASE_URL = 'http://localhost:11434/v1';
-const DEFAULT_MODEL = 'qwen2.5:14b';
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1200;
 const DEFAULT_TEMPERATURE = 0.2;
@@ -92,7 +92,7 @@ function parseOptionalApiKey(raw: string | undefined): string | undefined {
 
 function readModel(env: NodeJS.ProcessEnv): string {
   const value = env.AI_MODEL?.trim();
-  return value && value.length > 0 ? value : DEFAULT_MODEL;
+  return value && value.length > 0 ? value : DEFAULT_AI_MODEL;
 }
 
 function createProviderFromEnv(env: NodeJS.ProcessEnv): AiProvider {

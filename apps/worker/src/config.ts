@@ -5,6 +5,7 @@ import {
 import {
   CHAMPION_AGGREGATION_QUEUE_NAME,
   CHAMPION_AI_INSIGHT_QUEUE_NAME,
+  DEFAULT_AI_MODEL,
   MATCH_INGESTION_QUEUE_NAME,
   PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
   PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
@@ -281,7 +282,6 @@ export type ChampionAiInsightWorkerConfig = {
 };
 
 const DEFAULT_AI_BASE_URL = 'http://localhost:11434/v1';
-const DEFAULT_AI_MODEL = 'qwen2.5:14b';
 
 function parseFiniteNumber(raw: string | undefined, fallback: number, name: string): number {
   if (raw === undefined || raw.trim() === '') {

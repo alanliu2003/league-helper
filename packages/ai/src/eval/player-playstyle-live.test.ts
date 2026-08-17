@@ -111,4 +111,15 @@ describe('player playstyle live eval harness', () => {
     expect(capture.text()).toMatch(/live eval skipped/i);
     expect(provider.generateCalls).toBe(0);
   });
+
+  it('defaults AI_MODEL to the shared 14b product default when unset', async () => {
+    const result = await runPlayerPlaystyleLiveEval({
+      env: { AI_ENABLED: 'true' },
+      provider: new FakeProvider(() => '{"not":"valid"}'),
+      fixtures: [eligibleFixture()],
+      write: () => undefined,
+    });
+
+    expect(result.metrics?.model).toBe('qwen2.5:14b');
+  });
 });
