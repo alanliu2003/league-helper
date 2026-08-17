@@ -1,10 +1,10 @@
-import { CHAMPION_AI_INSIGHT_QUEUE_NAME, ValidationFailureError } from '@league-helper/shared';
+import { PLAYER_AI_PLAYSTYLE_QUEUE_NAME, ValidationFailureError } from '@league-helper/shared';
 
-export type ChampionAiProviderId = 'openai_compatible';
+export type PlayerPlaystyleAiProviderId = 'openai_compatible';
 
-export type ChampionAiConfig = {
+export type PlayerPlaystyleAiConfig = {
   enabled: boolean;
-  provider: ChampionAiProviderId;
+  provider: PlayerPlaystyleAiProviderId;
   baseUrl: string;
   model: string;
   apiKey: string;
@@ -81,7 +81,7 @@ function parseNonEmptyString(raw: string | undefined, fallback: string): string 
   return value;
 }
 
-function parseProvider(raw: string | undefined): ChampionAiProviderId {
+function parseProvider(raw: string | undefined): PlayerPlaystyleAiProviderId {
   if (raw === undefined || raw.trim() === '') {
     return 'openai_compatible';
   }
@@ -92,7 +92,9 @@ function parseProvider(raw: string | undefined): ChampionAiProviderId {
   throw new ValidationFailureError('AI_PROVIDER must be openai_compatible.', { received: raw });
 }
 
-export function loadChampionAiConfig(env: NodeJS.ProcessEnv = process.env): ChampionAiConfig {
+export function loadPlayerPlaystyleAiConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): PlayerPlaystyleAiConfig {
   return {
     enabled: parseBooleanFlag(env.AI_ENABLED, false, 'AI_ENABLED'),
     provider: parseProvider(env.AI_PROVIDER),
@@ -104,25 +106,25 @@ export function loadChampionAiConfig(env: NodeJS.ProcessEnv = process.env): Cham
     maxOutputTokens: parsePositiveInt(env.AI_MAX_OUTPUT_TOKENS, 1200, 'AI_MAX_OUTPUT_TOKENS'),
     maxRepairAttempts: parseNonNegativeInt(env.AI_MAX_REPAIR_ATTEMPTS, 1, 'AI_MAX_REPAIR_ATTEMPTS'),
     queueName: parseNonEmptyString(
-      env.CHAMPION_AI_INSIGHT_QUEUE_NAME,
-      CHAMPION_AI_INSIGHT_QUEUE_NAME,
+      env.PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
+      PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
     ),
     jobAttempts: parsePositiveInt(
-      env.CHAMPION_AI_INSIGHT_JOB_ATTEMPTS,
+      env.PLAYER_AI_PLAYSTYLE_JOB_ATTEMPTS,
       3,
-      'CHAMPION_AI_INSIGHT_JOB_ATTEMPTS',
+      'PLAYER_AI_PLAYSTYLE_JOB_ATTEMPTS',
     ),
     stalePendingMs: parsePositiveInt(
-      env.CHAMPION_AI_INSIGHT_STALE_PENDING_MS,
+      env.PLAYER_AI_PLAYSTYLE_STALE_PENDING_MS,
       120_000,
-      'CHAMPION_AI_INSIGHT_STALE_PENDING_MS',
+      'PLAYER_AI_PLAYSTYLE_STALE_PENDING_MS',
     ),
     failedRetryMs: parsePositiveInt(
-      env.CHAMPION_AI_INSIGHT_FAILED_RETRY_MS,
+      env.PLAYER_AI_PLAYSTYLE_FAILED_RETRY_MS,
       60_000,
-      'CHAMPION_AI_INSIGHT_FAILED_RETRY_MS',
+      'PLAYER_AI_PLAYSTYLE_FAILED_RETRY_MS',
     ),
   };
 }
 
-export const CHAMPION_AI_CONFIG = Symbol('CHAMPION_AI_CONFIG');
+export const PLAYER_PLAYSTYLE_AI_CONFIG = Symbol('PLAYER_PLAYSTYLE_AI_CONFIG');

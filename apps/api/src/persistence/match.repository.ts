@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   PlatformRouteSchema,
   ProviderIdSchema,
+  RANKED_SOLO_QUEUE_ID,
   RegionalRouteSchema,
   TeamPositionSchema,
   initialParticipantRankResolutionStatus,
@@ -39,6 +40,87 @@ export const playerMatchParticipantSelect = {
   csDifferenceAt15: true,
   killParticipation: true,
 } as const;
+
+/** Participant fields needed for M17 playstyle metrics (no PUUID / rawPayload). */
+export const playerPlaystyleParticipantSelect = {
+  participantId: true,
+  championId: true,
+  championName: true,
+  teamPosition: true,
+  individualPosition: true,
+  lane: true,
+  role: true,
+  rankTierAtIngestion: true,
+  rankResolutionStatus: true,
+  win: true,
+  kills: true,
+  deaths: true,
+  assists: true,
+  totalCs: true,
+  goldEarned: true,
+  visionScore: true,
+  timePlayedSeconds: true,
+  totalDamageDealtToChampions: true,
+  goldDifferenceAt10: true,
+  goldDifferenceAt15: true,
+  csDifferenceAt10: true,
+  csDifferenceAt15: true,
+} as const;
+
+/** Match fields for the fixed Ranked Solo playstyle window (no rawPayload). */
+export const playerPlaystyleMatchSelect = {
+  id: true,
+  queueId: true,
+  gameCreation: true,
+  gameDurationSeconds: true,
+  remake: true,
+  ingestionStatus: true,
+  normalizedPatch: true,
+  platformRoute: true,
+  regionalRoute: true,
+  mapId: true,
+  gameMode: true,
+} as const;
+
+export type PlayerPlaystyleParticipantSummary = {
+  participantId: number;
+  championId: number;
+  championName: string | null;
+  teamPosition: string;
+  individualPosition: string;
+  lane: string | null;
+  role: string | null;
+  rankTierAtIngestion: string | null;
+  rankResolutionStatus: string;
+  win: boolean;
+  kills: number;
+  deaths: number;
+  assists: number;
+  totalCs: number;
+  goldEarned: number;
+  visionScore: number;
+  timePlayedSeconds: number;
+  totalDamageDealtToChampions: number;
+  goldDifferenceAt10: number | null;
+  goldDifferenceAt15: number | null;
+  csDifferenceAt10: number | null;
+  csDifferenceAt15: number | null;
+};
+
+export type PlayerPlaystyleWindowRow = {
+  id: string;
+  queueId: number;
+  gameCreation: Date;
+  gameDurationSeconds: number;
+  remake: boolean;
+  ingestionStatus: string;
+  normalizedPatch: string | null;
+  platformRoute: string | null;
+  regionalRoute: string;
+  mapId: number | null;
+  gameMode: string | null;
+  participants: PlayerPlaystyleParticipantSummary[];
+};
 
 export type PlayerMatchParticipantSummary = {
   championId: number;
@@ -204,6 +286,35 @@ export class MatchRepository {
         participants: {
           where: { playerAccountId: input.playerAccountId },
           select: playerMatchParticipantSelect,
+          take: 1,
+        },
+      },
+      orderBy: [{ gameCreation: 'desc' }, { id: 'desc' }],
+      take: input.limit,
+    });
+  }
+
+  /**
+   * Fixed Ranked Solo playstyle window: most recent `limit` queue-420 matches,
+   * including remakes and incomplete ingestions. Does not filter ingestionStatus
+   * and does not walk past the window to replace skips.
+   */
+  async listPlaystyleWindow(input: {
+    playerAccountId: string;
+    limit: number;
+  }): Promise<PlayerPlaystyleWindowRow[]> {
+    return this.prisma.match.findMany({
+      where: {
+        participants: {
+          some: { playerAccountId: input.playerAccountId },
+        },
+        queueId: RANKED_SOLO_QUEUE_ID,
+      },
+      select: {
+        ...playerPlaystyleMatchSelect,
+        participants: {
+          where: { playerAccountId: input.playerAccountId },
+          select: playerPlaystyleParticipantSelect,
           take: 1,
         },
       },

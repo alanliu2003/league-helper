@@ -8,7 +8,7 @@ describe('loadChampionAiConfig', () => {
     expect(config.enabled).toBe(false);
     expect(config.provider).toBe('openai_compatible');
     expect(config.baseUrl).toBe('http://localhost:11434/v1');
-    expect(config.model).toBe('qwen2.5:7b');
+    expect(config.model).toBe('qwen2.5:14b');
     expect(config.apiKey).toBe('');
     expect(config.timeoutMs).toBe(60_000);
     expect(config.temperature).toBe(0.2);

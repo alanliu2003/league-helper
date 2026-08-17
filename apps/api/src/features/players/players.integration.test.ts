@@ -13,7 +13,8 @@ import { GAME_DATA_PROVIDER } from '../../integrations/riot/riot.tokens';
 import { IngestionJobRepository } from '../../persistence/ingestion-job.repository';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MatchIngestionProducer } from '../../queues/match-ingestion.producer';
-import { MATCH_INGESTION_QUEUE, REDIS_CONNECTION } from '../../queues/queue.tokens';
+import { MATCH_INGESTION_QUEUE, PLAYER_AI_PLAYSTYLE_QUEUE, REDIS_CONNECTION } from '../../queues/queue.tokens';
+import { PlayerPlaystyleService } from './player-playstyle.service';
 import { PlayerProfileService } from './player-profile.service';
 import { PlayerRefreshService } from './player-refresh.service';
 import { PlayerSearchService } from './player-search.service';
@@ -27,6 +28,7 @@ describe('players search integration', () => {
   let prisma: PrismaService;
   let search: PlayerSearchService;
   let profile: PlayerProfileService;
+  let playstyle: PlayerPlaystyleService;
   let refreshService: PlayerRefreshService;
   let jobs: IngestionJobRepository;
   let mockProvider: MockRiotGameDataProvider;
@@ -73,6 +75,7 @@ describe('players search integration', () => {
 
   beforeAll(async () => {
     process.env.RIOT_PROVIDER_MODE = 'mock';
+    process.env.CHAMPION_STATS_DEFAULT_PLATFORM ??= 'na1';
     // Never truncate the public/dev schema used by local `pnpm dev`.
     process.env.DATABASE_URL = testDatabaseUrl;
 
@@ -91,6 +94,13 @@ describe('players search integration', () => {
       .overrideProvider(REDIS_CONNECTION)
       .useValue(redisMock)
       .overrideProvider(MATCH_INGESTION_QUEUE)
+      .useValue({
+        add: vi.fn(),
+        getJob: vi.fn(async () => null),
+        getJobCounts: vi.fn(async () => ({})),
+        close: vi.fn(),
+      })
+      .overrideProvider(PLAYER_AI_PLAYSTYLE_QUEUE)
       .useValue({
         add: vi.fn(),
         getJob: vi.fn(async () => null),
@@ -123,6 +133,7 @@ describe('players search integration', () => {
     prisma = moduleRef.get(PrismaService);
     search = moduleRef.get(PlayerSearchService);
     profile = moduleRef.get(PlayerProfileService);
+    playstyle = moduleRef.get(PlayerPlaystyleService);
     refreshService = moduleRef.get(PlayerRefreshService);
     jobs = moduleRef.get(IngestionJobRepository);
     mockProvider = moduleRef.get(GAME_DATA_PROVIDER) as MockRiotGameDataProvider;
@@ -229,6 +240,12 @@ describe('players search integration', () => {
 
     expect(await prisma.player.count()).toBe(0);
     expect(await prisma.ingestionJobRecord.count()).toBe(0);
+  });
+
+  it('returns not found for playstyle on an unknown player uuid', async () => {
+    await expect(
+      playstyle.getPlaystyle('00000000-0000-4000-8000-000000000000'),
+    ).rejects.toBeInstanceOf(ResourceNotFoundError);
   });
 
   it('stores ranks and mastery and enqueues missing matches', async () => {
