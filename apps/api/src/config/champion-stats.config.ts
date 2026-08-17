@@ -112,7 +112,7 @@ export function loadChampionStatsConfig(env: NodeJS.ProcessEnv = process.env): C
     ),
     aggregationVersion: parseNonEmptyVersion(
       env.CHAMPION_AGGREGATION_VERSION,
-      '1',
+      '2',
       'CHAMPION_AGGREGATION_VERSION',
     ),
     minimumSample: parsePositiveInt(

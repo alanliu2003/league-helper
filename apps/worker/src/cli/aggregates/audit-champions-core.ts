@@ -71,6 +71,7 @@ function toAccumulator(row: {
   totalGameSeconds: number;
   totalDamageToChampions: number;
   totalVisionScore: number;
+  totalGoldEarned: number;
   totalGoldDifferenceAt10: number | null;
   goldDifferenceAt10Samples: number;
   totalGoldDifferenceAt15: number | null;
@@ -91,6 +92,7 @@ function toAccumulator(row: {
     totalGameSeconds: row.totalGameSeconds,
     totalDamageToChampions: row.totalDamageToChampions,
     totalVisionScore: row.totalVisionScore,
+    totalGoldEarned: row.totalGoldEarned,
     totalGoldDifferenceAt10: row.totalGoldDifferenceAt10,
     goldDifferenceAt10Samples: row.goldDifferenceAt10Samples,
     totalGoldDifferenceAt15: row.totalGoldDifferenceAt15,
@@ -125,6 +127,7 @@ export type AggregateIntegrityRow = {
   totalGameSeconds: number;
   totalDamageToChampions: number;
   totalVisionScore: number;
+  totalGoldEarned: number;
   totalGoldDifferenceAt10: number | null;
   goldDifferenceAt10Samples: number;
   totalGoldDifferenceAt15: number | null;
@@ -163,6 +166,7 @@ export function collectFindingsForAggregateRow(
     ['totalGameSeconds', row.totalGameSeconds],
     ['totalDamageToChampions', row.totalDamageToChampions],
     ['totalVisionScore', row.totalVisionScore],
+    ['totalGoldEarned', row.totalGoldEarned],
     ['goldDifferenceAt10Samples', row.goldDifferenceAt10Samples],
     ['goldDifferenceAt15Samples', row.goldDifferenceAt15Samples],
     ['csDifferenceAt10Samples', row.csDifferenceAt10Samples],
@@ -248,6 +252,7 @@ export function collectFindingsForAggregateRow(
       derived.averageCsPerMinute,
       derived.averageDamagePerMinute,
       derived.averageVisionScorePerMinute,
+      derived.averageGoldPerMinute,
       derived.averageGoldDifferenceAt10,
       derived.averageGoldDifferenceAt15,
       derived.averageCsDifferenceAt10,

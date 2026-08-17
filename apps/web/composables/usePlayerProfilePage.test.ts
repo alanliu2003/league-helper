@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PlayerRefreshStatus, PublicMatchSummary } from '@league-helper/shared';
+import {
+  CHAMPION_STATS_DISCLAIMER,
+  PLAYER_PLAYSTYLE_AI_DISCLAIMER,
+  RANK_TIER_SEMANTICS,
+  type PlayerPlaystyleResponse,
+  type PlayerRefreshStatus,
+  type PublicMatchSummary,
+} from '@league-helper/shared';
 import { createPlayerProfilePageController } from './usePlayerProfilePage';
 import type { PlayerProfilePageApi } from './usePlayerProfilePage';
+import { PlayerApiError } from './usePlayerApi';
 
 function match(id: string, queueId = 420): PublicMatchSummary {
   return {
@@ -69,6 +77,59 @@ function refresh(overrides: Partial<PlayerRefreshStatus> = {}): PlayerRefreshSta
   };
 }
 
+function disabledPlaystyle(): PlayerPlaystyleResponse {
+  return {
+    disclaimer: CHAMPION_STATS_DISCLAIMER,
+    aiDisclaimer: PLAYER_PLAYSTYLE_AI_DISCLAIMER,
+    rankSemantics: RANK_TIER_SEMANTICS,
+    sampleScope: {
+      kind: 'COLLECTED_SAMPLE',
+      queueId: 420,
+      matchWindow: 20,
+      windowSize: 20,
+      matchesAnalyzed: 18,
+      comparableMatchCount: 16,
+      wins: 10,
+      playerSampleBand: 'CREDIBLE',
+      patchRange: { min: '16.14', max: '16.15' },
+    },
+    mix: [
+      {
+        championKey: 'Ahri',
+        championName: 'Ahri',
+        position: 'MIDDLE',
+        matchCount: 8,
+      },
+    ],
+    overall: {
+      comparisons: [
+        {
+          metric: 'CS_PER_MIN',
+          playerValue: null,
+          baseline: {
+            value: null,
+            sampleSize: 1000,
+            sampleConfidence: 'HIGH',
+            rankTier: 'GOLD',
+            usedAllTierFallback: false,
+          },
+          delta: 0.2,
+          comparableMatchCount: 12,
+          direction: 'NEAR_BASELINE',
+          interpretationAllowed: true,
+        },
+      ],
+    },
+    championSlices: [],
+    skipped: { remake: 0, incomplete: 0, unknownPosition: 0, noBaseline: 0 },
+    ai: {
+      status: 'DISABLED',
+      emptyReason: 'AI_DISABLED',
+      insight: null,
+    },
+  };
+}
+
 function createApi(overrides: Partial<PlayerProfilePageApi> = {}): PlayerProfilePageApi {
   const existing = match('11111111-1111-1111-1111-111111111111');
   return {
@@ -94,8 +155,19 @@ function createApi(overrides: Partial<PlayerProfilePageApi> = {}): PlayerProfile
     getMatches: vi.fn(async () => ({ items: [existing], nextCursor: null })),
     refresh: vi.fn(async () => refresh()),
     getRefreshStatus: vi.fn(async () => refresh()),
+    getPlaystyle: vi.fn(async () => disabledPlaystyle()),
     ...overrides,
   };
+}
+
+async function loadUntilPlaystyleSettled(
+  page: ReturnType<typeof createPlayerProfilePageController>,
+  api: PlayerProfilePageApi,
+): Promise<void> {
+  await page.loadProfile();
+  const results = vi.mocked(api.getPlaystyle).mock.results;
+  await Promise.all(results.map((result) => Promise.resolve(result.value).catch(() => undefined)));
+  await Promise.resolve();
 }
 
 describe('createPlayerProfilePageController', () => {
@@ -212,5 +284,109 @@ describe('createPlayerProfilePageController', () => {
       'player-1',
       expect.objectContaining({ queueCategory: 'ranked_solo' }),
     );
+  });
+
+  it('loads playstyle on successful profile load', async () => {
+    const envelope = disabledPlaystyle();
+    const api = createApi({
+      getPlaystyle: vi.fn(async () => envelope),
+    });
+    const page = createPlayerProfilePageController(() => 'player-1', api);
+    await loadUntilPlaystyleSettled(page, api);
+
+    expect(api.getPlaystyle).toHaveBeenCalledWith('player-1');
+    expect(page.playstyle.value).toEqual(envelope);
+    expect(page.playstyleError.value).toBeNull();
+    expect(page.loadError.value).toBeNull();
+  });
+
+  it('sets playstyleError without clearing matches when playstyle GET fails', async () => {
+    const api = createApi({
+      getPlaystyle: vi.fn(async () => {
+        throw new PlayerApiError(500, 'INTERNAL_ERROR', 'boom');
+      }),
+    });
+    const page = createPlayerProfilePageController(() => 'player-1', api);
+    await loadUntilPlaystyleSettled(page, api);
+
+    expect(page.matches.value).toHaveLength(1);
+    expect(page.loadError.value).toBeNull();
+    expect(page.playstyle.value).toBeNull();
+    expect(page.playstyleError.value).toBe('Unable to load playstyle analysis.');
+  });
+
+  it('continues getPlaystyle while AI status is PENDING', async () => {
+    vi.useFakeTimers();
+    const pendingEnvelope: PlayerPlaystyleResponse = {
+      ...disabledPlaystyle(),
+      ai: { status: 'PENDING', insight: null },
+    };
+    const api = createApi({
+      getPlaystyle: vi.fn(async () => pendingEnvelope),
+    });
+    const page = createPlayerProfilePageController(() => 'player-1', api);
+    await loadUntilPlaystyleSettled(page, api);
+
+    expect(api.getPlaystyle).toHaveBeenCalledTimes(1);
+    expect(page.playstyle.value?.ai.status).toBe('PENDING');
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(api.getPlaystyle).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(api.getPlaystyle).toHaveBeenCalledTimes(3);
+
+    page.stopPlaystylePolling();
+  });
+
+  it('refetches playstyle after a completed match refresh', async () => {
+    const api = createApi({
+      refresh: vi.fn(async () =>
+        refresh({
+          state: 'IDLE',
+          queuedMatchCount: 0,
+          activeMatchCount: 0,
+          delayedMatchCount: 0,
+          completedMatchCount: 1,
+        }),
+      ),
+    });
+    const page = createPlayerProfilePageController(() => 'player-1', api);
+    await loadUntilPlaystyleSettled(page, api);
+    const callsAfterLoad = vi.mocked(api.getPlaystyle).mock.calls.length;
+
+    await page.onRefresh();
+    const refreshResults = vi.mocked(api.getPlaystyle).mock.results.slice(callsAfterLoad);
+    await Promise.all(
+      refreshResults.map((result) => Promise.resolve(result.value).catch(() => undefined)),
+    );
+
+    expect(vi.mocked(api.getPlaystyle).mock.calls.length).toBeGreaterThan(callsAfterLoad);
+    expect(page.playstyle.value).not.toBeNull();
+  });
+
+  it('refetches playstyle when match polling completes', async () => {
+    const api = createApi({
+      getRefreshStatus: vi.fn(async () =>
+        refresh({
+          state: 'IDLE',
+          queuedMatchCount: 0,
+          activeMatchCount: 0,
+          delayedMatchCount: 0,
+          completedMatchCount: 2,
+        }),
+      ),
+    });
+    const page = createPlayerProfilePageController(() => 'player-1', api);
+    await loadUntilPlaystyleSettled(page, api);
+    const callsAfterLoad = vi.mocked(api.getPlaystyle).mock.calls.length;
+
+    await page.pollOnce();
+    const pollResults = vi.mocked(api.getPlaystyle).mock.results.slice(callsAfterLoad);
+    await Promise.all(
+      pollResults.map((result) => Promise.resolve(result.value).catch(() => undefined)),
+    );
+
+    expect(vi.mocked(api.getPlaystyle).mock.calls.length).toBeGreaterThan(callsAfterLoad);
   });
 });

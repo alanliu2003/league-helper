@@ -6,18 +6,21 @@ import {
   CHAMPION_AI_INSIGHT_JOB_NAME,
   MATCH_INGESTION_JOB_NAME,
   PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
+  PLAYER_AI_PLAYSTYLE_JOB_NAME,
   createHealthResponse,
   parseBullMqRedisConnectionInfo,
   resolveBullMqPrefix,
   type ChampionAggregationJobPayload,
   type ChampionAiInsightJobPayload,
   type ParticipantRankEnrichmentJobPayload,
+  type PlayerPlaystyleInsightJobPayload,
 } from '@league-helper/shared';
 import {
   loadChampionAggregationWorkerConfig,
   loadChampionAiInsightWorkerConfig,
   loadMatchIngestionWorkerConfig,
   loadParticipantRankEnrichmentWorkerConfig,
+  loadPlayerPlaystyleInsightWorkerConfig,
   getRedisUrl,
 } from './config.js';
 import { logger } from './logger.js';
@@ -28,6 +31,7 @@ import { createChampionAggregationWorker } from './queues/champion-aggregation/c
 import { createChampionAiInsightWorker } from './queues/champion-ai-insight/champion-ai-insight.worker.js';
 import { createMatchIngestionWorker } from './queues/match-ingestion/match-ingestion.worker.js';
 import { createParticipantRankEnrichmentWorker } from './queues/participant-rank-enrichment/participant-rank-enrichment.worker.js';
+import { createPlayerPlaystyleInsightWorker } from './queues/player-playstyle-insight/player-playstyle-insight.worker.js';
 
 async function main(): Promise<void> {
   const redisUrl = getRedisUrl();
@@ -36,6 +40,7 @@ async function main(): Promise<void> {
   const championAggregationConfig = loadChampionAggregationWorkerConfig();
   const participantRankEnrichmentConfig = loadParticipantRankEnrichmentWorkerConfig();
   const championAiInsightConfig = loadChampionAiInsightWorkerConfig();
+  const playerPlaystyleInsightConfig = loadPlayerPlaystyleInsightWorkerConfig();
   const connection = createRedisConnection();
   const prisma = getPrismaClient();
   await prisma.$connect();
@@ -67,6 +72,14 @@ async function main(): Promise<void> {
     },
   );
 
+  const playerPlaystyleInsightQueue = new Queue<PlayerPlaystyleInsightJobPayload>(
+    playerPlaystyleInsightConfig.queueName,
+    {
+      connection,
+      prefix: connectionInfo.prefix,
+    },
+  );
+
   logger.info('Worker starting', {
     matchIngestionQueue: matchIngestionConfig.queueName,
     matchIngestionJob: MATCH_INGESTION_JOB_NAME,
@@ -81,6 +94,10 @@ async function main(): Promise<void> {
     championAiInsightJob: CHAMPION_AI_INSIGHT_JOB_NAME,
     championAiInsightConcurrency: championAiInsightConfig.concurrency,
     championAiInsightEnabled: championAiInsightConfig.enabled,
+    playerPlaystyleInsightQueue: playerPlaystyleInsightConfig.queueName,
+    playerPlaystyleInsightJob: PLAYER_AI_PLAYSTYLE_JOB_NAME,
+    playerPlaystyleInsightConcurrency: playerPlaystyleInsightConfig.concurrency,
+    playerPlaystyleInsightEnabled: playerPlaystyleInsightConfig.enabled,
     sourceNormalizationVersion: championAggregationConfig.sourceNormalizationVersion,
     aggregationVersion: championAggregationConfig.aggregationVersion,
     providerMode: riotConfig.providerMode,
@@ -96,6 +113,7 @@ async function main(): Promise<void> {
   let championAggregationWorker;
   let participantRankEnrichmentWorker;
   let championAiInsightWorker;
+  let playerPlaystyleInsightWorker;
   try {
     matchIngestionWorker = createMatchIngestionWorker({
       connection,
@@ -144,6 +162,12 @@ async function main(): Promise<void> {
       config: championAiInsightConfig,
       prisma,
     });
+
+    playerPlaystyleInsightWorker = createPlayerPlaystyleInsightWorker({
+      connection,
+      config: playerPlaystyleInsightConfig,
+      prisma,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown worker init error';
     logger.error('Worker failed to initialize consumers', { error: message });
@@ -151,6 +175,7 @@ async function main(): Promise<void> {
       championAggregationQueue.close(),
       participantRankEnrichmentQueue.close(),
       championAiInsightQueue.close(),
+      playerPlaystyleInsightQueue.close(),
       connection.quit(),
       disconnectPrisma(),
     ]);
@@ -176,11 +201,16 @@ async function main(): Promise<void> {
       connection: { url: redisUrl, maxRetriesPerRequest: null },
       prefix: connectionInfo.prefix,
     });
-    const [matchPaused, aggPaused, rankPaused, insightPaused] = await Promise.all([
+    const playstyleProbe = new Queue(playerPlaystyleInsightConfig.queueName, {
+      connection: { url: redisUrl, maxRetriesPerRequest: null },
+      prefix: connectionInfo.prefix,
+    });
+    const [matchPaused, aggPaused, rankPaused, insightPaused, playstylePaused] = await Promise.all([
       matchProbe.isPaused(),
       aggProbe.isPaused(),
       rankProbe.isPaused(),
       insightProbe.isPaused(),
+      playstyleProbe.isPaused(),
     ]);
     logger.info('Queue probes', {
       matchIngestionQueue: matchIngestionConfig.queueName,
@@ -195,6 +225,9 @@ async function main(): Promise<void> {
       championAiInsightQueue: championAiInsightConfig.queueName,
       championAiInsightPaused: insightPaused,
       championAiInsightJob: CHAMPION_AI_INSIGHT_JOB_NAME,
+      playerPlaystyleInsightQueue: playerPlaystyleInsightConfig.queueName,
+      playerPlaystyleInsightPaused: playstylePaused,
+      playerPlaystyleInsightJob: PLAYER_AI_PLAYSTYLE_JOB_NAME,
       readiness: 'all_consumers_initialized',
     });
     await Promise.allSettled([
@@ -202,6 +235,7 @@ async function main(): Promise<void> {
       aggProbe.close(),
       rankProbe.close(),
       insightProbe.close(),
+      playstyleProbe.close(),
     ]);
   } catch (error: unknown) {
     logger.warn('Queue probe failed', {
@@ -221,11 +255,13 @@ async function main(): Promise<void> {
       championAggregationWorker.close(),
       participantRankEnrichmentWorker.close(),
       championAiInsightWorker.close(),
+      playerPlaystyleInsightWorker.close(),
     ]);
     await Promise.allSettled([
       championAggregationQueue.close(),
       participantRankEnrichmentQueue.close(),
       championAiInsightQueue.close(),
+      playerPlaystyleInsightQueue.close(),
       providerHandle.close(),
       disconnectPrisma(),
       connection.quit(),

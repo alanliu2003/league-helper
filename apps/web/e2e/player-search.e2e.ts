@@ -1,4 +1,61 @@
 import { expect, test } from '@playwright/test';
+import {
+  CHAMPION_STATS_DISCLAIMER,
+  PLAYER_PLAYSTYLE_AI_DISCLAIMER,
+  PlayerPlaystyleResponseSchema,
+  RANK_TIER_SEMANTICS,
+} from '@league-helper/shared';
+
+const PLAYSTYLE_E2E_FIXTURE = PlayerPlaystyleResponseSchema.parse({
+  disclaimer: CHAMPION_STATS_DISCLAIMER,
+  aiDisclaimer: PLAYER_PLAYSTYLE_AI_DISCLAIMER,
+  rankSemantics: RANK_TIER_SEMANTICS,
+  sampleScope: {
+    kind: 'COLLECTED_SAMPLE',
+    queueId: 420,
+    matchWindow: 20,
+    windowSize: 20,
+    matchesAnalyzed: 18,
+    comparableMatchCount: 16,
+    wins: 10,
+    playerSampleBand: 'CREDIBLE',
+    patchRange: { min: '16.14', max: '16.15' },
+  },
+  mix: [
+    {
+      championKey: 'Yasuo',
+      championName: 'Yasuo',
+      position: 'MIDDLE',
+      matchCount: 8,
+    },
+  ],
+  overall: {
+    comparisons: [
+      {
+        metric: 'CS_PER_MIN',
+        playerValue: null,
+        baseline: {
+          value: null,
+          sampleSize: 1000,
+          sampleConfidence: 'HIGH',
+          rankTier: 'GOLD',
+          usedAllTierFallback: false,
+        },
+        delta: 0.2,
+        comparableMatchCount: 12,
+        direction: 'NEAR_BASELINE',
+        interpretationAllowed: true,
+      },
+    ],
+  },
+  championSlices: [],
+  skipped: { remake: 0, incomplete: 0, unknownPosition: 0, noBaseline: 0 },
+  ai: {
+    status: 'DISABLED',
+    emptyReason: 'AI_DISABLED',
+    insight: null,
+  },
+});
 
 /**
  * Happy path with mock Riot provider (API must use RIOT_PROVIDER_MODE=mock).
@@ -6,6 +63,14 @@ import { expect, test } from '@playwright/test';
  */
 test.describe('player search happy path', () => {
   async function searchFromHomepage(page: import('@playwright/test').Page): Promise<void> {
+    await page.route('**/api/players/*/playstyle', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(PLAYSTYLE_E2E_FIXTURE),
+      });
+    });
+
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
@@ -43,6 +108,7 @@ test.describe('player search happy path', () => {
 
     await expect(page.getByRole('heading', { name: 'Ranked' })).toBeVisible();
     await expect(page.getByText('Solo/Duo').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Your playstyle' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Champion mastery' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Match history' })).toBeVisible();
 

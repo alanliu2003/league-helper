@@ -48,6 +48,14 @@ enum ChampionAiInsightStatus {
   FAILED
 }
 
+/// DB row status: PENDING|READY|FAILED. Distinct from public PlayerAiInsightStatus
+/// (DISABLED|PENDING|AVAILABLE|UNAVAILABLE|LOW_CONFIDENCE).
+enum PlayerPlaystyleInsightStatus {
+  PENDING
+  READY
+  FAILED
+}
+
 enum AnalysisReportType {
   PLAYER_OVERVIEW
   CHAMPION_FOCUS
@@ -156,9 +164,10 @@ model PlayerAccount {
   rankSnapshots         RankSnapshot[]
   masterySnapshots      ChampionMasterySnapshot[]
   matchParticipants     MatchParticipant[]
-  playerMetricSnapshots PlayerMetricSnapshot[]
-  playerAnalysisReports PlayerAnalysisReport[]
-  trackedPlayer         TrackedPlayer?
+  playerMetricSnapshots   PlayerMetricSnapshot[]
+  playerAnalysisReports   PlayerAnalysisReport[]
+  playerPlaystyleInsights PlayerPlaystyleInsight[]
+  trackedPlayer           TrackedPlayer?
 
   @@unique([provider, externalAccountId])
   @@index([playerId])
@@ -591,6 +600,7 @@ model ChampionAggregate {
   totalGameSeconds           Int       @default(0)
   totalDamageToChampions     Int       @default(0)
   totalVisionScore           Int       @default(0)
+  totalGoldEarned            Int       @default(0)
   totalGoldDifferenceAt10    Int?
   goldDifferenceAt10Samples  Int       @default(0)
   totalGoldDifferenceAt15    Int?
@@ -739,6 +749,30 @@ model ChampionAiInsight {
 
   @@unique([championId, patch, platformRoute, queueId, rankTier, teamPosition, contextFingerprint], map: "ChampionAiInsight_scope_fp_key")
   @@index([championId, patch, status])
+  @@index([status, updatedAt])
+}
+
+/// Dedicated M17 table; do not reuse PlayerMetricSnapshot / PlayerAnalysisReport / AnalysisFinding.
+model PlayerPlaystyleInsight {
+  id                 String                       @id @default(uuid())
+  playerAccountId    String
+  queueId            Int
+  contextFingerprint String
+  promptVersion      String
+  provider           String
+  model              String
+  status             PlayerPlaystyleInsightStatus @default(PENDING)
+  inputContext       Json
+  structuredResult   Json?
+  failureReason      String?
+  generatedAt        DateTime?                    @db.Timestamptz(3)
+  createdAt          DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                     @updatedAt @db.Timestamptz(3)
+
+  playerAccount PlayerAccount @relation(fields: [playerAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([playerAccountId, queueId, contextFingerprint], map: "PlayerPlaystyleInsight_scope_fp_key")
+  @@index([playerAccountId, status])
   @@index([status, updatedAt])
 }
 

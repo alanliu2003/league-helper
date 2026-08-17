@@ -15,6 +15,7 @@ export type MergeableChampionAggregateTotals = {
   totalGameSeconds: number;
   totalDamageToChampions: number;
   totalVisionScore: number;
+  totalGoldEarned: number;
   totalGoldDifferenceAt10: number | null;
   goldDifferenceAt10Samples: number;
   totalGoldDifferenceAt15: number | null;
@@ -36,6 +37,7 @@ export function emptyMergeableChampionAggregateTotals(): MergeableChampionAggreg
     totalGameSeconds: 0,
     totalDamageToChampions: 0,
     totalVisionScore: 0,
+    totalGoldEarned: 0,
     totalGoldDifferenceAt10: null,
     goldDifferenceAt10Samples: 0,
     totalGoldDifferenceAt15: null,
@@ -104,6 +106,7 @@ function mergeTwo(
     totalGameSeconds: left.totalGameSeconds + right.totalGameSeconds,
     totalDamageToChampions: left.totalDamageToChampions + right.totalDamageToChampions,
     totalVisionScore: left.totalVisionScore + right.totalVisionScore,
+    totalGoldEarned: left.totalGoldEarned + right.totalGoldEarned,
     totalGoldDifferenceAt10: gold10.total,
     goldDifferenceAt10Samples: gold10.samples,
     totalGoldDifferenceAt15: gold15.total,

@@ -1,0 +1,294 @@
+{
+  "expectEvidenceNotCitable": ["OVERALL_GOLD_DIFF_AT_10"],
+  "expectOverallCsPlayerValueNull": true,
+  "expectNoOverallKda": true,
+  "expectSliceChampionKeys": ["Ahri"],
+  "id": "19-gpm-comparable",
+  "description": "GPM is comparable because the comparison baseline carries averageGoldPerMinute (baseline.value 380). GOLD_DIFF_AT_10 remains NOT_COMPARABLE in the same profile (GPM allowed, early gold diff not).",
+  "expectGenerationEligible": true,
+  "expectEconomyAllowed": true,
+  "expectCombatAllowed": true,
+  "expectEvidenceContains": ["OVERALL_GOLD_PER_MIN"],
+  "input": {
+    "queueId": 420,
+    "matchIdentity": [
+      {
+        "matchId": "NA1_PS19_00000001",
+        "participantId": 1
+      },
+      {
+        "matchId": "NA1_PS19_00000002",
+        "participantId": 2
+      },
+      {
+        "matchId": "NA1_PS19_00000003",
+        "participantId": 3
+      },
+      {
+        "matchId": "NA1_PS19_00000004",
+        "participantId": 4
+      },
+      {
+        "matchId": "NA1_PS19_00000005",
+        "participantId": 5
+      },
+      {
+        "matchId": "NA1_PS19_00000006",
+        "participantId": 6
+      },
+      {
+        "matchId": "NA1_PS19_00000007",
+        "participantId": 7
+      },
+      {
+        "matchId": "NA1_PS19_00000008",
+        "participantId": 8
+      },
+      {
+        "matchId": "NA1_PS19_00000009",
+        "participantId": 9
+      },
+      {
+        "matchId": "NA1_PS19_00000010",
+        "participantId": 10
+      },
+      {
+        "matchId": "NA1_PS19_00000011",
+        "participantId": 1
+      },
+      {
+        "matchId": "NA1_PS19_00000012",
+        "participantId": 2
+      }
+    ],
+    "profile": {
+      "windowSize": 20,
+      "matchesAnalyzed": 12,
+      "comparableMatchCount": 12,
+      "wins": 7,
+      "playerSampleBand": "CREDIBLE",
+      "patchRange": {
+        "min": "16.14",
+        "max": "16.15"
+      },
+      "mix": [
+        {
+          "championKey": "Ahri",
+          "championName": "Ahri",
+          "position": "MIDDLE",
+          "matchCount": 12
+        }
+      ],
+      "championSlices": [
+        {
+          "championKey": "Ahri",
+          "championName": "Ahri",
+          "position": "MIDDLE",
+          "matchCount": 12,
+          "sampleBand": "CREDIBLE",
+          "comparisons": [
+            {
+              "metric": "CS_PER_MIN",
+              "playerValue": 7.4,
+              "baseline": {
+                "value": 6.9,
+                "sampleSize": 800,
+                "sampleConfidence": "HIGH",
+                "rankTier": "GOLD",
+                "usedAllTierFallback": false
+              },
+              "delta": 0.5,
+              "comparableMatchCount": 12,
+              "direction": "ABOVE_BASELINE",
+              "interpretationAllowed": true
+            },
+            {
+              "metric": "KDA",
+              "playerValue": 3.1,
+              "baseline": {
+                "value": 2.7,
+                "sampleSize": 800,
+                "sampleConfidence": "HIGH",
+                "rankTier": "GOLD",
+                "usedAllTierFallback": false
+              },
+              "delta": 0.4,
+              "comparableMatchCount": 12,
+              "direction": "ABOVE_BASELINE",
+              "interpretationAllowed": true
+            }
+          ]
+        }
+      ],
+      "skipped": {
+        "remake": 4,
+        "incomplete": 2,
+        "unknownPosition": 2,
+        "noBaseline": 0
+      },
+      "overall": {
+        "comparisons": [
+          {
+            "metric": "KILLS_PER_GAME",
+            "playerValue": null,
+            "baseline": {
+              "value": null,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 0.2,
+            "comparableMatchCount": 12,
+            "direction": "NEAR_BASELINE",
+            "interpretationAllowed": true
+          },
+          {
+            "metric": "DEATHS_PER_GAME",
+            "playerValue": null,
+            "baseline": {
+              "value": null,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 0.05,
+            "comparableMatchCount": 12,
+            "direction": "NEAR_BASELINE",
+            "interpretationAllowed": true
+          },
+          {
+            "metric": "ASSISTS_PER_GAME",
+            "playerValue": null,
+            "baseline": {
+              "value": null,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 0.1,
+            "comparableMatchCount": 12,
+            "direction": "NEAR_BASELINE",
+            "interpretationAllowed": true
+          },
+          {
+            "metric": "CS_PER_MIN",
+            "playerValue": null,
+            "baseline": {
+              "value": null,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 0.3,
+            "comparableMatchCount": 12,
+            "direction": "NEAR_BASELINE",
+            "interpretationAllowed": true
+          },
+          {
+            "metric": "GOLD_PER_MIN",
+            "playerValue": null,
+            "baseline": {
+              "value": 380,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 45,
+            "comparableMatchCount": 12,
+            "direction": "ABOVE_BASELINE",
+            "interpretationAllowed": true
+          },
+          {
+            "metric": "DAMAGE_PER_MIN",
+            "playerValue": null,
+            "baseline": {
+              "value": null,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 12,
+            "comparableMatchCount": 12,
+            "direction": "NEAR_BASELINE",
+            "interpretationAllowed": true
+          },
+          {
+            "metric": "VISION_PER_MIN",
+            "playerValue": null,
+            "baseline": {
+              "value": null,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 0.02,
+            "comparableMatchCount": 12,
+            "direction": "NEAR_BASELINE",
+            "interpretationAllowed": true
+          },
+          {
+            "metric": "GOLD_DIFF_AT_10",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 1,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "GOLD_DIFF_AT_15",
+            "playerValue": null,
+            "baseline": {
+              "value": null,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 40,
+            "comparableMatchCount": 12,
+            "direction": "NEAR_BASELINE",
+            "interpretationAllowed": true
+          },
+          {
+            "metric": "CS_DIFF_AT_10",
+            "playerValue": null,
+            "baseline": {
+              "value": null,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 1,
+            "comparableMatchCount": 12,
+            "direction": "NEAR_BASELINE",
+            "interpretationAllowed": true
+          },
+          {
+            "metric": "CS_DIFF_AT_15",
+            "playerValue": null,
+            "baseline": {
+              "value": null,
+              "sampleSize": 800,
+              "sampleConfidence": "HIGH",
+              "rankTier": "GOLD",
+              "usedAllTierFallback": false
+            },
+            "delta": 2,
+            "comparableMatchCount": 12,
+            "direction": "NEAR_BASELINE",
+            "interpretationAllowed": true
+          }
+        ]
+      }
+    }
+  }
+}

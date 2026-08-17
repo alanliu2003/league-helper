@@ -1,5 +1,6 @@
 import type {
   PlayerMatchQueueCategory,
+  PlayerPlaystyleResponse,
   PlayerProfileResponse,
   PlayerRefreshStatus,
   PublicMatchSummary,
@@ -14,6 +15,7 @@ import {
   shouldPollMatchProgress,
   shouldStopPollingForTimeout,
 } from '../utils/player-match-polling';
+import { nextAiInsightPollDelayMs, shouldContinueAiInsightPoll } from '../utils/ai-insight-poll';
 
 export type PlayerProfilePageApi = ReturnType<typeof usePlayerApi>;
 
@@ -42,10 +44,15 @@ export function createPlayerProfilePageController(
   const pollTimedOut = ref(false);
   const queueCategory = ref<PlayerMatchQueueCategory>('all');
   const matchesLoading = ref(false);
+  const playstyle = ref<PlayerPlaystyleResponse | null>(null);
+  const playstyleError = ref<string | null>(null);
+  const playstylePending = ref(false);
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let pollStartedAt = 0;
   let lastCompletedMatchCount: number | null = null;
+  let playstylePollTimers: ReturnType<typeof setTimeout>[] = [];
+  let playstyleRequestId = 0;
 
   function applyProfile(profile: PlayerProfileResponse): void {
     profileMeta.value = {
@@ -61,12 +68,24 @@ export function createPlayerProfilePageController(
     lastCompletedMatchCount = profile.refresh.completedMatchCount;
   }
 
-  function stopPolling(): void {
+  function stopMatchPolling(): void {
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
     }
     isPolling.value = false;
+  }
+
+  function stopPlaystylePolling(): void {
+    for (const timer of playstylePollTimers) {
+      clearTimeout(timer);
+    }
+    playstylePollTimers = [];
+  }
+
+  function stopPolling(): void {
+    stopMatchPolling();
+    stopPlaystylePolling();
   }
 
   async function fetchMatches(options: { preserveOnError?: boolean } = {}): Promise<void> {
@@ -92,7 +111,7 @@ export function createPlayerProfilePageController(
 
   async function pollOnce(): Promise<void> {
     if (pollStartedAt > 0 && shouldStopPollingForTimeout(pollStartedAt)) {
-      stopPolling();
+      stopMatchPolling();
       pollTimedOut.value = true;
       return;
     }
@@ -111,16 +130,17 @@ export function createPlayerProfilePageController(
 
       if (!shouldPollMatchProgress(status)) {
         await fetchMatches({ preserveOnError: true });
-        stopPolling();
+        stopMatchPolling();
+        void loadPlaystyle();
       }
     } catch {
       // Keep cards; stop aggressive polling on transport failures.
-      stopPolling();
+      stopMatchPolling();
     }
   }
 
   function startPollingIfNeeded(): void {
-    stopPolling();
+    stopMatchPolling();
     pollTimedOut.value = false;
     if (!refreshStatus.value || !shouldPollMatchProgress(refreshStatus.value)) {
       return;
@@ -133,10 +153,68 @@ export function createPlayerProfilePageController(
     }, PLAYER_MATCH_POLL_INTERVAL_MS);
   }
 
+  function applyTimedOutPlaystyle(response: PlayerPlaystyleResponse): PlayerPlaystyleResponse {
+    return {
+      ...response,
+      ai: {
+        ...response.ai,
+        status: 'UNAVAILABLE',
+        emptyReason: 'GENERATION_FAILED',
+        insight: null,
+      },
+    };
+  }
+
+  async function fetchPlaystyle(requestId: number, startedAt: number): Promise<void> {
+    try {
+      const response = await api.getPlaystyle(playerId());
+      if (requestId !== playstyleRequestId) {
+        return;
+      }
+      playstyleError.value = null;
+      const elapsed = Date.now() - startedAt;
+      if (shouldContinueAiInsightPoll(response.ai.status, elapsed)) {
+        playstyle.value = response;
+        playstylePending.value = false;
+        const delay = nextAiInsightPollDelayMs(elapsed);
+        const timer = setTimeout(() => {
+          void fetchPlaystyle(requestId, startedAt);
+        }, delay);
+        playstylePollTimers.push(timer);
+        return;
+      }
+      if (response.ai.status === 'PENDING') {
+        playstyle.value = applyTimedOutPlaystyle(response);
+        playstylePending.value = false;
+        return;
+      }
+      playstyle.value = response;
+      playstylePending.value = false;
+    } catch {
+      if (requestId !== playstyleRequestId) {
+        return;
+      }
+      if (!playstyle.value) {
+        playstyleError.value = 'Unable to load playstyle analysis.';
+      }
+      playstylePending.value = false;
+    }
+  }
+
+  async function loadPlaystyle(): Promise<void> {
+    stopPlaystylePolling();
+    const requestId = ++playstyleRequestId;
+    playstylePending.value = true;
+    playstyleError.value = null;
+    playstyle.value = null;
+    await fetchPlaystyle(requestId, Date.now());
+  }
+
   async function loadProfile(): Promise<void> {
     pending.value = true;
     loadError.value = null;
     matchesError.value = null;
+    void loadPlaystyle();
     try {
       const profile = await api.getProfile(playerId());
       applyProfile(profile);
@@ -186,6 +264,9 @@ export function createPlayerProfilePageController(
       }
 
       startPollingIfNeeded();
+      if (refreshStatus.value && !shouldPollMatchProgress(refreshStatus.value)) {
+        void loadPlaystyle();
+      }
     } catch (error) {
       if (error instanceof PlayerApiError) {
         if (error.code === 'REFRESH_COOLDOWN') {
@@ -234,12 +315,16 @@ export function createPlayerProfilePageController(
     pollTimedOut,
     queueCategory,
     matchesLoading,
+    playstyle,
+    playstyleError,
+    playstylePending,
     loadProfile,
     onRefresh,
     setQueueCategory,
     fetchMatches,
     startPollingIfNeeded,
     stopPolling,
+    stopPlaystylePolling,
     pollOnce,
   };
 }

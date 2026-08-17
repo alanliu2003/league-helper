@@ -24,6 +24,7 @@ import { CorrelationIdInterceptor } from '../../common/correlation-id.intercepto
 import type { RequestWithCorrelationId } from '../../common/correlation-id.middleware';
 import { parseRequest } from './player.errors';
 import { PlayerProfileService } from './player-profile.service';
+import { PlayerPlaystyleService } from './player-playstyle.service';
 import { PlayerRefreshService } from './player-refresh.service';
 import { PlayerSearchService } from './player-search.service';
 
@@ -33,6 +34,7 @@ export class PlayersController {
   constructor(
     @Inject(PlayerSearchService) private readonly searchService: PlayerSearchService,
     @Inject(PlayerProfileService) private readonly profileService: PlayerProfileService,
+    @Inject(PlayerPlaystyleService) private readonly playstyleService: PlayerPlaystyleService,
     @Inject(PlayerRefreshService) private readonly refreshService: PlayerRefreshService,
   ) {}
 
@@ -75,6 +77,11 @@ export class PlayersController {
       playerId,
       parseRequest(PlayerMatchesQuerySchema, query, 'matches query'),
     );
+  }
+
+  @Get(':playerId/playstyle')
+  getPlaystyle(@Param('playerId', ParseUUIDPipe) playerId: string) {
+    return this.playstyleService.getPlaystyle(playerId);
   }
 
   @Post(':playerId/refresh')

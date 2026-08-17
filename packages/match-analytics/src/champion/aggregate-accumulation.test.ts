@@ -20,6 +20,7 @@ function baseContribution(
     gameSeconds: 1800,
     damageToChampions: 10_000,
     visionScore: 20,
+    goldEarned: 0,
     goldDifferenceAt10: null,
     goldDifferenceAt15: null,
     csDifferenceAt10: null,
@@ -43,6 +44,7 @@ describe('emptyAccumulator', () => {
     expect(acc.totalCsDifferenceAt15).toBeNull();
     expect(acc.csDifferenceAt15Samples).toBe(0);
     expect(acc.latestEligibleMatchAt).toBeNull();
+    expect(acc.totalGoldEarned).toBe(0);
   });
 });
 
@@ -111,6 +113,14 @@ describe('accumulateContribution', () => {
     expect(acc.latestEligibleMatchAt).toEqual(ended);
   });
 
+  it('accumulates goldEarned into totalGoldEarned', () => {
+    const acc = accumulateContribution(
+      emptyAccumulator(),
+      baseContribution({ goldEarned: 12_000, gameSeconds: 1800 }),
+    );
+    expect(acc.totalGoldEarned).toBe(12_000);
+  });
+
   it('rejects invalid contribution fields', () => {
     expect(() =>
       accumulateContribution(emptyAccumulator(), baseContribution({ kills: 1.5 })),
@@ -137,6 +147,9 @@ describe('accumulateContribution', () => {
       accumulateContribution(emptyAccumulator(), baseContribution({ visionScore: -1 })),
     ).toThrow(MatchAnalyticsValidationError);
     expect(() =>
+      accumulateContribution(emptyAccumulator(), baseContribution({ goldEarned: -1 })),
+    ).toThrow(MatchAnalyticsValidationError);
+    expect(() =>
       accumulateContribution(
         emptyAccumulator(),
         baseContribution({ goldDifferenceAt10: Number.NaN }),
@@ -160,6 +173,7 @@ describe('combineAccumulators', () => {
         kills: 1,
         deaths: 0,
         assists: 1,
+        goldEarned: 1_000,
         goldDifferenceAt10: 50,
         matchEndedAt: new Date('2026-08-01T10:00:00.000Z'),
       }),
@@ -171,6 +185,7 @@ describe('combineAccumulators', () => {
         kills: 2,
         deaths: 3,
         assists: 4,
+        goldEarned: 2_000,
         goldDifferenceAt10: -20,
         matchEndedAt: new Date('2026-08-02T10:00:00.000Z'),
       }),
@@ -188,6 +203,19 @@ describe('combineAccumulators', () => {
     expect(ab.totalGoldDifferenceAt10).toBe(30);
     expect(ab.goldDifferenceAt10Samples).toBe(2);
     expect(ab.latestEligibleMatchAt).toEqual(new Date('2026-08-02T10:00:00.000Z'));
+    expect(ab.totalGoldEarned).toBe(3_000);
+  });
+
+  it('sums totalGoldEarned when combining accumulators', () => {
+    const a = accumulateContribution(
+      emptyAccumulator(),
+      baseContribution({ goldEarned: 12_000 }),
+    );
+    const b = accumulateContribution(
+      emptyAccumulator(),
+      baseContribution({ goldEarned: 8_000 }),
+    );
+    expect(combineAccumulators(a, b).totalGoldEarned).toBe(20_000);
   });
 
   it('keeps null timeline totals until first present sample when combining', () => {

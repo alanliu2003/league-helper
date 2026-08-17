@@ -7,19 +7,31 @@ import {
   resolveBullMqPrefix,
   type ChampionAiInsightJobPayload,
   type MatchIngestionJobPayload,
+  type PlayerPlaystyleInsightJobPayload,
 } from '@league-helper/shared';
 import {
   CHAMPION_AI_CONFIG,
   loadChampionAiConfig,
   type ChampionAiConfig,
 } from '../config/champion-ai.config';
+import {
+  PLAYER_PLAYSTYLE_AI_CONFIG,
+  loadPlayerPlaystyleAiConfig,
+  type PlayerPlaystyleAiConfig,
+} from '../config/player-playstyle-ai.config';
 import { loadPlayerRefreshConfig, PLAYER_REFRESH_CONFIG } from '../config/player-refresh.config';
 import { PersistenceModule } from '../persistence/persistence.module';
 import { ChampionAiInsightProducer } from './champion-ai-insight.producer';
+import { PlayerPlaystyleInsightProducer } from './player-playstyle-insight.producer';
 import { IngestionReconciliationService } from './ingestion-reconciliation.service';
 import { MatchIngestionProducer } from './match-ingestion.producer';
 import { QueuesLifecycleService } from './queues-lifecycle.service';
-import { CHAMPION_AI_INSIGHT_QUEUE, MATCH_INGESTION_QUEUE, REDIS_CONNECTION } from './queue.tokens';
+import {
+  CHAMPION_AI_INSIGHT_QUEUE,
+  MATCH_INGESTION_QUEUE,
+  PLAYER_AI_PLAYSTYLE_QUEUE,
+  REDIS_CONNECTION,
+} from './queue.tokens';
 
 @Global()
 @Module({
@@ -69,19 +81,40 @@ import { CHAMPION_AI_INSIGHT_QUEUE, MATCH_INGESTION_QUEUE, REDIS_CONNECTION } fr
         });
       },
     },
+    {
+      provide: PLAYER_PLAYSTYLE_AI_CONFIG,
+      useFactory: () => loadPlayerPlaystyleAiConfig(),
+    },
+    {
+      provide: PLAYER_AI_PLAYSTYLE_QUEUE,
+      inject: [PLAYER_PLAYSTYLE_AI_CONFIG, PLAYER_REFRESH_CONFIG],
+      useFactory: (
+        aiConfig: PlayerPlaystyleAiConfig,
+        refreshConfig: ReturnType<typeof loadPlayerRefreshConfig>,
+      ) => {
+        return new Queue<PlayerPlaystyleInsightJobPayload>(aiConfig.queueName, {
+          connection: createBullMqConnectionOptions(refreshConfig.redisUrl),
+          prefix: resolveBullMqPrefix(),
+        });
+      },
+    },
     MatchIngestionProducer,
     ChampionAiInsightProducer,
+    PlayerPlaystyleInsightProducer,
     IngestionReconciliationService,
     QueuesLifecycleService,
   ],
   exports: [
     PLAYER_REFRESH_CONFIG,
     CHAMPION_AI_CONFIG,
+    PLAYER_PLAYSTYLE_AI_CONFIG,
     REDIS_CONNECTION,
     MATCH_INGESTION_QUEUE,
     CHAMPION_AI_INSIGHT_QUEUE,
+    PLAYER_AI_PLAYSTYLE_QUEUE,
     MatchIngestionProducer,
     ChampionAiInsightProducer,
+    PlayerPlaystyleInsightProducer,
     IngestionReconciliationService,
   ],
 })

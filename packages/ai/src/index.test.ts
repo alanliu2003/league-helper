@@ -19,5 +19,6 @@ describe('@league-helper/ai', () => {
     expect(ai.CHAMPION_AI_STORED_INSIGHT_JSON_SCHEMA_NAME).toBe('champion_ai_stored_insight');
     expect(ai.AiProviderError).toBeDefined();
     expect(ai.AiOutputValidationError).toBeDefined();
+    expect(typeof ai.readAiValidationDiagnostic).toBe('function');
   });
 });

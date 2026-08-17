@@ -50,6 +50,7 @@ export type ParticipantEligibilityRow = {
   timePlayedSeconds: number;
   totalDamageDealtToChampions: number;
   visionScore: number;
+  goldEarned: number;
   goldDifferenceAt10: number | null;
   goldDifferenceAt15: number | null;
   csDifferenceAt10: number | null;
@@ -88,6 +89,7 @@ export type EligibleContributor = {
   gameSeconds: number;
   damageToChampions: number;
   visionScore: number;
+  goldEarned: number;
   goldDifferenceAt10: number | null;
   goldDifferenceAt15: number | null;
   csDifferenceAt10: number | null;
@@ -185,7 +187,8 @@ export function isStructurallyValidParticipant(participant: ParticipantEligibili
     isNonNegativeInteger(participant.totalCs) &&
     isNonNegativeInteger(participant.timePlayedSeconds) &&
     isNonNegativeInteger(participant.totalDamageDealtToChampions) &&
-    isNonNegativeInteger(participant.visionScore)
+    isNonNegativeInteger(participant.visionScore) &&
+    isNonNegativeInteger(participant.goldEarned)
   );
 }
 
@@ -274,6 +277,7 @@ export function evaluateMatchEligibility(
       gameSeconds: participant.timePlayedSeconds,
       damageToChampions: participant.totalDamageDealtToChampions,
       visionScore: participant.visionScore,
+      goldEarned: participant.goldEarned,
       goldDifferenceAt10: participant.goldDifferenceAt10,
       goldDifferenceAt15: participant.goldDifferenceAt15,
       csDifferenceAt10: participant.csDifferenceAt10,

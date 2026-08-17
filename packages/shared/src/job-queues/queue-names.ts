@@ -16,6 +16,10 @@ export const CHAMPION_AI_INSIGHT_QUEUE_NAME = 'champion-ai-insight' as const;
 
 export const CHAMPION_AI_INSIGHT_JOB_NAME = 'GENERATE_CHAMPION_AI_INSIGHT' as const;
 
+export const PLAYER_AI_PLAYSTYLE_QUEUE_NAME = 'player-ai-playstyle' as const;
+
+export const PLAYER_AI_PLAYSTYLE_JOB_NAME = 'GENERATE_PLAYER_PLAYSTYLE_INSIGHT' as const;
+
 export type MatchIngestionQueueName = typeof MATCH_INGESTION_QUEUE_NAME;
 export type MatchIngestionJobName = typeof MATCH_INGESTION_JOB_NAME;
 export type ChampionAggregationQueueName = typeof CHAMPION_AGGREGATION_QUEUE_NAME;
@@ -24,3 +28,5 @@ export type ParticipantRankEnrichmentQueueName = typeof PARTICIPANT_RANK_ENRICHM
 export type ParticipantRankEnrichmentJobName = typeof PARTICIPANT_RANK_ENRICHMENT_JOB_NAME;
 export type ChampionAiInsightQueueName = typeof CHAMPION_AI_INSIGHT_QUEUE_NAME;
 export type ChampionAiInsightJobName = typeof CHAMPION_AI_INSIGHT_JOB_NAME;
+export type PlayerAiPlaystyleQueueName = typeof PLAYER_AI_PLAYSTYLE_QUEUE_NAME;
+export type PlayerAiPlaystyleJobName = typeof PLAYER_AI_PLAYSTYLE_JOB_NAME;

@@ -11,7 +11,7 @@ League of Legends analytics and AI coaching monorepo.
 - `apps/worker` — BullMQ background worker
 - `packages/shared` — shared types, Zod schemas, constants
 - `packages/match-analytics` — pure champion aggregate math (Wilson, KDA, rollups)
-- `packages/ai` — champion AI insight generation (provider + validation + eval)
+- `packages/ai` — champion AI insights and player playstyle generation (provider + validation + eval)
 - `packages/config` — shared TypeScript and ESLint config
 
 ## Prerequisites
@@ -578,7 +578,17 @@ Match IDs are queued for the worker (Milestone 6). Search/refresh responses retu
 - `POST /api/players/:playerId/refresh` re-resolves the stored Riot ID, refreshes secondary data, and queues only missing matches.
 - Redis lock + `PLAYER_REFRESH_COOLDOWN_SECONDS` prevent duplicate Riot calls.
 - Profile DTOs are cached in Redis (`PLAYER_PROFILE_CACHE_TTL_SECONDS`) and invalidated after writes.
-- Read endpoints (`GET` profile/ranks/mastery/matches/refresh-status) use the database/cache only — they never call Riot.
+- Read endpoints (`GET` profile/ranks/mastery/matches/refresh-status/playstyle) use the database/cache only — they never call Riot.
+
+### Player playstyle (Milestone 17)
+
+`GET /api/players/:playerId/playstyle` compares the player's **fixed 20 most recent Ranked Solo matches** (`queueId=420`) by `gameCreation`, then skips remakes, incomplete ingestion, unknown position, and structurally invalid stats. It does **not** fetch “20 eligible” games and does **not** backfill match 21+.
+
+Baselines are collected-sample `ChampionAggregate` rows (champion + normalized position + patch + platform + queue 420 + ingestion-time exact rank, with `rankTier=ALL` fallback). Rank is known at ingestion; it may not match rank when the match was played. Reads use aggregation version **2** (includes gold per minute).
+
+Deterministic direction cards render when `AI_ENABLED=false`; the AI panel is omitted. Mixed-role overall rows show the direction of mean per-match deltas — never a raw blended CS/min, GPM, or DPM. Champion slices use matched per-match baseline means, not a modal aggregate. Overall has no KDA row; slice KDA is a ratio-of-sums vs the mean matched aggregate KDA.
+
+The player page still loads match history if playstyle GET fails. AI copy is an interpretation layer only — Qwen does not compute metrics or choose ABOVE/NEAR/BELOW.
 
 ### Mock browser testing
 
@@ -807,7 +817,7 @@ Default rollup policy:
 - **No** `ALL`×`ALL` (tier × position)
 - **No** `ALL` platform / region / queue by default
 
-Formulas (aligned with player UI where applicable): aggregate KDA (`computeAggregateKdaRatio`, same rules as player `computePublicKda`), CS/min, DPM, vision/min, GD@10 / CSD@10 when timeline metrics exist. Win rate uses a Wilson score interval. Sample confidence thresholds default to **30 / 100 / 500** (`INSUFFICIENT` / `LOW` / `MEDIUM` / `HIGH`). Remakes, incomplete matches, and wrong source-normalization versions are excluded from aggregation.
+Formulas (aligned with player UI where applicable): aggregate KDA (`computeAggregateKdaRatio`, same rules as player `computePublicKda`), CS/min, gold/min (`totalGoldEarned` at aggregation version 2), DPM, vision/min, GD@10 / CSD@10 when timeline metrics exist. Win rate uses a Wilson score interval. Sample confidence thresholds default to **30 / 100 / 500** (`INSUFFICIENT` / `LOW` / `MEDIUM` / `HIGH`). Remakes, incomplete matches, and wrong source-normalization versions are excluded from aggregation.
 
 ### Data limitations
 
@@ -851,7 +861,13 @@ pnpm aggregates:audit-champions --json
 pnpm aggregates:audit-rank-coverage --json
 ```
 
-Keep `CHAMPION_AGGREGATION_VERSION` and `CHAMPION_AGGREGATION_SOURCE_NORMALIZATION_VERSION` aligned between API and worker.
+Keep `CHAMPION_AGGREGATION_VERSION` and `CHAMPION_AGGREGATION_SOURCE_NORMALIZATION_VERSION` aligned between API and worker. Default aggregation version is **2** (gold per minute). After migrating the gold column, rebuild before using GPM baselines:
+
+```bash
+pnpm aggregates:rebuild-champions --confirm
+```
+
+Version-1 rows with `totalGoldEarned=0` must not be treated as a real gold-per-minute baseline.
 
 ### API / UI
 
@@ -882,8 +898,9 @@ Champions e2e (Task 11) uses **route mocks** for API responses so the suite does
 ## Notes
 
 - `RIOT_API_KEY` stays in backend/worker env only. Never use a `NUXT_PUBLIC_` prefix. Never log the value.
-- Champion AI insights are **off by default** (`AI_ENABLED=false`). For local Ollama: `ollama pull qwen2.5:7b` then `ollama serve`; set `AI_ENABLED=true` (and optionally `AI_MODEL`) in `apps/api/.env` and `apps/worker/.env`. Leave `AI_API_KEY` empty for local Ollama. Do not use `NUXT_PUBLIC_*` for any AI secret.
-- `GET /api/champions/:championKey/insights` uses the same filters as builds and requires `position`. AI copy is supplemental; collected-sample stats remain the source of truth. Player-specific AI coaching is still deferred.
-- Offline eval: `pnpm ai:eval`. Live eval: `pnpm ai:eval -- --live` (requires `AI_ENABLED=true`; docs default model `qwen2.5:7b`).
+- Champion AI insights and player playstyle AI are **off by default** (`AI_ENABLED=false`). Deterministic playstyle comparison cards still render. For local Ollama: `ollama pull qwen2.5:14b` then `ollama serve`; set `AI_ENABLED=true` (and optionally override `AI_MODEL`) in `apps/api/.env` and `apps/worker/.env`. Leave `AI_API_KEY` empty for local Ollama. Do not use `NUXT_PUBLIC_*` for any AI secret.
+- Shared `AI_MODEL` default is `qwen2.5:14b` (still overridable). Keep both AI worker queues (`champion-ai-insight` and `player-ai-playstyle`) at concurrency **1** when sharing a local GPU.
+- `GET /api/champions/:championKey/insights` uses the same filters as builds and requires `position`. `GET /api/players/:playerId/playstyle` uses a fixed 20-match Ranked Solo window (see Player playstyle). AI copy is supplemental; collected-sample stats remain the source of truth. Prescriptive player coaching is still deferred.
+- Offline eval: `pnpm ai:eval` (champion) and `pnpm ai:eval:playstyle` (player). Live eval: `pnpm ai:eval -- --live` and `pnpm ai:eval:playstyle -- --live` (requires `AI_ENABLED=true`; docs default model `qwen2.5:14b`). Live eval is optional and is not required in CI.
 - Prisma models are persistence internals — do not expose them directly as public API DTOs.
 - Frontend requires only `NUXT_PUBLIC_API_BASE` (default `http://localhost:3001`).

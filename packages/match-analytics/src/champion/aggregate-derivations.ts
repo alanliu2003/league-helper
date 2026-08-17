@@ -23,9 +23,13 @@ export type DerivedChampionAggregateMetrics = {
   readonly wilsonInterval: WilsonScoreInterval | null;
   readonly sampleConfidence: SampleConfidence;
   readonly aggregateKdaRatio: number | null;
+  readonly averageKillsPerGame: number | null;
+  readonly averageDeathsPerGame: number | null;
+  readonly averageAssistsPerGame: number | null;
   readonly averageCsPerMinute: number | null;
   readonly averageDamagePerMinute: number | null;
   readonly averageVisionScorePerMinute: number | null;
+  readonly averageGoldPerMinute: number | null;
   readonly averageGoldDifferenceAt10: number | null;
   readonly averageGoldDifferenceAt15: number | null;
   readonly averageCsDifferenceAt10: number | null;
@@ -90,6 +94,9 @@ export function deriveChampionAggregateMetrics(
       accumulator.totalDeaths,
       accumulator.totalAssists,
     ),
+    averageKillsPerGame: safeDivide(accumulator.totalKills, sampleSize),
+    averageDeathsPerGame: safeDivide(accumulator.totalDeaths, sampleSize),
+    averageAssistsPerGame: safeDivide(accumulator.totalAssists, sampleSize),
     averageCsPerMinute: perMinute(accumulator.totalCs, accumulator.totalGameSeconds),
     averageDamagePerMinute: perMinute(
       accumulator.totalDamageToChampions,
@@ -99,6 +106,7 @@ export function deriveChampionAggregateMetrics(
       accumulator.totalVisionScore,
       accumulator.totalGameSeconds,
     ),
+    averageGoldPerMinute: perMinute(accumulator.totalGoldEarned, accumulator.totalGameSeconds),
     averageGoldDifferenceAt10: averageFromSamples(
       accumulator.totalGoldDifferenceAt10,
       accumulator.goldDifferenceAt10Samples,

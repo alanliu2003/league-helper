@@ -225,9 +225,14 @@ export {
   buildParticipantRankEnrichmentBullMqJobId,
   CHAMPION_AI_INSIGHT_QUEUE_NAME,
   CHAMPION_AI_INSIGHT_JOB_NAME,
+  PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
+  PLAYER_AI_PLAYSTYLE_JOB_NAME,
   ChampionAiInsightJobPayloadSchema,
   ChampionAiInsightJobTypeSchema,
   buildChampionAiInsightBullMqJobId,
+  PlayerPlaystyleInsightJobPayloadSchema,
+  PlayerPlaystyleInsightJobTypeSchema,
+  buildPlayerPlaystyleInsightBullMqJobId,
   BULLMQ_DEFAULT_PREFIX,
   parseBullMqRedisConnectionInfo,
   createBullMqConnectionOptions,
@@ -248,6 +253,10 @@ export {
   type ChampionAiInsightJobName,
   type ChampionAiInsightJobPayload,
   type ChampionAiInsightJobType,
+  type PlayerAiPlaystyleQueueName,
+  type PlayerAiPlaystyleJobName,
+  type PlayerPlaystyleInsightJobPayload,
+  type PlayerPlaystyleInsightJobType,
   type BullMqRedisConnectionInfo,
 } from './job-queues';
 
@@ -377,6 +386,8 @@ export {
   type ChampionMatchupsResponse,
 } from './champion-matchups';
 
+export { DEFAULT_AI_MODEL } from './ai-runtime';
+
 export {
   CHAMPION_AI_DISCLAIMER,
   CHAMPION_AI_PROMPT_VERSION,
@@ -395,6 +406,33 @@ export {
   type ChampionAiGroundedClaim,
   type ChampionAiStoredInsight,
 } from './champion-insights';
+
+export {
+  PLAYER_PLAYSTYLE_AI_DISCLAIMER,
+  PLAYER_PLAYSTYLE_PROMPT_VERSION,
+  PlayerPlaystyleMetricIdSchema,
+  PlayerPlaystyleDirectionSchema,
+  PlayerPlaystyleSampleBandSchema,
+  PlayerAiInsightStatusSchema,
+  PlayerPlaystyleEmptyReasonSchema,
+  PlayerPlaystyleBaselineSchema,
+  PlayerMetricComparisonSchema,
+  PlayerPlaystylePublicInsightSchema,
+  PlayerPlaystyleResponseSchema,
+  PlayerPlaystyleGroundedClaimSchema,
+  PlayerPlaystyleStoredInsightSchema,
+  type PlayerPlaystyleMetricId,
+  type PlayerPlaystyleDirection,
+  type PlayerPlaystyleSampleBand,
+  type PlayerAiInsightStatus,
+  type PlayerPlaystyleEmptyReason,
+  type PlayerPlaystyleBaseline,
+  type PlayerMetricComparison,
+  type PlayerPlaystylePublicInsight,
+  type PlayerPlaystyleResponse,
+  type PlayerPlaystyleGroundedClaim,
+  type PlayerPlaystyleStoredInsight,
+} from './player-playstyle';
 
 export {
   ABILITY_SLOTS,

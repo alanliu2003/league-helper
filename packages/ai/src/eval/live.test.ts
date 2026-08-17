@@ -27,6 +27,7 @@ function highMetrics(): ChampionAggregateMetrics {
     averageCsPerMinute: 7.4,
     averageDamagePerMinute: 580,
     averageVisionScorePerMinute: 1.1,
+    averageGoldPerMinute: 400,
     averageGoldDifferenceAt10: 80,
     averageGoldDifferenceAt15: 150,
     averageCsDifferenceAt10: 3,
@@ -90,7 +91,9 @@ function eligibleFixture(): ChampionInsightEvalFixture {
       stats: highMetrics(),
       builds: { ...emptyBuilds(), coreBuilds: [coreBuild()] },
       matchups: { strongAgainst: [], weakAgainst: [] },
-      abilities: [ability('E', 'Charm', 'Ahri blows a kiss that damages and charms the first enemy hit.')],
+      abilities: [
+        ability('E', 'Charm', 'Ahri blows a kiss that damages and charms the first enemy hit.'),
+      ],
     },
   };
 }
@@ -107,7 +110,9 @@ function ineligibleFixture(): ChampionInsightEvalFixture {
       stats: null,
       builds: emptyBuilds(),
       matchups: { strongAgainst: [], weakAgainst: [] },
-      abilities: [ability('E', 'Charm', 'Ahri blows a kiss that damages and charms the first enemy hit.')],
+      abilities: [
+        ability('E', 'Charm', 'Ahri blows a kiss that damages and charms the first enemy hit.'),
+      ],
     },
   };
 }
@@ -180,6 +185,28 @@ describe('live eval harness', () => {
     expect(provider.generateCalls).toBe(0);
   });
 
+  it('defaults AI_MODEL to the shared 14b product default when unset', async () => {
+    const result = await runLiveEval({
+      env: { AI_ENABLED: 'true' },
+      provider: new FakeProvider(() => JSON.stringify(validInsight())),
+      fixtures: [eligibleFixture()],
+      write: () => undefined,
+    });
+
+    expect(result.metrics?.model).toBe('qwen2.5:14b');
+  });
+
+  it('uses AI_MODEL when it is set', async () => {
+    const result = await runLiveEval({
+      env: { AI_ENABLED: 'true', AI_MODEL: 'qwen2.5:32b' },
+      provider: new FakeProvider(() => JSON.stringify(validInsight())),
+      fixtures: [eligibleFixture()],
+      write: () => undefined,
+    });
+
+    expect(result.metrics?.model).toBe('qwen2.5:32b');
+  });
+
   it('increments generated, validation_pass, and json_schema_mode on fake success and skips ineligible fixtures', async () => {
     const capture = captureWriter();
     const provider = new FakeProvider(() => JSON.stringify(validInsight()));
@@ -203,6 +230,7 @@ describe('live eval harness', () => {
     expect(result.metrics?.json_schema_mode).toBe(1);
     expect(result.metrics?.json_object_mode).toBe(0);
     expect(result.metrics?.validation_fail).toBe(0);
+    expect(result.metrics?.model).toBe('qwen2.5:14b');
     expect(provider.generateCalls).toBe(1);
     expect(capture.text()).toMatch(/live-eligible/);
     expect(capture.text()).toMatch(/live-ineligible/);

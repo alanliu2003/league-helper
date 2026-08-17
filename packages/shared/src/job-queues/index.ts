@@ -7,6 +7,8 @@ export {
   PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
   CHAMPION_AI_INSIGHT_QUEUE_NAME,
   CHAMPION_AI_INSIGHT_JOB_NAME,
+  PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
+  PLAYER_AI_PLAYSTYLE_JOB_NAME,
   type MatchIngestionQueueName,
   type MatchIngestionJobName,
   type ChampionAggregationQueueName,
@@ -15,6 +17,8 @@ export {
   type ParticipantRankEnrichmentJobName,
   type ChampionAiInsightQueueName,
   type ChampionAiInsightJobName,
+  type PlayerAiPlaystyleQueueName,
+  type PlayerAiPlaystyleJobName,
 } from './queue-names';
 
 export {
@@ -50,6 +54,14 @@ export {
   type ChampionAiInsightJobPayload,
   type ChampionAiInsightJobType,
 } from './champion-ai-insight-job';
+
+export {
+  PlayerPlaystyleInsightJobPayloadSchema,
+  PlayerPlaystyleInsightJobTypeSchema,
+  buildPlayerPlaystyleInsightBullMqJobId,
+  type PlayerPlaystyleInsightJobPayload,
+  type PlayerPlaystyleInsightJobType,
+} from './player-playstyle-insight-job';
 
 export {
   BULLMQ_DEFAULT_PREFIX,

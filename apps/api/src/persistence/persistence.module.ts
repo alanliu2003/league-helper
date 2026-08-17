@@ -9,6 +9,7 @@ import { IngestionJobRepository } from './ingestion-job.repository';
 import { MasterySnapshotRepository } from './mastery-snapshot.repository';
 import { MatchRepository } from './match.repository';
 import { PlayerAccountRepository } from './player-account.repository';
+import { PlayerPlaystyleInsightRepository } from './player-playstyle-insight.repository';
 import { RankSnapshotRepository } from './rank-snapshot.repository';
 
 @Module({
@@ -24,6 +25,7 @@ import { RankSnapshotRepository } from './rank-snapshot.repository';
     ChampionBuildReadRepository,
     ChampionMatchupReadRepository,
     ChampionAiInsightRepository,
+    PlayerPlaystyleInsightRepository,
   ],
   exports: [
     PlayerAccountRepository,
@@ -36,6 +38,7 @@ import { RankSnapshotRepository } from './rank-snapshot.repository';
     ChampionBuildReadRepository,
     ChampionMatchupReadRepository,
     ChampionAiInsightRepository,
+    PlayerPlaystyleInsightRepository,
   ],
 })
 export class PersistenceModule {}

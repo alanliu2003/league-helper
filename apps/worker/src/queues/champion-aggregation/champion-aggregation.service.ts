@@ -111,6 +111,7 @@ async function foldAffectedKeys(input: {
               gameSeconds: contributor.gameSeconds,
               damageToChampions: contributor.damageToChampions,
               visionScore: contributor.visionScore,
+              goldEarned: contributor.goldEarned,
               goldDifferenceAt10: contributor.goldDifferenceAt10,
               goldDifferenceAt15: contributor.goldDifferenceAt15,
               csDifferenceAt10: contributor.csDifferenceAt10,

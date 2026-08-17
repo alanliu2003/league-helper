@@ -5,8 +5,10 @@ import {
 import {
   CHAMPION_AGGREGATION_QUEUE_NAME,
   CHAMPION_AI_INSIGHT_QUEUE_NAME,
+  DEFAULT_AI_MODEL,
   MATCH_INGESTION_QUEUE_NAME,
   PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
+  PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
   PARTICIPANT_RANK_OBSERVATION_FRESHNESS_MS,
   ValidationFailureError,
 } from '@league-helper/shared';
@@ -199,7 +201,7 @@ export function loadChampionAggregationWorkerConfig(
     ),
     aggregationVersion: parseNonEmptyVersion(
       env.CHAMPION_AGGREGATION_VERSION,
-      '1',
+      '2',
       'CHAMPION_AGGREGATION_VERSION',
     ),
     matchupAggregationVersion: parseNonEmptyVersion(
@@ -280,7 +282,6 @@ export type ChampionAiInsightWorkerConfig = {
 };
 
 const DEFAULT_AI_BASE_URL = 'http://localhost:11434/v1';
-const DEFAULT_AI_MODEL = 'qwen2.5:7b';
 
 function parseFiniteNumber(raw: string | undefined, fallback: number, name: string): number {
   if (raw === undefined || raw.trim() === '') {
@@ -324,7 +325,10 @@ export function loadChampionAiInsightWorkerConfig(
 ): ChampionAiInsightWorkerConfig {
   return {
     enabled: parseBoolean(env.AI_ENABLED, false, 'AI_ENABLED'),
-    queueName: parseNonEmptyString(env.CHAMPION_AI_INSIGHT_QUEUE_NAME, CHAMPION_AI_INSIGHT_QUEUE_NAME),
+    queueName: parseNonEmptyString(
+      env.CHAMPION_AI_INSIGHT_QUEUE_NAME,
+      CHAMPION_AI_INSIGHT_QUEUE_NAME,
+    ),
     concurrency: parseBoundedInt(env.CHAMPION_AI_INSIGHT_WORKER_CONCURRENCY, 1, {
       min: 1,
       max: 8,
@@ -334,6 +338,68 @@ export function loadChampionAiInsightWorkerConfig(
       min: 1,
       max: 20,
       name: 'CHAMPION_AI_INSIGHT_JOB_ATTEMPTS',
+    }),
+    provider: parseAiProvider(env.AI_PROVIDER),
+    baseUrl: parseNonEmptyString(env.AI_BASE_URL, DEFAULT_AI_BASE_URL),
+    model: parseNonEmptyString(env.AI_MODEL, DEFAULT_AI_MODEL),
+    apiKey: env.AI_API_KEY ?? '',
+    timeoutMs: parseBoundedInt(env.AI_TIMEOUT_MS, 60_000, {
+      min: 1_000,
+      max: 600_000,
+      name: 'AI_TIMEOUT_MS',
+    }),
+    temperature: parseFiniteNumber(env.AI_TEMPERATURE, 0.2, 'AI_TEMPERATURE'),
+    maxOutputTokens: parseBoundedInt(env.AI_MAX_OUTPUT_TOKENS, 1200, {
+      min: 1,
+      max: 16_000,
+      name: 'AI_MAX_OUTPUT_TOKENS',
+    }),
+    maxRepairAttempts: parseBoundedInt(env.AI_MAX_REPAIR_ATTEMPTS, 1, {
+      min: 0,
+      max: 5,
+      name: 'AI_MAX_REPAIR_ATTEMPTS',
+    }),
+  };
+}
+
+export type PlayerPlaystyleInsightWorkerConfig = {
+  enabled: boolean;
+  queueName: string;
+  concurrency: number;
+  jobAttempts: number;
+  provider: ChampionAiProviderId;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  timeoutMs: number;
+  temperature: number;
+  maxOutputTokens: number;
+  maxRepairAttempts: number;
+};
+
+/**
+ * Load player playstyle insight worker settings from environment.
+ * Never contacts a provider — a down Ollama instance must not prevent startup.
+ * Boots even when AI_ENABLED=false so the queue has an idle consumer.
+ */
+export function loadPlayerPlaystyleInsightWorkerConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): PlayerPlaystyleInsightWorkerConfig {
+  return {
+    enabled: parseBoolean(env.AI_ENABLED, false, 'AI_ENABLED'),
+    queueName: parseNonEmptyString(
+      env.PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
+      PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
+    ),
+    concurrency: parseBoundedInt(env.PLAYER_AI_PLAYSTYLE_WORKER_CONCURRENCY, 1, {
+      min: 1,
+      max: 8,
+      name: 'PLAYER_AI_PLAYSTYLE_WORKER_CONCURRENCY',
+    }),
+    jobAttempts: parseBoundedInt(env.PLAYER_AI_PLAYSTYLE_JOB_ATTEMPTS, 3, {
+      min: 1,
+      max: 20,
+      name: 'PLAYER_AI_PLAYSTYLE_JOB_ATTEMPTS',
     }),
     provider: parseAiProvider(env.AI_PROVIDER),
     baseUrl: parseNonEmptyString(env.AI_BASE_URL, DEFAULT_AI_BASE_URL),

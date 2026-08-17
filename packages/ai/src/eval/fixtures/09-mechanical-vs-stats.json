@@ -33,6 +33,7 @@
       "aggregateKdaRatio": 2.6,
       "averageCsPerMinute": 7.2,
       "averageDamagePerMinute": 510,
+      "averageGoldPerMinute": 400,
       "averageVisionScorePerMinute": 1.0,
       "averageGoldDifferenceAt10": -30,
       "averageGoldDifferenceAt15": -70,

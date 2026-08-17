@@ -23,7 +23,7 @@ describe('loadChampionStatsConfig', () => {
     });
     expect(config.defaultPlatform).toBe('na1');
     expect(config.sourceNormalizationVersion).toBe('1');
-    expect(config.aggregationVersion).toBe('1');
+    expect(config.aggregationVersion).toBe('2');
     expect(config.minimumSample).toBe(30);
     expect(config.confidenceLevel).toBe(0.95);
     expect(config.defaultQueueId).toBe(420);

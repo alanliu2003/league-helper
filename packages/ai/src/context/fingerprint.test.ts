@@ -16,6 +16,7 @@ function metrics(overrides: Partial<ChampionAggregateMetrics> = {}): ChampionAgg
     averageCsPerMinute: 7.4,
     averageDamagePerMinute: 580,
     averageVisionScorePerMinute: 1.1,
+    averageGoldPerMinute: 400,
     averageGoldDifferenceAt10: 80,
     averageGoldDifferenceAt15: 150,
     averageCsDifferenceAt10: 3,

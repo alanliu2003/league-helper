@@ -1,0 +1,162 @@
+{
+  "expectEvidenceNotCitable": [
+    "OVERALL_CS_PER_MIN",
+    "OVERALL_GOLD_PER_MIN",
+    "OVERALL_DAMAGE_PER_MIN"
+  ],
+  "expectOverallCsPlayerValueNull": true,
+  "expectNoOverallKda": true,
+  "expectSliceChampionKeys": [],
+  "id": "08-insufficient-sample-no-backfill",
+  "description": "Fixed 20-window with many remake skips (15 remake + 1 incomplete + 1 unknownPosition + 3 analyzed = 20). comparableMatchCount 3 < 5. Do not backfill. playerSampleBand INSUFFICIENT. generationEligible false. No extra matches beyond the window.",
+  "expectGenerationEligible": false,
+  "expectEconomyAllowed": false,
+  "expectCombatAllowed": false,
+  "expectWindowIdentity": true,
+  "input": {
+    "queueId": 420,
+    "matchIdentity": [
+      {
+        "matchId": "NA1_PS08_00000001",
+        "participantId": 1
+      },
+      {
+        "matchId": "NA1_PS08_00000002",
+        "participantId": 2
+      },
+      {
+        "matchId": "NA1_PS08_00000003",
+        "participantId": 3
+      }
+    ],
+    "profile": {
+      "windowSize": 20,
+      "matchesAnalyzed": 3,
+      "comparableMatchCount": 3,
+      "wins": 1,
+      "playerSampleBand": "INSUFFICIENT",
+      "patchRange": {
+        "min": "16.14",
+        "max": "16.15"
+      },
+      "mix": [
+        {
+          "championKey": "Ahri",
+          "championName": "Ahri",
+          "position": "MIDDLE",
+          "matchCount": 3
+        }
+      ],
+      "championSlices": [],
+      "skipped": {
+        "remake": 15,
+        "incomplete": 1,
+        "unknownPosition": 1,
+        "noBaseline": 0
+      },
+      "overall": {
+        "comparisons": [
+          {
+            "metric": "KILLS_PER_GAME",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "DEATHS_PER_GAME",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "ASSISTS_PER_GAME",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "CS_PER_MIN",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "GOLD_PER_MIN",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "DAMAGE_PER_MIN",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "VISION_PER_MIN",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "GOLD_DIFF_AT_10",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "GOLD_DIFF_AT_15",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "CS_DIFF_AT_10",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          },
+          {
+            "metric": "CS_DIFF_AT_15",
+            "playerValue": null,
+            "baseline": null,
+            "delta": null,
+            "comparableMatchCount": 3,
+            "direction": "NOT_COMPARABLE",
+            "interpretationAllowed": false
+          }
+        ]
+      }
+    }
+  }
+}

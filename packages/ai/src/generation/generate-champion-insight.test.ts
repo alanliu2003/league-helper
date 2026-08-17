@@ -15,7 +15,10 @@ import { buildChampionInsightContext } from '../context/builder';
 import { buildEvidenceHandleMapping } from '../context/evidence-handles';
 import type { ChampionInsightContextInput } from '../context/types';
 import { ChampionAiInsightValidationError } from '../validation/output';
-import { buildChampionInsightSystemPrompt, buildChampionInsightUserPrompt } from '../prompts/champion-insight-v1';
+import {
+  buildChampionInsightSystemPrompt,
+  buildChampionInsightUserPrompt,
+} from '../prompts/champion-insight-v1';
 import { AiProviderError } from '../provider/errors';
 import type { AiGenerationRawResult, AiGenerationRequest, AiProvider } from '../provider/types';
 import { CHAMPION_AI_STORED_INSIGHT_JSON_SCHEMA } from './stored-insight.json-schema';
@@ -40,6 +43,7 @@ function metrics(): ChampionAggregateMetrics {
     averageCsPerMinute: 8.4,
     averageDamagePerMinute: 580,
     averageVisionScorePerMinute: 1.1,
+    averageGoldPerMinute: 400,
     averageGoldDifferenceAt10: 212,
     averageGoldDifferenceAt15: 150,
     averageCsDifferenceAt10: 3,
@@ -313,6 +317,7 @@ describe('generateChampionInsight', () => {
     const validationError = thrown as AiOutputValidationError;
     expect(validationError.retryable).toBe(false);
     expect(validationError.cause).toBeInstanceOf(ChampionAiInsightValidationError);
+    expect(validationError.cause.code).toBe('EVIDENCE');
     expect(provider.requests).toHaveLength(2);
   });
 
@@ -394,6 +399,8 @@ describe('generateChampionInsight', () => {
     expect(insight.summary.evidence).toEqual(['CHAMPION_WIN_RATE']);
     expect(provider.requests).toHaveLength(2);
     expect(provider.requests[1]?.user).toContain('unknown evidence handle: E99');
-    expect(provider.requests[1]?.user).toContain('Use only the evidence handles listed in the input.');
+    expect(provider.requests[1]?.user).toContain(
+      'Use only the evidence handles listed in the input.',
+    );
   });
 });

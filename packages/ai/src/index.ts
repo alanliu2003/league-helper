@@ -1,5 +1,17 @@
 export { buildChampionInsightContext, listEvidenceIds } from './context/builder';
-export { fingerprintChampionInsightContext } from './context/fingerprint';
+export {
+  FINGERPRINT_VOLATILE_KEYS,
+  fingerprintCanonicalPayload,
+} from './context/canonical-fingerprint';
+export {
+  fingerprintChampionInsightContext,
+  fingerprintPlayerPlaystyleContext,
+} from './context/fingerprint';
+export { buildPlayerPlaystyleContext } from './context/player-playstyle-builder';
+export {
+  buildPlayerPlaystyleEvidenceHandleMapping,
+  buildPlayerPlaystyleGenerationPayload,
+} from './context/player-playstyle-evidence';
 export {
   ChampionInsightAbilitySchema,
   ChampionInsightBuildRowSchema,
@@ -17,7 +29,42 @@ export type {
   ChampionInsightMatchupRow,
   ChampionInsightPerformance,
 } from './context/types';
-export type { ChampionInsightFingerprintInput } from './context/fingerprint';
+export type {
+  ChampionInsightFingerprintInput,
+  PlayerPlaystyleFingerprintInput,
+} from './context/fingerprint';
+export {
+  PlayerPlaystyleChampionSliceSchema,
+  PlayerPlaystyleEvidenceEntrySchema,
+  PlayerPlaystyleInternalContextSchema,
+  PlayerPlaystyleMatchIdentitySchema,
+  PlayerPlaystyleMixEntrySchema,
+  PlayerPlaystyleOutputPolicySchema,
+} from './context/player-playstyle-types';
+export type {
+  PlayerPlaystyleBuilderInput,
+  PlayerPlaystyleChampionSlice,
+  PlayerPlaystyleEvidenceEntry,
+  PlayerPlaystyleGenerationPayload,
+  PlayerPlaystyleInternalContext,
+  PlayerPlaystyleMatchIdentity,
+  PlayerPlaystyleMixEntry,
+  PlayerPlaystyleOutputPolicy,
+} from './context/player-playstyle-types';
+export { PLAYER_PLAYSTYLE_PROMPT_VERSION } from '@league-helper/shared';
+export {
+  buildPlayerPlaystyleSystemPrompt,
+  buildPlayerPlaystyleUserPrompt,
+} from './prompts/player-playstyle-v1';
+export {
+  PlayerPlaystyleValidationError,
+  validatePlayerPlaystyleInsight,
+} from './validation/player-playstyle-output';
+export type {
+  PlayerPlaystyleValidationCode,
+  PlayerPlaystyleValidationDetails,
+  PlayerPlaystyleValidationReason,
+} from './validation/player-playstyle-output';
 export { ChampionAiInsightValidationError, validateChampionAiInsight } from './validation/output';
 export type {
   ChampionAiInsightValidationCode,
@@ -35,10 +82,7 @@ export {
   buildChampionInsightOutputPolicy,
   buildEvidenceHandleMapping,
 } from './context/evidence-handles';
-export type {
-  ChampionInsightOutputPolicy,
-  GenerationEvidence,
-} from './context/evidence-handles';
+export type { ChampionInsightOutputPolicy, GenerationEvidence } from './context/evidence-handles';
 export {
   CHAMPION_AI_PROMPT_VERSION,
   buildChampionInsightSystemPrompt,
@@ -57,10 +101,21 @@ export {
   CHAMPION_AI_STORED_INSIGHT_JSON_SCHEMA_NAME,
 } from './generation/stored-insight.json-schema';
 export {
+  PLAYER_PLAYSTYLE_STORED_INSIGHT_JSON_SCHEMA,
+  PLAYER_PLAYSTYLE_STORED_INSIGHT_JSON_SCHEMA_NAME,
+} from './generation/stored-player-playstyle.json-schema';
+export {
   AiOutputValidationError,
   generateChampionInsight,
+  readAiValidationDiagnostic,
 } from './generation/generate-champion-insight';
+export type { AiValidationDiagnostic } from './generation/generate-champion-insight';
+export { generatePlayerPlaystyle } from './generation/generate-player-playstyle';
 export type {
   GenerateChampionInsightConfig,
   GenerateChampionInsightInput,
 } from './generation/generate-champion-insight';
+export type {
+  GeneratePlayerPlaystyleConfig,
+  GeneratePlayerPlaystyleInput,
+} from './generation/generate-player-playstyle';

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CHAMPION_STATS_CONFIG, loadChampionStatsConfig } from '../../config/champion-stats.config';
 import { DataDragonModule } from '../../integrations/data-dragon/data-dragon.module';
 import { RiotModule } from '../../integrations/riot/riot.module';
 import { PersistenceModule } from '../../persistence/persistence.module';
@@ -10,6 +11,7 @@ import {
   PlayerMatchDiscoveryService,
 } from './discovery/player-match-discovery.service';
 import { PlayerCacheService } from './player-cache.service';
+import { PlayerPlaystyleService } from './player-playstyle.service';
 import { PlayerProfileService } from './player-profile.service';
 import { PlayerRefreshService } from './player-refresh.service';
 import { PlayerRefreshStatusService } from './player-refresh-status.service';
@@ -28,6 +30,7 @@ import { PlayersController } from './players.controller';
   providers: [
     PlayerSearchService,
     PlayerProfileService,
+    PlayerPlaystyleService,
     PlayerRefreshService,
     PlayerRefreshStatusService,
     PlayerCacheService,
@@ -35,11 +38,16 @@ import { PlayersController } from './players.controller';
       provide: PLAYER_MATCH_DISCOVERY_PAGE_SIZE,
       useValue: DEFAULT_DISCOVERY_MATCH_ID_PAGE_SIZE,
     },
+    {
+      provide: CHAMPION_STATS_CONFIG,
+      useFactory: () => loadChampionStatsConfig(),
+    },
     PlayerMatchDiscoveryService,
   ],
   exports: [
     PlayerSearchService,
     PlayerProfileService,
+    PlayerPlaystyleService,
     PlayerRefreshService,
     PlayerMatchDiscoveryService,
   ],

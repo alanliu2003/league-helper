@@ -5,26 +5,16 @@ import {
   buildChampionInsightUserPrompt,
 } from '../prompts/champion-insight-v1';
 import type { AiProvider } from '../provider/types';
-import {
-  ChampionAiInsightValidationError,
-  validateChampionAiInsight,
-} from '../validation/output';
+import { ChampionAiInsightValidationError, validateChampionAiInsight } from '../validation/output';
 import { buildChampionInsightRepairMessage } from '../validation/repair-message';
+import { AiOutputValidationError } from './ai-output-validation-error';
 import {
   CHAMPION_AI_STORED_INSIGHT_JSON_SCHEMA,
   CHAMPION_AI_STORED_INSIGHT_JSON_SCHEMA_NAME,
 } from './stored-insight.json-schema';
 
-export class AiOutputValidationError extends Error {
-  readonly retryable = false;
-  override readonly cause: ChampionAiInsightValidationError;
-
-  constructor(message: string, options: { cause: ChampionAiInsightValidationError }) {
-    super(message, { cause: options.cause });
-    this.name = 'AiOutputValidationError';
-    this.cause = options.cause;
-  }
-}
+export { AiOutputValidationError, readAiValidationDiagnostic } from './ai-output-validation-error';
+export type { AiValidationDiagnostic } from './ai-output-validation-error';
 
 export type GenerateChampionInsightConfig = {
   temperature?: number;

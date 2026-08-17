@@ -1,4 +1,8 @@
-import { CHAMPION_AI_INSIGHT_QUEUE_NAME, ValidationFailureError } from '@league-helper/shared';
+import {
+  CHAMPION_AI_INSIGHT_QUEUE_NAME,
+  DEFAULT_AI_MODEL,
+  ValidationFailureError,
+} from '@league-helper/shared';
 
 export type ChampionAiProviderId = 'openai_compatible';
 
@@ -19,7 +23,6 @@ export type ChampionAiConfig = {
 };
 
 const DEFAULT_BASE_URL = 'http://localhost:11434/v1';
-const DEFAULT_MODEL = 'qwen2.5:7b';
 
 function parseBooleanFlag(raw: string | undefined, fallback: boolean, name: string): boolean {
   if (raw === undefined || raw.trim() === '') {
@@ -97,7 +100,7 @@ export function loadChampionAiConfig(env: NodeJS.ProcessEnv = process.env): Cham
     enabled: parseBooleanFlag(env.AI_ENABLED, false, 'AI_ENABLED'),
     provider: parseProvider(env.AI_PROVIDER),
     baseUrl: parseNonEmptyString(env.AI_BASE_URL, DEFAULT_BASE_URL),
-    model: parseNonEmptyString(env.AI_MODEL, DEFAULT_MODEL),
+    model: parseNonEmptyString(env.AI_MODEL, DEFAULT_AI_MODEL),
     apiKey: env.AI_API_KEY ?? '',
     timeoutMs: parsePositiveInt(env.AI_TIMEOUT_MS, 60_000, 'AI_TIMEOUT_MS'),
     temperature: parseFiniteNumber(env.AI_TEMPERATURE, 0.2, 'AI_TEMPERATURE'),

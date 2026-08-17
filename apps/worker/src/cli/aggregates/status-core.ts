@@ -106,6 +106,7 @@ export async function runStatusChampionAggregates(
             timePlayedSeconds: true,
             totalDamageDealtToChampions: true,
             visionScore: true,
+            goldEarned: true,
             goldDifferenceAt10: true,
             goldDifferenceAt15: true,
             csDifferenceAt10: true,

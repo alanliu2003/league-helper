@@ -74,6 +74,7 @@ describe('rank-aware aggregate merge', () => {
         totalGameSeconds: 1800,
         totalDamageToChampions: 20000,
         totalVisionScore: 40,
+        totalGoldEarned: 8000,
         totalGoldDifferenceAt10: 100,
         goldDifferenceAt10Samples: 2,
         totalCsDifferenceAt15: null,
@@ -89,6 +90,7 @@ describe('rank-aware aggregate merge', () => {
         totalGameSeconds: 2700,
         totalDamageToChampions: 30000,
         totalVisionScore: 60,
+        totalGoldEarned: 12000,
         totalGoldDifferenceAt10: 50,
         goldDifferenceAt10Samples: 1,
         totalCsDifferenceAt15: 30,
@@ -103,10 +105,15 @@ describe('rank-aware aggregate merge', () => {
     expect(merged.totalGameSeconds).toBe(4500);
     expect(merged.totalDamageToChampions).toBe(50000);
     expect(merged.totalVisionScore).toBe(100);
+    expect(merged.totalGoldEarned).toBe(20000);
     expect(merged.totalGoldDifferenceAt10).toBe(150);
     expect(merged.goldDifferenceAt10Samples).toBe(3);
     expect(merged.totalCsDifferenceAt15).toBe(30);
     expect(merged.csDifferenceAt15Samples).toBe(3);
+  });
+
+  it('starts empty mergeable totals with zero totalGoldEarned', () => {
+    expect(emptyMergeableChampionAggregateTotals().totalGoldEarned).toBe(0);
   });
 
   it('uses deterministic input ordering independence for additive merge', () => {
