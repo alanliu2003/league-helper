@@ -97,4 +97,26 @@ describe('reconstructItemInventory', () => {
     );
     expect(inventory).toEqual([1056]);
   });
+
+  it('ignores CHAMPION_KILL when reconstructing inventory', () => {
+    const inventory = reconstructItemInventory([
+      event({ type: 'ITEM_PURCHASED', itemId: 1001, eventIndex: 0 }),
+      event({ type: 'CHAMPION_KILL', itemId: null, eventIndex: 1, timestampMs: 1 }),
+      event({ type: 'ITEM_PURCHASED', itemId: 1036, eventIndex: 2, timestampMs: 2 }),
+    ]);
+    expect(inventory).toEqual([1001, 1036]);
+  });
+
+  it('reconstructs mixed item and kill streams identically to item events alone', () => {
+    const itemEvents = [
+      event({ type: 'ITEM_PURCHASED', itemId: 1001, eventIndex: 0 }),
+      event({ type: 'ITEM_PURCHASED', itemId: 1036, eventIndex: 2, timestampMs: 2 }),
+    ];
+    const mixedEvents = [
+      event({ type: 'ITEM_PURCHASED', itemId: 1001, eventIndex: 0 }),
+      event({ type: 'CHAMPION_KILL', itemId: null, eventIndex: 1, timestampMs: 1 }),
+      event({ type: 'ITEM_PURCHASED', itemId: 1036, eventIndex: 2, timestampMs: 2 }),
+    ];
+    expect(reconstructItemInventory(mixedEvents)).toEqual(reconstructItemInventory(itemEvents));
+  });
 });
