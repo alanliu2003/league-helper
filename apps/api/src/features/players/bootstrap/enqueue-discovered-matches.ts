@@ -10,6 +10,7 @@ import {
 import type { IngestionJobRepository } from '../../../persistence/ingestion-job.repository';
 import type { MatchRepository } from '../../../persistence/match.repository';
 import type { MatchIngestionProducer } from '../../../queues/match-ingestion.producer';
+import type { MatchTimelineProducer } from '../../../queues/match-timeline.producer';
 
 export type EnqueueDiscoveredMatchesDeps = {
   matches: Pick<
@@ -18,6 +19,7 @@ export type EnqueueDiscoveredMatchesDeps = {
     | 'findExistingByExternalIds'
     | 'findLinkedCompletedExternalIds'
     | 'findExistingExternalIdsMissingLink'
+    | 'listRecentMatchesMissingProductTimeline'
   >;
   ingestionJobs: Pick<
     IngestionJobRepository,
@@ -27,6 +29,9 @@ export type EnqueueDiscoveredMatchesDeps = {
   matchIngestionJobAttempts: number;
   logger: { log: (message: unknown) => void };
   invalidatePlayerCache: (playerId: string) => Promise<void>;
+  /** Default treat missing as false — skip historical timeline enqueue. */
+  matchTimelineSearchBackfillEnabled?: boolean;
+  timelineProducer?: Pick<MatchTimelineProducer, 'enqueueEnrichment'>;
 };
 
 export type EnqueueDiscoveredMatchesResult = {
@@ -189,6 +194,16 @@ export async function enqueueDiscoveredMatches(
     }
     if (result.warning) {
       warnings.push(result.warning);
+    }
+  }
+
+  if (deps.matchTimelineSearchBackfillEnabled) {
+    const missing = await deps.matches.listRecentMatchesMissingProductTimeline({
+      playerAccountId: account.id,
+      limit: 20,
+    });
+    for (const row of missing) {
+      await deps.timelineProducer?.enqueueEnrichment({ matchId: row.id, correlationId });
     }
   }
 

@@ -2,6 +2,7 @@ import {
   IngestionJobStatus,
   MatchIngestionStatus,
   TimelineFetchStatus,
+  TimelineProductCoverage,
   type Prisma,
   type PrismaClient,
 } from '@prisma/client';
@@ -14,8 +15,20 @@ import type { NormalizedMatch } from './match-normalizer.js';
 import { loadRankTiersAtIngestion } from './rank-at-ingestion.js';
 import type { ParticipantTimelineMetrics } from './timeline-metrics.service.js';
 import type { PreservedTimelineEvent } from './timeline-build-events.js';
+import type { PersistedTimelineEvent } from './timeline-product-events.js';
+import type { TimelineFrameRow } from './timeline-frames.js';
 
 export type AccountLinkMap = Map<string, string>; // externalAccountId (PUUID) -> playerAccountId
+
+export function isProductTimelineEligible(
+  participants: { playerAccountId?: string | null }[],
+): boolean {
+  return participants.some((participant) => Boolean(participant.playerAccountId));
+}
+
+type PersistableTimelineEvent = Omit<PreservedTimelineEvent, 'type'> & {
+  type: string;
+} & Partial<Omit<PersistedTimelineEvent, keyof PreservedTimelineEvent | 'type'>>;
 
 export type PersistNormalizedMatchResult = {
   matchId: string;
@@ -567,10 +580,17 @@ export async function persistTimelineAndMetrics(input: {
   timelineSchemaVersion: string;
   failureReason?: string | null;
   metrics: ParticipantTimelineMetrics[];
-  /** Build/skill events to persist; replace prior preserved events for this match when provided. */
-  buildEvents?: PreservedTimelineEvent[];
+  /** One event list to persist; replace prior events for this match when provided. */
+  buildEvents?: PersistableTimelineEvent[];
+  productCoverage?: TimelineProductCoverage;
+  frameIntervalMs?: number | null;
+  frames?: TimelineFrameRow[];
   markMatchCompleted: boolean;
 }): Promise<void> {
+  const productCoverage = input.productCoverage ?? TimelineProductCoverage.NONE;
+  const productNormalizedAt =
+    productCoverage === TimelineProductCoverage.STORED ? new Date() : null;
+
   await input.prisma.$transaction(async (tx) => {
     await tx.matchTimeline.upsert({
       where: { matchId: input.matchId },
@@ -581,6 +601,9 @@ export async function persistTimelineAndMetrics(input: {
         timelineSchemaVersion: input.timelineSchemaVersion,
         fetchedAt: input.fetchStatus === TimelineFetchStatus.FETCHED ? new Date() : null,
         failureReason: input.failureReason ?? null,
+        productCoverage,
+        frameIntervalMs: input.frameIntervalMs ?? null,
+        productNormalizedAt,
       },
       update: {
         fetchStatus: input.fetchStatus,
@@ -588,6 +611,9 @@ export async function persistTimelineAndMetrics(input: {
         timelineSchemaVersion: input.timelineSchemaVersion,
         fetchedAt: input.fetchStatus === TimelineFetchStatus.FETCHED ? new Date() : null,
         failureReason: input.failureReason ?? null,
+        productCoverage,
+        frameIntervalMs: input.frameIntervalMs ?? null,
+        productNormalizedAt,
       },
     });
 
@@ -606,6 +632,34 @@ export async function persistTimelineAndMetrics(input: {
             afterItemId: event.afterItemId,
             skillSlot: event.skillSlot,
             levelUpType: event.levelUpType,
+            killerParticipantId: event.killerParticipantId ?? null,
+            victimParticipantId: event.victimParticipantId ?? null,
+            assistingParticipantIds: event.assistingParticipantIds ?? [],
+            teamId: event.teamId ?? null,
+            positionX: event.positionX ?? null,
+            positionY: event.positionY ?? null,
+            monsterType: event.monsterType ?? null,
+            monsterSubType: event.monsterSubType ?? null,
+            buildingType: event.buildingType ?? null,
+            towerType: event.towerType ?? null,
+            laneType: event.laneType ?? null,
+          })),
+        });
+      }
+    }
+
+    if (input.frames !== undefined) {
+      await tx.matchTimelineFrame.deleteMany({ where: { matchId: input.matchId } });
+      if (input.frames.length > 0) {
+        await tx.matchTimelineFrame.createMany({
+          data: input.frames.map((frame) => ({
+            matchId: input.matchId,
+            timestampMs: frame.timestampMs,
+            participantId: frame.participantId,
+            totalGold: frame.totalGold,
+            xp: frame.xp,
+            cs: frame.cs,
+            level: frame.level,
           })),
         });
       }

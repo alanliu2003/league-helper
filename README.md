@@ -595,9 +595,31 @@ The player page still loads match history if playstyle GET fails. AI copy is an 
 
 `GET /api/matches/:matchId` loads one stored match (teams, participants, public account names, timeline fetch status) and maps items/runes/spells from the match patch with a latest-static fallback. The public id is `Match.id` (UUID already present on match cards). The DTO omits `externalMatchId`, PUUIDs, raw payloads, and rank internals.
 
+Overview `timeline` includes cheap `productCoverage` and `productAvailable` from the `MatchTimeline` row only — no events or frames. Full game-flow is `GET /api/matches/:matchId/timeline` and the Timeline tab (Milestone 19).
+
 The page is `/matches/:matchId`. Player-page match cards are a single link to that route with `?player=` for origin-row highlight only. Opening the URL without a query still renders both teams. Incomplete ingestions return HTTP 200 with a banner. Remakes are labeled Remake, not a winning side.
 
 This endpoint does not write player rows, call Riot, use Redis, or read `rawPayload`.
+
+### Match timeline (Milestone 19)
+
+`GET /api/matches/:matchId/timeline` returns the product timeline DTO for one stored match: kills, objectives (dragon, baron, herald, tower, inhibitor), item and skill progression, gold frames, and a filterable event stream. Same public UUID as overview. The DTO omits `externalMatchId`, PUUIDs, raw payloads, and rank internals. Exact per-feature coverage (`items`, `skills`, `kills`, `objectives`, `frames`) lives only on this endpoint.
+
+The Timeline tab is `/matches/:matchId#timeline`. Layout: gold graph → event stream → build progression → skill progression. Match cards stay overview links; the hash selects the tab. Historical matches without product rows show an empty state instead of crashing.
+
+GET never writes, never calls Riot, and never enqueues enrichment. Overview GET stays cheap (`productCoverage` / `productAvailable` only).
+
+Product coverage is eligible-match only (at least one participant linked to a player account at persist time). Inline eligible ingest still persists product timeline without enabling search backfill. Matches ingested before this milestone, or ineligible matches, need CLI backfill and/or `MATCH_TIMELINE_SEARCH_BACKFILL_ENABLED=true`.
+
+`MATCH_TIMELINE_SEARCH_BACKFILL_ENABLED` defaults **false** (Riot budget protection; enable later with production capacity). When true, search/refresh may enqueue at most 20 historical `ENRICH_MATCH_TIMELINE` jobs. `MATCH_STORE_RAW_PAYLOADS` remains **false**. Leave `MATCH_TIMELINE_REQUIRED_FOR_COMPLETE=false`.
+
+CLI backfill is always available and independent of the search flag. It enqueues `match-timeline` / `ENRICH_MATCH_TIMELINE` jobs for completed matches missing product coverage; it does not call Riot itself. The worker must be running to process those jobs (`MATCH_TIMELINE_WORKER_CONCURRENCY` default **1**).
+
+```bash
+pnpm --filter @league-helper/worker jobs:backfill-match-timeline -- --limit 50 --dry-run
+```
+
+Env (see `.env.example`, `apps/api/.env.example`, `apps/worker/.env.example`): `MATCH_TIMELINE_SEARCH_BACKFILL_ENABLED=false`, `MATCH_TIMELINE_QUEUE_NAME=match-timeline`, `MATCH_TIMELINE_WORKER_CONCURRENCY=1`, `MATCH_TIMELINE_JOB_ATTEMPTS=5`, `MATCH_STORE_RAW_PAYLOADS=false`.
 
 ### Mock browser testing
 

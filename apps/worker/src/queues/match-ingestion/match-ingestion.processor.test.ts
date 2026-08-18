@@ -147,6 +147,7 @@ type Store = {
   teams: Array<Record<string, unknown>>;
   timelines: Map<string, Record<string, unknown>>;
   timelineEvents: Array<Record<string, unknown>>;
+  timelineFrames: Array<Record<string, unknown>>;
   accounts: Array<{ id: string; playerId: string; provider: string; externalAccountId: string }>;
   snapshots: Array<{
     id: string;
@@ -483,6 +484,19 @@ function createPrismaMock(store: Store) {
             return { count: data.length };
           }),
         },
+        matchTimelineFrame: {
+          deleteMany: vi.fn(async ({ where }: { where: { matchId: string } }) => {
+            const before = store.timelineFrames.length;
+            store.timelineFrames = store.timelineFrames.filter(
+              (row) => row.matchId !== where.matchId,
+            );
+            return { count: before - store.timelineFrames.length };
+          }),
+          createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+            store.timelineFrames.push(...data);
+            return { count: data.length };
+          }),
+        },
         rankSnapshot: {
           findMany: rankSnapshotFindMany,
         },
@@ -515,6 +529,7 @@ describe('processMatchIngestionJob', () => {
       teams: [],
       timelines: new Map(),
       timelineEvents: [],
+      timelineFrames: [],
       snapshots: [],
       accounts: [
         {
@@ -835,6 +850,10 @@ describe('processMatchIngestionJob', () => {
     );
     const match = [...store.matches.values()][0];
     expect(match?.ingestionStatus).toBe(MatchIngestionStatus.COMPLETED);
+    const timeline = store.timelines.get(String(match?.id));
+    expect(timeline?.fetchStatus).toBe(TimelineFetchStatus.FAILED);
+    expect(timeline?.productCoverage).toBe('NONE');
+    expect(store.timelineFrames).toHaveLength(0);
   });
 
   it('non-429 errors do not publish shared cooldown', async () => {
@@ -914,6 +933,53 @@ describe('processMatchIngestionJob', () => {
     expect(match?.ingestionStatus).toBe(MatchIngestionStatus.COMPLETED);
     const timeline = store.timelines.get(String(match?.id));
     expect(timeline?.fetchStatus).toBe(TimelineFetchStatus.FAILED);
+    expect(timeline?.productCoverage).toBe('NONE');
+    expect(store.timelineFrames).toHaveLength(0);
+  });
+
+  it('persists product frames and kill events once for an eligible ranked match', async () => {
+    const result = await processMatchIngestionJob(
+      makeJob(validPayload()),
+      'token',
+      makeDeps({ prisma, provider, redis, championAggregationQueue }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(provider.getTimeline).toHaveBeenCalledTimes(1);
+    expect(championAggregationQueue.add).toHaveBeenCalledTimes(1);
+
+    const match = [...store.matches.values()][0];
+    const timeline = store.timelines.get(String(match?.id));
+    expect(timeline?.productCoverage).toBe('STORED');
+    expect(timeline?.frameIntervalMs).toBe(60_000);
+    expect(timeline?.productNormalizedAt).toBeInstanceOf(Date);
+    expect(store.timelineFrames).toHaveLength(30);
+    expect(store.timelineEvents.some((row) => row.type === 'CHAMPION_KILL')).toBe(true);
+    expect(store.timelineEvents.some((row) => row.type === 'ITEM_PURCHASED')).toBe(true);
+  });
+
+  it('omits product frames and kill events when no participants are linked', async () => {
+    store.accounts = [];
+
+    const result = await processMatchIngestionJob(
+      makeJob(validPayload()),
+      'token',
+      makeDeps({ prisma, provider, redis, championAggregationQueue }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(provider.getTimeline).toHaveBeenCalledTimes(1);
+    expect(championAggregationQueue.add).toHaveBeenCalledTimes(1);
+
+    const match = [...store.matches.values()][0];
+    const timeline = store.timelines.get(String(match?.id));
+    expect(timeline?.productCoverage).toBe('INELIGIBLE');
+    expect(store.timelineFrames).toHaveLength(0);
+    expect(store.timelineEvents.some((row) => row.type === 'CHAMPION_KILL')).toBe(false);
+    expect(store.timelineEvents.some((row) => row.type === 'ELITE_MONSTER_KILL')).toBe(false);
+    expect(store.timelineEvents.some((row) => row.type === 'BUILDING_KILL')).toBe(false);
+    expect(store.timelineEvents.some((row) => row.type === 'ITEM_PURCHASED')).toBe(true);
+    expect(store.timelineEvents.some((row) => row.type === 'SKILL_LEVEL_UP')).toBe(true);
   });
 
   it('uses mockTimelineDto from server-riot when provided', async () => {

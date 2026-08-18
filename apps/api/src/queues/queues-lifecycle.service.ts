@@ -4,11 +4,13 @@ import type { Redis } from 'ioredis';
 import type {
   ChampionAiInsightJobPayload,
   MatchIngestionJobPayload,
+  MatchTimelineJobPayload,
   PlayerPlaystyleInsightJobPayload,
 } from '@league-helper/shared';
 import {
   CHAMPION_AI_INSIGHT_QUEUE,
   MATCH_INGESTION_QUEUE,
+  MATCH_TIMELINE_QUEUE,
   PLAYER_AI_PLAYSTYLE_QUEUE,
   REDIS_CONNECTION,
 } from './queue.tokens';
@@ -19,6 +21,8 @@ export class QueuesLifecycleService implements OnModuleDestroy {
   constructor(
     @Inject(REDIS_CONNECTION) private readonly redis: Redis,
     @Inject(MATCH_INGESTION_QUEUE) private readonly queue: Queue<MatchIngestionJobPayload>,
+    @Inject(MATCH_TIMELINE_QUEUE)
+    private readonly matchTimelineQueue: Queue<MatchTimelineJobPayload>,
     @Inject(CHAMPION_AI_INSIGHT_QUEUE)
     private readonly championAiInsightQueue: Queue<ChampionAiInsightJobPayload>,
     @Inject(PLAYER_AI_PLAYSTYLE_QUEUE)
@@ -32,6 +36,11 @@ export class QueuesLifecycleService implements OnModuleDestroy {
   private async shutdown(): Promise<void> {
     try {
       await this.queue.close();
+    } catch {
+      // ignore close errors during shutdown
+    }
+    try {
+      await this.matchTimelineQueue.close();
     } catch {
       // ignore close errors during shutdown
     }

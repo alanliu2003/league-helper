@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MatchIngestionStatus, TimelineFetchStatus } from '@prisma/client';
+import { MatchIngestionStatus, TimelineFetchStatus, TimelineProductCoverage } from '@prisma/client';
 import type { DataDragonChampion } from '../../integrations/data-dragon/data-dragon.types';
 import type { MatchDetailRow } from '../../persistence/match.repository';
 import { assertNoPuuidLeak } from '../players/player-response.mapper';
@@ -140,7 +140,10 @@ function detailRow(overrides: Partial<MatchDetailRow> = {}): MatchDetailRow {
         totalDamageDealtToChampions: 3000,
       }),
     ],
-    timeline: { fetchStatus: TimelineFetchStatus.SKIPPED },
+    timeline: {
+      fetchStatus: TimelineFetchStatus.SKIPPED,
+      productCoverage: TimelineProductCoverage.NONE,
+    },
   };
   return {
     ...base,
@@ -319,11 +322,83 @@ describe('mapPublicMatchDetail', () => {
   it('maps FETCHED timeline to AVAILABLE when metrics exist', () => {
     const mapped = mapPublicMatchDetail(
       detailRow({
-        timeline: { fetchStatus: TimelineFetchStatus.FETCHED },
+        timeline: {
+          fetchStatus: TimelineFetchStatus.FETCHED,
+          productCoverage: TimelineProductCoverage.NONE,
+        },
         participants: [participant({ goldAt10: 3000 }), participant({ participantId: 6, teamId: 200, win: false })],
       }),
       ctx,
     );
-    expect(mapped.timeline).toEqual({ status: 'AVAILABLE', metricsAvailable: true });
+    expect(mapped.timeline).toEqual({
+      status: 'AVAILABLE',
+      metricsAvailable: true,
+      productCoverage: 'NONE',
+      productAvailable: false,
+    });
+  });
+
+  it('maps cheap productCoverage from the timeline row without events or frames', () => {
+    const stored = mapPublicMatchDetail(
+      detailRow({
+        timeline: {
+          fetchStatus: TimelineFetchStatus.FETCHED,
+          productCoverage: TimelineProductCoverage.STORED,
+        },
+      }),
+      ctx,
+    );
+    expect(stored.timeline).toEqual({
+      status: 'AVAILABLE',
+      metricsAvailable: false,
+      productCoverage: 'STORED',
+      productAvailable: true,
+    });
+    expect(stored.timeline).not.toHaveProperty('coverage');
+    expect(stored).not.toHaveProperty('events');
+    expect(stored).not.toHaveProperty('frames');
+
+    const missing = mapPublicMatchDetail(detailRow({ timeline: null }), ctx);
+    expect(missing.timeline).toEqual({
+      status: 'PENDING',
+      metricsAvailable: false,
+      productCoverage: 'NONE',
+      productAvailable: false,
+    });
+  });
+
+  it('does not copy PUUID-looking fields from a leaky overview row', () => {
+    const leaky = {
+      ...detailRow({
+        participants: [
+          participant({
+            playerAccount: {
+              playerId: PLAYER_ID,
+              currentGameName: 'Alice',
+              currentTagLine: 'NA1',
+            },
+          }),
+          participant({ participantId: 6, teamId: 200, win: false }),
+        ],
+      }),
+      participants: [
+        {
+          ...participant({
+            playerAccount: {
+              playerId: PLAYER_ID,
+              currentGameName: 'Alice',
+              currentTagLine: 'NA1',
+            },
+          }),
+          externalAccountId: 'puuid-looking',
+        },
+        participant({ participantId: 6, teamId: 200, win: false }),
+      ],
+    };
+    const mapped = mapPublicMatchDetail(leaky as MatchDetailRow, ctx);
+    assertNoPuuidLeak(mapped);
+    expect(JSON.stringify(mapped)).not.toContain('puuid-looking');
+    expect(JSON.stringify(mapped)).not.toContain('externalAccountId');
+    expect(JSON.stringify(mapped).toLowerCase()).not.toContain('puuid');
   });
 });

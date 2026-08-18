@@ -47,6 +47,7 @@ async function resetTestData(): Promise<void> {
       "IngestionJobRecord",
       "ChampionMasterySnapshot",
       "MatchTimelineEvent",
+      "MatchTimelineFrame",
       "MatchTimeline",
       "MatchParticipant",
       "MatchTeam",
@@ -145,6 +146,10 @@ describe('matches integration', () => {
 
     const detail = await service.getMatch(match.id);
     const parsed = PublicMatchDetailSchema.parse(detail);
+    expect(parsed.timeline.productCoverage).toBe('NONE');
+    expect(parsed.timeline.productAvailable).toBe(false);
+    expect(parsed.timeline).not.toHaveProperty('coverage');
+    expect(parsed).not.toHaveProperty('events');
     expect(parsed.teams).toHaveLength(2);
     expect(parsed.teams.flatMap((team) => team.participants)).toHaveLength(10);
     expect(parsed.teams[0]!.participants[0]!.playerId).toBe(account.playerId);

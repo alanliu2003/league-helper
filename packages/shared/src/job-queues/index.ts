@@ -1,6 +1,8 @@
 export {
   MATCH_INGESTION_QUEUE_NAME,
   MATCH_INGESTION_JOB_NAME,
+  MATCH_TIMELINE_QUEUE_NAME,
+  MATCH_TIMELINE_JOB_NAME,
   CHAMPION_AGGREGATION_QUEUE_NAME,
   CHAMPION_AGGREGATION_JOB_NAME,
   PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
@@ -11,6 +13,8 @@ export {
   PLAYER_AI_PLAYSTYLE_JOB_NAME,
   type MatchIngestionQueueName,
   type MatchIngestionJobName,
+  type MatchTimelineQueueName,
+  type MatchTimelineJobName,
   type ChampionAggregationQueueName,
   type ChampionAggregationJobName,
   type ParticipantRankEnrichmentQueueName,
@@ -20,6 +24,14 @@ export {
   type PlayerAiPlaystyleQueueName,
   type PlayerAiPlaystyleJobName,
 } from './queue-names';
+
+export {
+  MatchTimelineJobPayloadSchema,
+  MatchTimelineJobTypeSchema,
+  buildMatchTimelineBullMqJobId,
+  type MatchTimelineJobPayload,
+  type MatchTimelineJobType,
+} from './match-timeline-job';
 
 export {
   MATCH_INGESTION_NORMALIZATION_VERSION,

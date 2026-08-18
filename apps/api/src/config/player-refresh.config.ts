@@ -17,6 +17,13 @@ export type PlayerRefreshConfig = {
   matchIngestionQueueName: string;
   matchIngestionJobAttempts: number;
   matchIngestionReconcileBatchSize: number;
+  matchTimelineQueueName: string;
+  matchTimelineJobAttempts: number;
+  /**
+   * When true, player search/discovery may enqueue up to 20 historical
+   * match-timeline enrichment jobs. Default false (Riot budget protection).
+   */
+  matchTimelineSearchBackfillEnabled: boolean;
   refreshLockTtlSeconds: number;
   redisUrl: string;
 };
@@ -41,6 +48,20 @@ function parsePositiveInt(raw: string | undefined, fallback: number, name: strin
     throw new ValidationFailureError(`${name} must be a positive integer.`, { received: raw });
   }
   return value;
+}
+
+function parseBoolean(raw: string | undefined, fallback: boolean, name: string): boolean {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+    return false;
+  }
+  throw new ValidationFailureError(`${name} must be a boolean.`, { received: raw });
 }
 
 /** Empty/undefined → null (no queue filter). Otherwise a non-negative integer. */
@@ -79,6 +100,17 @@ export function loadPlayerRefreshConfig(env: NodeJS.ProcessEnv = process.env): P
   if (matchIngestionJobAttempts > 20) {
     throw new ValidationFailureError('MATCH_INGESTION_JOB_ATTEMPTS must be at most 20.', {
       received: matchIngestionJobAttempts,
+    });
+  }
+
+  const matchTimelineJobAttempts = parsePositiveInt(
+    env.MATCH_TIMELINE_JOB_ATTEMPTS,
+    5,
+    'MATCH_TIMELINE_JOB_ATTEMPTS',
+  );
+  if (matchTimelineJobAttempts > 20) {
+    throw new ValidationFailureError('MATCH_TIMELINE_JOB_ATTEMPTS must be at most 20.', {
+      received: matchTimelineJobAttempts,
     });
   }
 
@@ -127,6 +159,13 @@ export function loadPlayerRefreshConfig(env: NodeJS.ProcessEnv = process.env): P
       env.MATCH_INGESTION_RECONCILE_BATCH_SIZE,
       100,
       'MATCH_INGESTION_RECONCILE_BATCH_SIZE',
+    ),
+    matchTimelineQueueName: env.MATCH_TIMELINE_QUEUE_NAME || 'match-timeline',
+    matchTimelineJobAttempts,
+    matchTimelineSearchBackfillEnabled: parseBoolean(
+      env.MATCH_TIMELINE_SEARCH_BACKFILL_ENABLED,
+      false,
+      'MATCH_TIMELINE_SEARCH_BACKFILL_ENABLED',
     ),
     refreshLockTtlSeconds,
     redisUrl: (env.REDIS_URL ?? 'redis://localhost:6379').trim(),

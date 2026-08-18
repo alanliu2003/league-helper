@@ -4,6 +4,7 @@ import {
   IngestionJobStatus,
   MatchIngestionStatus,
   TimelineFetchStatus,
+  TimelineProductCoverage,
   type PrismaClient,
 } from '@prisma/client';
 import type { Redis } from 'ioredis';
@@ -37,6 +38,7 @@ import { safeJobId, truncateMatchId } from './log-safe.js';
 import { normalizeMatch } from './match-normalizer.js';
 import {
   ensurePlayerLinkageForCompletedMatch,
+  isProductTimelineEligible,
   markDurableJobRunning,
   markDurableJobStatus,
   persistNormalizedMatch,
@@ -44,7 +46,9 @@ import {
   resolvePlayerAccountLinks,
 } from './match-persistence.js';
 import { expandMatchParticipantsSafe } from '../../collector/expand-match-participants-safe.js';
-import { extractBuildRelevantTimelineEvents } from './timeline-build-events.js';
+import { BUILD_RELEVANT_TIMELINE_EVENT_TYPES } from './timeline-build-events.js';
+import { extractPersistedTimelineEvents } from './timeline-product-events.js';
+import { extractTimelineFrames } from './timeline-frames.js';
 import { calculateTimelineMetrics } from './timeline-metrics.service.js';
 import { normalizeTimeline } from './timeline-normalizer.js';
 
@@ -546,7 +550,10 @@ export async function processMatchIngestionJob(
     let timelineStatus: TimelineFetchStatus = TimelineFetchStatus.SKIPPED;
     let timelineFailure: string | null = null;
     let metrics: ReturnType<typeof calculateTimelineMetrics> = [];
-    let buildEvents: ReturnType<typeof extractBuildRelevantTimelineEvents> | undefined;
+    let buildEvents: ReturnType<typeof extractPersistedTimelineEvents> | undefined;
+    let framesToStore: ReturnType<typeof extractTimelineFrames> = [];
+    let productCoverage: TimelineProductCoverage = TimelineProductCoverage.NONE;
+    let frameIntervalMs: number | null = null;
     let timelineRaw: Parameters<typeof persistTimelineAndMetrics>[0]['rawPayload'] = null;
     let timelineSchemaVersion = '1';
 
@@ -572,7 +579,24 @@ export async function processMatchIngestionJob(
         timelineRaw = timeline.rawPayload;
         timelineSchemaVersion = timeline.timelineSchemaVersion;
         timelineStatus = TimelineFetchStatus.FETCHED;
-        buildEvents = extractBuildRelevantTimelineEvents(timeline.events);
+        const persistedEvents = extractPersistedTimelineEvents(timeline.events);
+        const eligible = isProductTimelineEligible(
+          normalized.participants.map((participant) => ({
+            playerAccountId: participant.externalAccountId
+              ? (accountLinks.get(participant.externalAccountId) ?? null)
+              : null,
+          })),
+        );
+        buildEvents = eligible
+          ? persistedEvents
+          : persistedEvents.filter((event) =>
+              (BUILD_RELEVANT_TIMELINE_EVENT_TYPES as readonly string[]).includes(event.type),
+            );
+        framesToStore = eligible ? extractTimelineFrames(timeline.frames) : [];
+        productCoverage = eligible
+          ? TimelineProductCoverage.STORED
+          : TimelineProductCoverage.INELIGIBLE;
+        frameIntervalMs = timeline.frameIntervalMs;
         metrics = calculateTimelineMetrics({
           frames: timeline.frames,
           events: timeline.events,
@@ -643,6 +667,9 @@ export async function processMatchIngestionJob(
         failureReason: timelineFailure,
         metrics,
         buildEvents,
+        frames: framesToStore,
+        productCoverage,
+        frameIntervalMs,
         markMatchCompleted: false,
       });
       throw new ValidationFailureError('Timeline is required for match completion.', {
@@ -659,6 +686,9 @@ export async function processMatchIngestionJob(
       failureReason: timelineFailure,
       metrics,
       buildEvents,
+      frames: framesToStore,
+      productCoverage,
+      frameIntervalMs,
       markMatchCompleted: true,
     });
 

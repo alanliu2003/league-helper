@@ -1,9 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { PlayerAccount as DbPlayerAccount } from '@prisma/client';
-import {
-  isRiotRequestBudgetDeferredError,
-  withRiotWorkload,
-} from '@league-helper/server-riot';
+import { isRiotRequestBudgetDeferredError, withRiotWorkload } from '@league-helper/server-riot';
 import {
   PlatformRouteSchema,
   ProviderIdSchema,
@@ -23,6 +20,7 @@ import { MatchRepository } from '../../../persistence/match.repository';
 import { PlayerAccountRepository } from '../../../persistence/player-account.repository';
 import { RankSnapshotRepository } from '../../../persistence/rank-snapshot.repository';
 import { MatchIngestionProducer } from '../../../queues/match-ingestion.producer';
+import { MatchTimelineProducer } from '../../../queues/match-timeline.producer';
 import {
   enqueueDiscoveredMatches as defaultEnqueueDiscoveredMatches,
   type EnqueueDiscoveredMatchesDeps,
@@ -424,6 +422,7 @@ export class PlayerMatchDiscoveryService {
     @Inject(MatchRepository) matches: MatchRepository,
     @Inject(IngestionJobRepository) ingestionJobs: IngestionJobRepository,
     @Inject(MatchIngestionProducer) producer: MatchIngestionProducer,
+    @Inject(MatchTimelineProducer) timelineProducer: MatchTimelineProducer,
     @Inject(PLAYER_REFRESH_CONFIG) refreshConfig: PlayerRefreshConfig,
     @Inject(PlayerCacheService) cache: PlayerCacheService,
     @Optional()
@@ -431,10 +430,7 @@ export class PlayerMatchDiscoveryService {
     pageSize: number = DEFAULT_DISCOVERY_MATCH_ID_PAGE_SIZE,
   ) {
     const resolvedPageSize =
-      typeof pageSize === 'number' &&
-      Number.isInteger(pageSize) &&
-      pageSize >= 1 &&
-      pageSize <= 100
+      typeof pageSize === 'number' && Number.isInteger(pageSize) && pageSize >= 1 && pageSize <= 100
         ? pageSize
         : DEFAULT_DISCOVERY_MATCH_ID_PAGE_SIZE;
 
@@ -452,6 +448,8 @@ export class PlayerMatchDiscoveryService {
         matchIngestionJobAttempts: refreshConfig.matchIngestionJobAttempts,
         logger: this.logger,
         invalidatePlayerCache: (playerId) => cache.invalidate(playerId),
+        matchTimelineSearchBackfillEnabled: refreshConfig.matchTimelineSearchBackfillEnabled,
+        timelineProducer,
       },
       pageSize: resolvedPageSize,
       logger: this.logger,

@@ -39,7 +39,7 @@ export type MatchDetailMapContext = {
   icons: MatchStaticIcons;
 };
 
-function mapTimelineStatus(fetchStatus: TimelineFetchStatus | null | undefined): PublicMatchTimelineStatus {
+export function mapTimelineStatus(fetchStatus: TimelineFetchStatus | null | undefined): PublicMatchTimelineStatus {
   if (!fetchStatus || fetchStatus === TimelineFetchStatus.PENDING) {
     return 'PENDING';
   }
@@ -250,6 +250,8 @@ export function mapPublicMatchDetail(row: MatchDetailRow, ctx: MatchDetailMapCon
     timeline: {
       status: mapTimelineStatus(row.timeline?.fetchStatus),
       metricsAvailable: row.participants.some((participant) => participantHasTimelineMetrics(participant)),
+      productCoverage: row.timeline?.productCoverage ?? 'NONE',
+      productAvailable: row.timeline?.productCoverage === 'STORED',
     },
     teams,
   });

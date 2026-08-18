@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MatchIngestionStatus, TimelineFetchStatus } from '@prisma/client';
+import { MatchIngestionStatus, TimelineFetchStatus, TimelineProductCoverage } from '@prisma/client';
 import { ResourceNotFoundError } from '@league-helper/shared';
 import type { MatchDetailRow } from '../../persistence/match.repository';
 import { MatchDetailService } from './match-detail.service';
@@ -85,7 +85,10 @@ function detailRow(overrides: Partial<MatchDetailRow> = {}): MatchDetailRow {
       participant(),
       participant({ participantId: 6, teamId: 200, win: false, championId: 64, riotIdGameName: 'Bob' }),
     ],
-    timeline: { fetchStatus: TimelineFetchStatus.SKIPPED },
+    timeline: {
+      fetchStatus: TimelineFetchStatus.SKIPPED,
+      productCoverage: TimelineProductCoverage.NONE,
+    },
     ...overrides,
   };
 }
@@ -93,8 +96,20 @@ function detailRow(overrides: Partial<MatchDetailRow> = {}): MatchDetailRow {
 function createService() {
   const matches = {
     findDetailById: vi.fn(),
+    findTimelineEventsByMatchId: vi.fn(),
+    findTimelineFramesByMatchId: vi.fn(),
+    findTimelineMetaByMatchId: vi.fn(),
   };
-  const prisma = {};
+  const prisma = {
+    matchTimelineEvent: {
+      findMany: vi.fn(),
+      groupBy: vi.fn(),
+    },
+    matchTimelineFrame: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+    },
+  };
   const staticRepo = {};
   const dataDragon = {
     getChampionByNumericId: vi.fn(async () => null),
@@ -108,7 +123,7 @@ function createService() {
     staticRepo as never,
     dataDragon as never,
   );
-  return { service, matches, dataDragon };
+  return { service, matches, dataDragon, prisma };
 }
 
 describe('MatchDetailService', () => {
@@ -133,7 +148,36 @@ describe('MatchDetailService', () => {
 
     expect(result.match.id).toBe(MATCH_ID);
     expect(result.teams).toHaveLength(2);
+    expect(result.timeline).toEqual({
+      status: 'UNAVAILABLE',
+      metricsAvailable: false,
+      productCoverage: 'NONE',
+      productAvailable: false,
+    });
+    expect(result.timeline).not.toHaveProperty('coverage');
     const requested = dataDragon.getChampionByNumericId.mock.calls.map((call) => call[0]).sort((a, b) => a - b);
     expect(requested).toEqual([23, 64, 103]);
+  });
+
+  it('does not query timeline events or frames for overview', async () => {
+    const { service, matches, prisma } = createService();
+    matches.findDetailById.mockResolvedValue(detailRow());
+    vi.spyOn(staticLoader, 'loadMatchStaticLookups').mockResolvedValue({
+      dataDragonVersion: '14.11.1',
+      items: new Map(),
+      runes: new Map(),
+      spells: new Map(),
+      styleNames: new Map(),
+    });
+
+    await service.getMatch(MATCH_ID);
+
+    expect(matches.findTimelineEventsByMatchId).not.toHaveBeenCalled();
+    expect(matches.findTimelineFramesByMatchId).not.toHaveBeenCalled();
+    expect(matches.findTimelineMetaByMatchId).not.toHaveBeenCalled();
+    expect(prisma.matchTimelineEvent.findMany).not.toHaveBeenCalled();
+    expect(prisma.matchTimelineEvent.groupBy).not.toHaveBeenCalled();
+    expect(prisma.matchTimelineFrame.findMany).not.toHaveBeenCalled();
+    expect(prisma.matchTimelineFrame.findFirst).not.toHaveBeenCalled();
   });
 });

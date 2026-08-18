@@ -188,10 +188,56 @@ export const matchDetailSelect = {
     },
   },
   participants: { select: matchDetailParticipantSelect },
-  timeline: { select: { fetchStatus: true } },
+  timeline: { select: { fetchStatus: true, productCoverage: true } },
 } as const;
 
 export type MatchDetailRow = Prisma.MatchGetPayload<{ select: typeof matchDetailSelect }>;
+
+export const matchTimelineEventSelect = {
+  eventIndex: true,
+  type: true,
+  timestampMs: true,
+  participantId: true,
+  itemId: true,
+  beforeItemId: true,
+  afterItemId: true,
+  skillSlot: true,
+  levelUpType: true,
+  killerParticipantId: true,
+  victimParticipantId: true,
+  assistingParticipantIds: true,
+  teamId: true,
+  positionX: true,
+  positionY: true,
+  monsterType: true,
+  monsterSubType: true,
+  buildingType: true,
+  towerType: true,
+  laneType: true,
+} as const;
+
+export const matchTimelineFrameSelect = {
+  timestampMs: true,
+  participantId: true,
+  totalGold: true,
+  xp: true,
+  cs: true,
+  level: true,
+} as const;
+
+export const matchTimelineMetaSelect = {
+  frameIntervalMs: true,
+} as const;
+
+export type MatchTimelineEventRow = Prisma.MatchTimelineEventGetPayload<{
+  select: typeof matchTimelineEventSelect;
+}>;
+export type MatchTimelineFrameRow = Prisma.MatchTimelineFrameGetPayload<{
+  select: typeof matchTimelineFrameSelect;
+}>;
+export type MatchTimelineMetaRow = Prisma.MatchTimelineGetPayload<{
+  select: typeof matchTimelineMetaSelect;
+}>;
 
 export type PlayerPlaystyleWindowRow = {
   id: string;
@@ -308,6 +354,29 @@ export class MatchRepository {
     return this.prisma.match.findUnique({
       where: { id },
       select: matchDetailSelect,
+    });
+  }
+
+  findTimelineEventsByMatchId(matchId: string): Promise<MatchTimelineEventRow[]> {
+    return this.prisma.matchTimelineEvent.findMany({
+      where: { matchId },
+      select: matchTimelineEventSelect,
+      orderBy: [{ timestampMs: 'asc' }, { eventIndex: 'asc' }],
+    });
+  }
+
+  findTimelineFramesByMatchId(matchId: string): Promise<MatchTimelineFrameRow[]> {
+    return this.prisma.matchTimelineFrame.findMany({
+      where: { matchId },
+      select: matchTimelineFrameSelect,
+      orderBy: [{ timestampMs: 'asc' }, { participantId: 'asc' }],
+    });
+  }
+
+  findTimelineMetaByMatchId(matchId: string): Promise<MatchTimelineMetaRow | null> {
+    return this.prisma.matchTimeline.findUnique({
+      where: { matchId },
+      select: matchTimelineMetaSelect,
     });
   }
 
@@ -495,6 +564,26 @@ export class MatchRepository {
     return existing
       .filter((match) => match.participants.length === 0)
       .map((match) => match.externalMatchId);
+  }
+
+  /**
+   * Recent completed matches for this account that still need product timeline
+   * storage. Caller caps `limit` (search backfill uses 20). Does not filter by queue.
+   */
+  async listRecentMatchesMissingProductTimeline(input: {
+    playerAccountId: string;
+    limit: number; // 20
+  }): Promise<{ id: string }[]> {
+    return this.prisma.match.findMany({
+      where: {
+        ingestionStatus: 'COMPLETED',
+        participants: { some: { playerAccountId: input.playerAccountId } },
+        OR: [{ timeline: null }, { timeline: { productCoverage: { not: 'STORED' } } }],
+      },
+      orderBy: [{ gameCreation: 'desc' }, { id: 'desc' }],
+      take: input.limit,
+      select: { id: true },
+    });
   }
 
   /**

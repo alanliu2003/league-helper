@@ -8,12 +8,17 @@ import { FAKE_PUUID } from '@league-helper/server-riot';
 import { normalizeMatch } from './match-normalizer.js';
 import {
   ensurePlayerLinkageForCompletedMatch,
+  isProductTimelineEligible,
   persistNormalizedMatch,
   persistTimelineAndMetrics,
 } from './match-persistence.js';
+import { normalizeTimeline } from './timeline-normalizer.js';
+import { extractPersistedTimelineEvents } from './timeline-product-events.js';
+import { extractTimelineFrames } from './timeline-frames.js';
 import {
   buildPuuid,
   buildRankedMatchDto,
+  buildRichTimelineDto,
 } from './test-utils/ranked-match-fixture.js';
 
 type SnapshotRow = {
@@ -30,6 +35,7 @@ type Store = {
   teams: Array<Record<string, unknown>>;
   timelines: Map<string, Record<string, unknown>>;
   timelineEvents: Array<Record<string, unknown>>;
+  timelineFrames: Array<Record<string, unknown>>;
   snapshots: SnapshotRow[];
   accounts: Array<{ id: string; provider: string; externalAccountId: string }>;
 };
@@ -291,6 +297,19 @@ function createPrismaMock(store: Store) {
             return { count: data.length };
           }),
         },
+        matchTimelineFrame: {
+          deleteMany: vi.fn(async ({ where }: { where: { matchId: string } }) => {
+            const before = store.timelineFrames.length;
+            store.timelineFrames = store.timelineFrames.filter(
+              (row) => row.matchId !== where.matchId,
+            );
+            return { count: before - store.timelineFrames.length };
+          }),
+          createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+            store.timelineFrames.push(...data);
+            return { count: data.length };
+          }),
+        },
         rankSnapshot: {
           findMany: rankSnapshotFindMany,
         },
@@ -324,6 +343,7 @@ describe('persistNormalizedMatch rankTierAtIngestion', () => {
       teams: [],
       timelines: new Map(),
       timelineEvents: [],
+      timelineFrames: [],
       snapshots: [],
       accounts: [
         {
@@ -727,6 +747,7 @@ describe('build-data preservation persistence', () => {
       teams: [],
       timelines: new Map(),
       timelineEvents: [],
+      timelineFrames: [],
       snapshots: [],
       accounts: [],
     };
@@ -775,6 +796,7 @@ describe('build-data preservation persistence', () => {
       teams: [],
       timelines: new Map(),
       timelineEvents: [],
+      timelineFrames: [],
       snapshots: [],
       accounts: [],
     };
@@ -926,6 +948,7 @@ describe('persistTimelineAndMetrics ingestedAt stability', () => {
       teams: [],
       timelines: new Map(),
       timelineEvents: [],
+      timelineFrames: [],
       snapshots: [],
       accounts: [],
     };
@@ -965,6 +988,7 @@ describe('persistTimelineAndMetrics ingestedAt stability', () => {
       teams: [],
       timelines: new Map(),
       timelineEvents: [],
+      timelineFrames: [],
       snapshots: [],
       accounts: [],
     };
@@ -983,5 +1007,290 @@ describe('persistTimelineAndMetrics ingestedAt stability', () => {
     const match = store.matches.get('RIOT:NA1_TIMELINE_NULL_INGESTED');
     expect(match?.ingestionStatus).toBe(MatchIngestionStatus.COMPLETED);
     expect(match?.ingestedAt).toBeInstanceOf(Date);
+  });
+});
+
+function productTimelineStore(matchId: string): Store {
+  return {
+    matches: new Map([
+      [
+        `RIOT:${matchId}`,
+        {
+          id: matchId,
+          provider: 'RIOT',
+          externalMatchId: matchId,
+          ingestionStatus: MatchIngestionStatus.IN_PROGRESS,
+          ingestedAt: new Date('2024-06-15T12:00:00.000Z'),
+          createdAt: new Date('2024-06-15T11:00:00.000Z'),
+        },
+      ],
+    ]),
+    participants: [
+      {
+        id: 'part-product-1',
+        matchId,
+        participantId: 1,
+      },
+    ],
+    teams: [],
+    timelines: new Map(),
+    timelineEvents: [],
+    timelineFrames: [],
+    snapshots: [],
+    accounts: [],
+  };
+}
+
+describe('isProductTimelineEligible', () => {
+  it('is true when any participant has a playerAccountId', () => {
+    expect(
+      isProductTimelineEligible([{ playerAccountId: null }, { playerAccountId: 'acct-1' }]),
+    ).toBe(true);
+  });
+
+  it('is false when every participant is unlinked', () => {
+    expect(
+      isProductTimelineEligible([{ playerAccountId: null }, { playerAccountId: undefined }]),
+    ).toBe(false);
+  });
+
+  it('is false for an empty participant list', () => {
+    expect(isProductTimelineEligible([])).toBe(false);
+  });
+});
+
+describe('persistTimelineAndMetrics product rows', () => {
+  it('stores coverage, frames, and kill events for an eligible FETCHED timeline', async () => {
+    const matchId = 'match-product-eligible';
+    const store = productTimelineStore(matchId);
+    const { prisma } = createPrismaMock(store);
+    const timeline = normalizeTimeline({
+      raw: buildRichTimelineDto(),
+      storeRawPayloads: false,
+    });
+
+    await persistTimelineAndMetrics({
+      prisma: prisma as never,
+      matchId,
+      fetchStatus: TimelineFetchStatus.FETCHED,
+      rawPayload: null,
+      timelineSchemaVersion: '1',
+      metrics: [],
+      buildEvents: extractPersistedTimelineEvents(timeline.events),
+      frames: extractTimelineFrames(timeline.frames),
+      productCoverage: 'STORED',
+      frameIntervalMs: timeline.frameIntervalMs,
+      markMatchCompleted: true,
+    });
+
+    const persisted = store.timelines.get(matchId);
+    expect(persisted?.productCoverage).toBe('STORED');
+    expect(persisted?.frameIntervalMs).toBe(60_000);
+    expect(persisted?.productNormalizedAt).toBeInstanceOf(Date);
+    expect(store.timelineFrames).toHaveLength(30);
+    expect(store.timelineEvents.some((row) => row.type === 'CHAMPION_KILL')).toBe(true);
+    expect(store.timelineEvents.some((row) => row.type === 'ITEM_PURCHASED')).toBe(true);
+    expect(
+      store.timelineEvents.find(
+        (row) => row.type === 'CHAMPION_KILL' && row.killerParticipantId === 6,
+      ),
+    ).toMatchObject({
+      victimParticipantId: 1,
+      assistingParticipantIds: [7],
+      positionX: 100,
+      positionY: 200,
+    });
+  });
+
+  it('stores build events without frames or kills when coverage is INELIGIBLE', async () => {
+    const matchId = 'match-product-ineligible';
+    const store = productTimelineStore(matchId);
+    const { prisma } = createPrismaMock(store);
+    const timeline = normalizeTimeline({
+      raw: buildRichTimelineDto(),
+      storeRawPayloads: false,
+    });
+    const buildOnlyEvents = extractPersistedTimelineEvents(timeline.events).filter(
+      (event) =>
+        event.type === 'ITEM_PURCHASED' ||
+        event.type === 'ITEM_SOLD' ||
+        event.type === 'ITEM_UNDO' ||
+        event.type === 'ITEM_DESTROYED' ||
+        event.type === 'SKILL_LEVEL_UP',
+    );
+
+    await persistTimelineAndMetrics({
+      prisma: prisma as never,
+      matchId,
+      fetchStatus: TimelineFetchStatus.FETCHED,
+      rawPayload: null,
+      timelineSchemaVersion: '1',
+      metrics: [],
+      buildEvents: buildOnlyEvents,
+      frames: [],
+      productCoverage: 'INELIGIBLE',
+      frameIntervalMs: timeline.frameIntervalMs,
+      markMatchCompleted: true,
+    });
+
+    const persisted = store.timelines.get(matchId);
+    expect(persisted?.productCoverage).toBe('INELIGIBLE');
+    expect(persisted?.productNormalizedAt ?? null).toBeNull();
+    expect(store.timelineFrames).toHaveLength(0);
+    expect(store.timelineEvents.some((row) => row.type === 'CHAMPION_KILL')).toBe(false);
+    expect(store.timelineEvents.some((row) => row.type === 'ITEM_PURCHASED')).toBe(true);
+    expect(store.timelineEvents.some((row) => row.type === 'SKILL_LEVEL_UP')).toBe(true);
+  });
+
+  it('replaces prior events and deletes leftover frames on a later persist', async () => {
+    const matchId = 'match-product-replace';
+    const store = productTimelineStore(matchId);
+    store.timelineFrames.push({
+      matchId,
+      timestampMs: 999_000,
+      participantId: 9,
+      totalGold: 1,
+      xp: 1,
+      cs: 1,
+      level: 1,
+    });
+    const { prisma } = createPrismaMock(store);
+
+    await persistTimelineAndMetrics({
+      prisma: prisma as never,
+      matchId,
+      fetchStatus: TimelineFetchStatus.FETCHED,
+      rawPayload: null,
+      timelineSchemaVersion: '1',
+      metrics: [],
+      buildEvents: [
+        {
+          eventIndex: 0,
+          type: 'ITEM_PURCHASED',
+          timestampMs: 1000,
+          participantId: 1,
+          itemId: 1055,
+          beforeItemId: null,
+          afterItemId: null,
+          skillSlot: null,
+          levelUpType: null,
+        },
+        {
+          eventIndex: 1,
+          type: 'CHAMPION_KILL',
+          timestampMs: 2000,
+          participantId: null,
+          itemId: null,
+          beforeItemId: null,
+          afterItemId: null,
+          skillSlot: null,
+          levelUpType: null,
+          killerParticipantId: 2,
+          victimParticipantId: 1,
+          assistingParticipantIds: [],
+          teamId: null,
+          positionX: 10,
+          positionY: 20,
+          monsterType: null,
+          monsterSubType: null,
+          buildingType: null,
+          towerType: null,
+          laneType: null,
+        },
+        {
+          eventIndex: 2,
+          type: 'SKILL_LEVEL_UP',
+          timestampMs: 3000,
+          participantId: 1,
+          itemId: null,
+          beforeItemId: null,
+          afterItemId: null,
+          skillSlot: 1,
+          levelUpType: 'NORMAL',
+        },
+      ],
+      frames: [
+        {
+          timestampMs: 0,
+          participantId: 1,
+          totalGold: 500,
+          xp: 0,
+          cs: 0,
+          level: 1,
+        },
+      ],
+      productCoverage: 'STORED',
+      frameIntervalMs: 60_000,
+      markMatchCompleted: true,
+    });
+
+    await persistTimelineAndMetrics({
+      prisma: prisma as never,
+      matchId,
+      fetchStatus: TimelineFetchStatus.FETCHED,
+      rawPayload: null,
+      timelineSchemaVersion: '1',
+      metrics: [],
+      buildEvents: [
+        {
+          eventIndex: 0,
+          type: 'ITEM_PURCHASED',
+          timestampMs: 1000,
+          participantId: 1,
+          itemId: 1055,
+          beforeItemId: null,
+          afterItemId: null,
+          skillSlot: null,
+          levelUpType: null,
+        },
+      ],
+      frames: [],
+      productCoverage: 'INELIGIBLE',
+      frameIntervalMs: 60_000,
+      markMatchCompleted: true,
+    });
+
+    expect(store.timelineEvents).toHaveLength(1);
+    expect(store.timelineEvents[0]).toMatchObject({
+      eventIndex: 0,
+      type: 'ITEM_PURCHASED',
+    });
+    expect(store.timelineEvents.some((row) => row.type === 'CHAMPION_KILL')).toBe(false);
+    expect(store.timelineFrames).toHaveLength(0);
+  });
+
+  it('writes NONE coverage and no frames when the timeline FAILED', async () => {
+    const matchId = 'match-product-failed';
+    const store = productTimelineStore(matchId);
+    store.timelineFrames.push({
+      matchId,
+      timestampMs: 60_000,
+      participantId: 1,
+      totalGold: 900,
+      xp: 100,
+      cs: 10,
+      level: 2,
+    });
+    const { prisma } = createPrismaMock(store);
+
+    await persistTimelineAndMetrics({
+      prisma: prisma as never,
+      matchId,
+      fetchStatus: TimelineFetchStatus.FAILED,
+      rawPayload: null,
+      timelineSchemaVersion: '1',
+      failureReason: 'RESOURCE_NOT_FOUND',
+      metrics: [],
+      frames: [],
+      productCoverage: 'NONE',
+      markMatchCompleted: true,
+    });
+
+    const persisted = store.timelines.get(matchId);
+    expect(persisted?.productCoverage).toBe('NONE');
+    expect(persisted?.productNormalizedAt ?? null).toBeNull();
+    expect(persisted?.fetchStatus).toBe(TimelineFetchStatus.FAILED);
+    expect(store.timelineFrames).toHaveLength(0);
+    expect(store.timelineEvents).toHaveLength(0);
   });
 });
