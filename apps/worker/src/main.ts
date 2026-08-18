@@ -5,6 +5,7 @@ import {
   CHAMPION_AGGREGATION_JOB_NAME,
   CHAMPION_AI_INSIGHT_JOB_NAME,
   MATCH_INGESTION_JOB_NAME,
+  MATCH_TIMELINE_JOB_NAME,
   PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
   PLAYER_AI_PLAYSTYLE_JOB_NAME,
   createHealthResponse,
@@ -19,6 +20,7 @@ import {
   loadChampionAggregationWorkerConfig,
   loadChampionAiInsightWorkerConfig,
   loadMatchIngestionWorkerConfig,
+  loadMatchTimelineWorkerConfig,
   loadParticipantRankEnrichmentWorkerConfig,
   loadPlayerPlaystyleInsightWorkerConfig,
   getRedisUrl,
@@ -30,6 +32,7 @@ import { createRedisConnection } from './queues.js';
 import { createChampionAggregationWorker } from './queues/champion-aggregation/champion-aggregation.worker.js';
 import { createChampionAiInsightWorker } from './queues/champion-ai-insight/champion-ai-insight.worker.js';
 import { createMatchIngestionWorker } from './queues/match-ingestion/match-ingestion.worker.js';
+import { createMatchTimelineWorker } from './queues/match-timeline/match-timeline.worker.js';
 import { createParticipantRankEnrichmentWorker } from './queues/participant-rank-enrichment/participant-rank-enrichment.worker.js';
 import { createPlayerPlaystyleInsightWorker } from './queues/player-playstyle-insight/player-playstyle-insight.worker.js';
 
@@ -37,6 +40,7 @@ async function main(): Promise<void> {
   const redisUrl = getRedisUrl();
   const connectionInfo = parseBullMqRedisConnectionInfo(redisUrl, resolveBullMqPrefix());
   const matchIngestionConfig = loadMatchIngestionWorkerConfig();
+  const matchTimelineConfig = loadMatchTimelineWorkerConfig();
   const championAggregationConfig = loadChampionAggregationWorkerConfig();
   const participantRankEnrichmentConfig = loadParticipantRankEnrichmentWorkerConfig();
   const championAiInsightConfig = loadChampionAiInsightWorkerConfig();
@@ -84,6 +88,9 @@ async function main(): Promise<void> {
     matchIngestionQueue: matchIngestionConfig.queueName,
     matchIngestionJob: MATCH_INGESTION_JOB_NAME,
     matchIngestionConcurrency: matchIngestionConfig.concurrency,
+    matchTimelineQueue: matchTimelineConfig.queueName,
+    matchTimelineJob: MATCH_TIMELINE_JOB_NAME,
+    matchTimelineConcurrency: matchTimelineConfig.concurrency,
     championAggregationQueue: championAggregationConfig.queueName,
     championAggregationJob: CHAMPION_AGGREGATION_JOB_NAME,
     championAggregationConcurrency: championAggregationConfig.concurrency,
@@ -110,6 +117,7 @@ async function main(): Promise<void> {
   });
 
   let matchIngestionWorker;
+  let matchTimelineWorker;
   let championAggregationWorker;
   let participantRankEnrichmentWorker;
   let championAiInsightWorker;
@@ -127,6 +135,17 @@ async function main(): Promise<void> {
         championAggregationConfig,
         participantRankEnrichmentQueue,
         participantRankEnrichmentConfig,
+        sharedCooldown,
+      },
+    });
+
+    matchTimelineWorker = createMatchTimelineWorker({
+      connection,
+      config: matchTimelineConfig,
+      deps: {
+        prisma,
+        provider: providerHandle.provider,
+        config: matchTimelineConfig,
         sharedCooldown,
       },
     });
@@ -189,6 +208,10 @@ async function main(): Promise<void> {
       connection: { url: redisUrl, maxRetriesPerRequest: null },
       prefix: connectionInfo.prefix,
     });
+    const timelineProbe = new Queue(matchTimelineConfig.queueName, {
+      connection: { url: redisUrl, maxRetriesPerRequest: null },
+      prefix: connectionInfo.prefix,
+    });
     const aggProbe = new Queue(championAggregationConfig.queueName, {
       connection: { url: redisUrl, maxRetriesPerRequest: null },
       prefix: connectionInfo.prefix,
@@ -205,17 +228,22 @@ async function main(): Promise<void> {
       connection: { url: redisUrl, maxRetriesPerRequest: null },
       prefix: connectionInfo.prefix,
     });
-    const [matchPaused, aggPaused, rankPaused, insightPaused, playstylePaused] = await Promise.all([
-      matchProbe.isPaused(),
-      aggProbe.isPaused(),
-      rankProbe.isPaused(),
-      insightProbe.isPaused(),
-      playstyleProbe.isPaused(),
-    ]);
+    const [matchPaused, timelinePaused, aggPaused, rankPaused, insightPaused, playstylePaused] =
+      await Promise.all([
+        matchProbe.isPaused(),
+        timelineProbe.isPaused(),
+        aggProbe.isPaused(),
+        rankProbe.isPaused(),
+        insightProbe.isPaused(),
+        playstyleProbe.isPaused(),
+      ]);
     logger.info('Queue probes', {
       matchIngestionQueue: matchIngestionConfig.queueName,
       matchIngestionPaused: matchPaused,
       matchIngestionJob: MATCH_INGESTION_JOB_NAME,
+      matchTimelineQueue: matchTimelineConfig.queueName,
+      matchTimelinePaused: timelinePaused,
+      matchTimelineJob: MATCH_TIMELINE_JOB_NAME,
       championAggregationQueue: championAggregationConfig.queueName,
       championAggregationPaused: aggPaused,
       championAggregationJob: CHAMPION_AGGREGATION_JOB_NAME,
@@ -232,6 +260,7 @@ async function main(): Promise<void> {
     });
     await Promise.allSettled([
       matchProbe.close(),
+      timelineProbe.close(),
       aggProbe.close(),
       rankProbe.close(),
       insightProbe.close(),
@@ -252,6 +281,7 @@ async function main(): Promise<void> {
     logger.info('Shutting down worker', { signal });
     await Promise.allSettled([
       matchIngestionWorker.close(),
+      matchTimelineWorker.close(),
       championAggregationWorker.close(),
       participantRankEnrichmentWorker.close(),
       championAiInsightWorker.close(),

@@ -10,6 +10,8 @@ import {
   CHAMPION_AI_INSIGHT_QUEUE_NAME,
   MATCH_INGESTION_JOB_NAME,
   MATCH_INGESTION_QUEUE_NAME,
+  MATCH_TIMELINE_JOB_NAME,
+  MATCH_TIMELINE_QUEUE_NAME,
   PARTICIPANT_RANK_ENRICHMENT_JOB_NAME,
   PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
   PLAYER_AI_PLAYSTYLE_JOB_NAME,
@@ -21,6 +23,7 @@ import {
   loadChampionAggregationWorkerConfig,
   loadChampionAiInsightWorkerConfig,
   loadMatchIngestionWorkerConfig,
+  loadMatchTimelineWorkerConfig,
   loadParticipantRankEnrichmentWorkerConfig,
   loadPlayerPlaystyleInsightWorkerConfig,
 } from './config.js';
@@ -32,6 +35,16 @@ describe('worker bootstrap (dev:worker)', () => {
     const config = loadMatchIngestionWorkerConfig({});
     expect(config.queueName).toBe(MATCH_INGESTION_QUEUE_NAME);
     expect(MATCH_INGESTION_JOB_NAME).toBe('INGEST_MATCH');
+  });
+
+  it('registers match-timeline with locked concurrency 1', () => {
+    const config = loadMatchTimelineWorkerConfig({});
+    expect(config.queueName).toBe(MATCH_TIMELINE_QUEUE_NAME);
+    expect(MATCH_TIMELINE_JOB_NAME).toBe('ENRICH_MATCH_TIMELINE');
+    expect(config.concurrency).toBe(1);
+    expect(config.jobAttempts).toBe(5);
+    expect(config.storeRawPayloads).toBe(false);
+    expect(config).not.toHaveProperty('timelineRequiredForComplete');
   });
 
   it('registers champion-aggregation as a primary queue config', () => {
@@ -87,6 +100,7 @@ describe('worker bootstrap (dev:worker)', () => {
   it('does not treat league-helper-default as a production queue', () => {
     expect(QUEUE_NAME).toBe('league-helper-default');
     expect(QUEUE_NAME).not.toBe(MATCH_INGESTION_QUEUE_NAME);
+    expect(QUEUE_NAME).not.toBe(MATCH_TIMELINE_QUEUE_NAME);
     expect(QUEUE_NAME).not.toBe(CHAMPION_AGGREGATION_QUEUE_NAME);
     expect(QUEUE_NAME).not.toBe(PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME);
     expect(QUEUE_NAME).not.toBe(CHAMPION_AI_INSIGHT_QUEUE_NAME);
@@ -102,11 +116,13 @@ describe('worker bootstrap (dev:worker)', () => {
   it('main.ts starts match-ingestion, champion-aggregation, rank enrichment, and AI insight', () => {
     const source = readFileSync(join(here, 'main.ts'), 'utf8');
     expect(source).toContain('createMatchIngestionWorker');
+    expect(source).toContain('createMatchTimelineWorker');
     expect(source).toContain('createChampionAggregationWorker');
     expect(source).toContain('createParticipantRankEnrichmentWorker');
     expect(source).toContain('createChampionAiInsightWorker');
     expect(source).toContain('createPlayerPlaystyleInsightWorker');
     expect(source).toContain('MATCH_INGESTION_JOB_NAME');
+    expect(source).toContain('MATCH_TIMELINE_JOB_NAME');
     expect(source).toContain('CHAMPION_AGGREGATION_JOB_NAME');
     expect(source).toContain('PARTICIPANT_RANK_ENRICHMENT_JOB_NAME');
     expect(source).toContain('CHAMPION_AI_INSIGHT_JOB_NAME');
@@ -115,6 +131,7 @@ describe('worker bootstrap (dev:worker)', () => {
     expect(source).not.toContain('createDefaultQueue');
     expect(source).toContain('all_consumers_initialized');
     expect(source).toContain('matchIngestionWorker.close()');
+    expect(source).toContain('matchTimelineWorker.close()');
     expect(source).toContain('championAggregationWorker.close()');
     expect(source).toContain('participantRankEnrichmentWorker.close()');
     expect(source).toContain('championAiInsightWorker.close()');

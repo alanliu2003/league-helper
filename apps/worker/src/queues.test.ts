@@ -38,3 +38,18 @@ describe('match-ingestion worker config', () => {
     expect(config.normalizationVersion).toBe(1);
   });
 });
+
+describe('match-timeline worker config', () => {
+  it('loads defaults for concurrency 1, attempts 5, and storeRawPayloads false', async () => {
+    const { loadMatchTimelineWorkerConfig } = await import('./config.js');
+    const config = loadMatchTimelineWorkerConfig({});
+    expect(config.queueName).toBe('match-timeline');
+    expect(config.concurrency).toBe(1);
+    expect(config.jobAttempts).toBe(5);
+    expect(config.backoffBaseMs).toBe(2000);
+    expect(config.backoffMaxMs).toBe(60_000);
+    expect(config.riotShared429CooldownMinMs).toBe(15 * 60_000);
+    expect(config.storeRawPayloads).toBe(false);
+    expect(config).not.toHaveProperty('timelineRequiredForComplete');
+  });
+});

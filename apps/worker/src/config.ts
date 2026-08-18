@@ -7,6 +7,7 @@ import {
   CHAMPION_AI_INSIGHT_QUEUE_NAME,
   DEFAULT_AI_MODEL,
   MATCH_INGESTION_QUEUE_NAME,
+  MATCH_TIMELINE_QUEUE_NAME,
   PARTICIPANT_RANK_ENRICHMENT_QUEUE_NAME,
   PLAYER_AI_PLAYSTYLE_QUEUE_NAME,
   PARTICIPANT_RANK_OBSERVATION_FRESHNESS_MS,
@@ -44,6 +45,17 @@ export type MatchIngestionWorkerConfig = {
   storeRawPayloads: boolean;
   timelineRequiredForComplete: boolean;
   normalizationVersion: number;
+};
+
+export type MatchTimelineWorkerConfig = {
+  queueName: string;
+  /** Locked default 1 — stricter than match-ingestion (2) to protect Riot match-v5. */
+  concurrency: number;
+  jobAttempts: number;
+  backoffBaseMs: number;
+  backoffMaxMs: number;
+  riotShared429CooldownMinMs: number;
+  storeRawPayloads: boolean;
 };
 
 export type ChampionAggregationWorkerConfig = {
@@ -150,6 +162,45 @@ export function loadMatchIngestionWorkerConfig(
       max: 100,
       name: 'MATCH_NORMALIZATION_VERSION',
     }),
+  };
+}
+
+/** Load match-timeline enrichment worker settings from environment. */
+export function loadMatchTimelineWorkerConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): MatchTimelineWorkerConfig {
+  return {
+    queueName: env.MATCH_TIMELINE_QUEUE_NAME?.trim() || MATCH_TIMELINE_QUEUE_NAME,
+    concurrency: parseBoundedInt(env.MATCH_TIMELINE_WORKER_CONCURRENCY, 1, {
+      min: 1,
+      max: 32,
+      name: 'MATCH_TIMELINE_WORKER_CONCURRENCY',
+    }),
+    jobAttempts: parseBoundedInt(env.MATCH_TIMELINE_JOB_ATTEMPTS, 5, {
+      min: 1,
+      max: 20,
+      name: 'MATCH_TIMELINE_JOB_ATTEMPTS',
+    }),
+    backoffBaseMs: parseBoundedInt(env.MATCH_TIMELINE_BACKOFF_BASE_MS, 2000, {
+      min: 100,
+      max: 60_000,
+      name: 'MATCH_TIMELINE_BACKOFF_BASE_MS',
+    }),
+    backoffMaxMs: parseBoundedInt(env.MATCH_TIMELINE_BACKOFF_MAX_MS, 60_000, {
+      min: 1000,
+      max: 600_000,
+      name: 'MATCH_TIMELINE_BACKOFF_MAX_MS',
+    }),
+    riotShared429CooldownMinMs: parseBoundedInt(
+      env[RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV],
+      DEFAULT_RIOT_SHARED_429_COOLDOWN_MIN_MS,
+      {
+        min: 0,
+        max: 7 * 24 * 60 * 60_000,
+        name: RIOT_SHARED_429_COOLDOWN_MIN_MS_ENV,
+      },
+    ),
+    storeRawPayloads: parseBoolean(env.MATCH_STORE_RAW_PAYLOADS, false, 'MATCH_STORE_RAW_PAYLOADS'),
   };
 }
 
