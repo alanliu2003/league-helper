@@ -1,6 +1,7 @@
 import { findUniqueSamePositionOpponent } from '@league-helper/match-analytics';
 import type { RiotTimelineEventDto, RiotTimelineFrameDto } from '@league-helper/server-riot';
 import type { TeamPosition } from '@league-helper/shared';
+import { readParticipantFrameStats } from './timeline-frame-stats.js';
 
 export type ParticipantIdentityForMetrics = {
   participantId: number;
@@ -36,14 +37,6 @@ export type ParticipantTimelineMetrics = {
 
 const RELIABLE_POSITIONS = new Set<TeamPosition>(['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY']);
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-}
-
-function asNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
 /** Latest frame at or before the target minute (inclusive). */
 export function selectFrameAtOrBeforeMinute(
   frames: RiotTimelineFrameDto[],
@@ -63,40 +56,6 @@ export function selectFrameAtOrBeforeMinute(
     }
   }
   return best;
-}
-
-function readParticipantFrame(
-  frame: RiotTimelineFrameDto | null,
-  participantId: number,
-): { gold: number; cs: number; xp: number } | null {
-  if (!frame?.participantFrames) {
-    return null;
-  }
-  const byKey =
-    frame.participantFrames[String(participantId)] ??
-    frame.participantFrames[participantId as unknown as string];
-  const record = asRecord(byKey);
-  if (!byKey) {
-    // Some payloads key by participantId field inside values.
-    for (const value of Object.values(frame.participantFrames)) {
-      const candidate = asRecord(value);
-      if (asNumber(candidate.participantId) === participantId) {
-        return {
-          gold: asNumber(candidate.totalGold) ?? 0,
-          cs:
-            (asNumber(candidate.minionsKilled) ?? 0) +
-            (asNumber(candidate.jungleMinionsKilled) ?? 0),
-          xp: asNumber(candidate.xp) ?? 0,
-        };
-      }
-    }
-    return null;
-  }
-  return {
-    gold: asNumber(record.totalGold) ?? 0,
-    cs: (asNumber(record.minionsKilled) ?? 0) + (asNumber(record.jungleMinionsKilled) ?? 0),
-    xp: asNumber(record.xp) ?? 0,
-  };
 }
 
 function findRoleOpponent(
@@ -189,11 +148,11 @@ export function calculateTimelineMetrics(input: {
   const frame15 = selectFrameAtOrBeforeMinute(input.frames, 15);
 
   return input.participants.map((participant) => {
-    const stats10 = readParticipantFrame(frame10, participant.participantId);
-    const stats15 = readParticipantFrame(frame15, participant.participantId);
+    const stats10 = readParticipantFrameStats(frame10, participant.participantId);
+    const stats15 = readParticipantFrameStats(frame15, participant.participantId);
     const opponent = findRoleOpponent(participant, input.participants);
-    const opponent10 = opponent ? readParticipantFrame(frame10, opponent.participantId) : null;
-    const opponent15 = opponent ? readParticipantFrame(frame15, opponent.participantId) : null;
+    const opponent10 = opponent ? readParticipantFrameStats(frame10, opponent.participantId) : null;
+    const opponent15 = opponent ? readParticipantFrameStats(frame15, opponent.participantId) : null;
 
     const firstItem = detectFirstCompletedItem({
       events: input.events,
