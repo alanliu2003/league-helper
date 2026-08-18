@@ -26,6 +26,12 @@ enum TimelineFetchStatus {
   SKIPPED
 }
 
+enum TimelineProductCoverage {
+  NONE
+  STORED
+  INELIGIBLE
+}
+
 enum StaticDataStatus {
   PENDING
   READY
@@ -252,6 +258,7 @@ model Match {
   timeline                      MatchTimeline?
   /// Compact build/skill timeline events (not full Riot timeline frames).
   timelineEvents                MatchTimelineEvent[]
+  timelineFrames                MatchTimelineFrame[]
   championAggregationProcessing ChampionAggregationProcessing[]
   championAggregationRecalcScopes ChampionAggregationRecalcScope[]
 
@@ -417,33 +424,64 @@ model MatchTimeline {
   failureReason         String?
   createdAt             DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime            @updatedAt @db.Timestamptz(3)
+  productCoverage       TimelineProductCoverage @default(NONE)
+  frameIntervalMs       Int?
+  productNormalizedAt   DateTime?           @db.Timestamptz(3)
 
   match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@index([fetchStatus])
 }
 
-/// Build/skill-relevant Match-v5 timeline events only (ITEM_*, SKILL_LEVEL_UP).
+/// Persisted types are build + kill + elite monster + building.
 /// Join to MatchParticipant via (matchId, participantId). Historical matches may have zero rows.
 model MatchTimelineEvent {
-  id            String   @id @default(uuid())
-  matchId       String
+  id                      String   @id @default(uuid())
+  matchId                 String
   /// Stable order among preserved events for this match (0-based).
-  eventIndex    Int
-  type          String
-  timestampMs   Int
-  participantId Int?
-  itemId        Int?
-  beforeItemId  Int?
-  afterItemId   Int?
-  skillSlot     Int?
-  levelUpType   String?
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  eventIndex              Int
+  type                    String
+  timestampMs             Int
+  participantId           Int?
+  itemId                  Int?
+  beforeItemId            Int?
+  afterItemId             Int?
+  skillSlot               Int?
+  levelUpType             String?
+  killerParticipantId     Int?
+  victimParticipantId     Int?
+  assistingParticipantIds Int[]    @default([])
+  teamId                  Int?
+  positionX               Int?
+  positionY               Int?
+  monsterType             String?
+  monsterSubType          String?
+  buildingType            String?
+  towerType               String?
+  laneType                String?
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
 
   match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@unique([matchId, eventIndex])
   @@index([matchId, participantId, timestampMs])
+}
+
+model MatchTimelineFrame {
+  id            String   @id @default(uuid())
+  matchId       String
+  timestampMs   Int
+  participantId Int
+  totalGold     Int
+  xp            Int
+  cs            Int
+  level         Int
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, timestampMs, participantId])
+  @@index([matchId, timestampMs])
 }
 
 model ChampionMasterySnapshot {
