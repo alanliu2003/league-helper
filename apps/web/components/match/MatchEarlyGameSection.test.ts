@@ -16,7 +16,12 @@ describe('MatchEarlyGameSection', () => {
       props: {
         teams: detail.teams,
         originPlayerId: ORIGIN_PLAYER_ID,
-        timeline: { status: 'AVAILABLE', metricsAvailable: true },
+        timeline: {
+          status: 'AVAILABLE',
+          metricsAvailable: true,
+          productCoverage: 'STORED',
+          productAvailable: true,
+        },
       },
     });
     expect(wrapper.text()).toContain('Early game');
@@ -30,7 +35,12 @@ describe('MatchEarlyGameSection', () => {
       props: {
         teams: matchDetailFixture().teams,
         originPlayerId: null,
-        timeline: { status: 'UNAVAILABLE', metricsAvailable: false },
+        timeline: {
+          status: 'UNAVAILABLE',
+          metricsAvailable: false,
+          productCoverage: 'NONE',
+          productAvailable: false,
+        },
       },
     });
     expect(wrapper.find('section').exists()).toBe(false);
@@ -41,7 +51,12 @@ describe('MatchEarlyGameSection', () => {
       props: {
         teams: matchDetailFixture().teams,
         originPlayerId: ORIGIN_PLAYER_ID,
-        timeline: { status: 'PENDING', metricsAvailable: false },
+        timeline: {
+          status: 'PENDING',
+          metricsAvailable: false,
+          productCoverage: 'NONE',
+          productAvailable: false,
+        },
       },
     });
     expect(wrapper.text()).toContain('still processing');

@@ -1,7 +1,9 @@
 import {
   ApiErrorResponseSchema,
   PublicMatchDetailSchema,
+  PublicMatchTimelineDetailSchema,
   type PublicMatchDetail,
+  type PublicMatchTimelineDetail,
 } from '@league-helper/shared';
 
 export class MatchApiError extends Error {
@@ -51,5 +53,14 @@ export function useMatchApi() {
     }
   }
 
-  return { apiBase, getMatch };
+  async function getTimeline(matchId: string): Promise<PublicMatchTimelineDetail> {
+    try {
+      const response = await $fetch(`${apiBase}/api/matches/${matchId}/timeline`);
+      return PublicMatchTimelineDetailSchema.parse(response);
+    } catch (error) {
+      throw parseApiError(error);
+    }
+  }
+
+  return { apiBase, getMatch, getTimeline };
 }

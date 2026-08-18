@@ -57,7 +57,11 @@ export function matchParticipant(
       iconUrl: 'https://cdn.test/rune/8005.png',
     },
     primaryPerkStyle: { id: 8000, name: 'Precision', iconUrl: 'https://cdn.test/style/8000.png' },
-    secondaryPerkStyle: { id: 8100, name: 'Domination', iconUrl: 'https://cdn.test/style/8100.png' },
+    secondaryPerkStyle: {
+      id: 8100,
+      name: 'Domination',
+      iconUrl: 'https://cdn.test/style/8100.png',
+    },
     statShards: [],
     goldAt10: null,
     goldAt15: null,
@@ -101,10 +105,16 @@ export function matchDetailFixture(
       remake,
       earlySurrender: false,
       ingestionStatus: 'COMPLETED',
-      winningSide: overrides.winningSide === undefined ? (remake ? null : 'BLUE') : overrides.winningSide,
+      winningSide:
+        overrides.winningSide === undefined ? (remake ? null : 'BLUE') : overrides.winningSide,
       ...overrides.match,
     },
-    timeline: overrides.timeline ?? { status: 'UNAVAILABLE', metricsAvailable: false },
+    timeline: overrides.timeline ?? {
+      status: 'UNAVAILABLE',
+      metricsAvailable: false,
+      productCoverage: 'NONE',
+      productAvailable: false,
+    },
     teams: overrides.teams ?? [
       {
         teamId: 100,
@@ -154,7 +164,8 @@ export function matchDetailFixture(
             championId: 64,
             championKey: 'LeeSin',
             championName: 'Lee Sin',
-            championIconUrl: 'https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/LeeSin.png',
+            championIconUrl:
+              'https://ddragon.leagueoflegends.com/cdn/14.11.1/img/champion/LeeSin.png',
             totalDamageDealtToChampions: 8000,
             damageShare: 1,
           }),

@@ -1,11 +1,6 @@
 <template>
   <div class="lh-container flex flex-col gap-8 py-8 md:gap-10 md:py-10">
-    <p
-      v-if="pending"
-      class="text-sm text-[var(--lh-muted)]"
-      role="status"
-      aria-live="polite"
-    >
+    <p v-if="pending" class="text-sm text-[var(--lh-muted)]" role="status" aria-live="polite">
       Loading match…
     </p>
 
@@ -35,7 +30,15 @@
 
       <MatchHeader :match="detail.match" />
 
-      <div class="flex flex-col gap-6">
+      <MatchDetailTabs :model-value="selectedTab" @update:model-value="onSelectTab" />
+
+      <div
+        v-show="selectedTab === 'overview'"
+        id="match-tabpanel-overview"
+        role="tabpanel"
+        aria-labelledby="match-tab-overview"
+        class="flex flex-col gap-6"
+      >
         <MatchTeamPanel
           v-for="team in detail.teams"
           :key="team.teamId"
@@ -43,41 +46,64 @@
           :remake="detail.match.remake"
           :origin-player-id="originPlayerId"
         />
+
+        <MatchDamageSection
+          :teams="detail.teams"
+          :ingestion-status="detail.match.ingestionStatus"
+          :origin-player-id="originPlayerId"
+        />
+
+        <MatchEarlyGameSection
+          :teams="detail.teams"
+          :origin-player-id="originPlayerId"
+          :timeline="detail.timeline"
+        />
       </div>
 
-      <MatchDamageSection
-        :teams="detail.teams"
-        :ingestion-status="detail.match.ingestionStatus"
-        :origin-player-id="originPlayerId"
-      />
-
-      <MatchEarlyGameSection
-        :teams="detail.teams"
-        :origin-player-id="originPlayerId"
-        :timeline="detail.timeline"
-      />
+      <div
+        v-show="selectedTab === 'timeline'"
+        id="match-tabpanel-timeline"
+        role="tabpanel"
+        aria-labelledby="match-tab-timeline"
+      >
+        <MatchTimelineSection
+          :timeline="timeline"
+          :pending="timelinePending"
+          :error-message="timelineError"
+          :origin-player-id="originPlayerId"
+        />
+      </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { MatchDetailTabId } from '~/components/match/MatchDetailTabs.vue';
 import MatchDamageSection from '~/components/match/MatchDamageSection.vue';
+import MatchDetailTabs from '~/components/match/MatchDetailTabs.vue';
 import MatchEarlyGameSection from '~/components/match/MatchEarlyGameSection.vue';
 import MatchHeader from '~/components/match/MatchHeader.vue';
 import MatchNotFound from '~/components/match/MatchNotFound.vue';
 import MatchTeamPanel from '~/components/match/MatchTeamPanel.vue';
+import MatchTimelineSection from '~/components/match/MatchTimelineSection.vue';
 import PlayerErrorBanner from '~/components/player/PlayerErrorBanner.vue';
 import { useMatchDetailPage } from '~/composables/useMatchDetailPage';
+import { useMatchTimelinePage } from '~/composables/useMatchTimelinePage';
 
 const route = useRoute();
 const { detail, pending, notFound, errorMessage, originPlayerId, load } = useMatchDetailPage();
+const { selectedTab, timeline, timelinePending, timelineError, selectTab } = useMatchTimelinePage();
+
+function onSelectTab(tab: MatchDetailTabId): void {
+  void selectTab(tab);
+}
 
 onMounted(() => {
   void load();
 });
 
 watch(
-  () => route.fullPath,
+  () => [String(route.params.matchId ?? ''), route.query.player] as const,
   () => {
     void load();
   },
