@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "prisma:generate": "prisma generate --schema ../api/prisma/schema.prisma",
     "jobs:retry-match-ingestion": "tsx src/cli/retry-match-ingestion.ts",
+    "jobs:backfill-match-timeline": "tsx src/cli/backfill-match-timeline.ts",
     "aggregates:rebuild-champions": "tsx src/cli/rebuild-champion-aggregates.ts",
     "aggregates:rebuild-champion-builds": "tsx src/cli/rebuild-champion-builds.ts",
     "aggregates:rebuild-champion-matchups": "tsx src/cli/rebuild-champion-matchups.ts",
