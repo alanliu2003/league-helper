@@ -49,9 +49,7 @@ describe('enqueueDiscoveredMatches', () => {
     };
     const matches = {
       linkParticipantsByExternalAccountId: vi.fn(async () => 0),
-      findExistingByExternalIds: vi.fn(async () => [
-        { externalMatchId: 'm1' },
-      ]),
+      findExistingByExternalIds: vi.fn(async () => [{ externalMatchId: 'm1' }]),
       findLinkedCompletedExternalIds: vi.fn(async () => ['m1']),
       findExistingExternalIdsMissingLink: vi.fn(async () => []),
     };
@@ -231,5 +229,108 @@ describe('enqueueDiscoveredMatches', () => {
         metadata: expect.objectContaining({ sourceCollectorRunId }),
       }),
     );
+  });
+
+  it('does not list or enqueue timeline enrichment when the search backfill flag is false', async () => {
+    const missingIds = Array.from({ length: 50 }, (_, index) => ({
+      id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, '0')}`,
+    }));
+    const listRecentMatchesMissingProductTimeline = vi.fn(async () => missingIds);
+    const enqueueEnrichment = vi.fn();
+    const producer = {
+      enqueueMatch: vi.fn(),
+      getJobStates: vi.fn(async () => new Map([[bullJobId('m1'), null]])),
+    };
+    const ingestionJobs = {
+      findByExternalResourceIds: vi.fn(async () => []),
+      createIdempotent: vi.fn(),
+      updateStatus: vi.fn(),
+    };
+    const matches = {
+      linkParticipantsByExternalAccountId: vi.fn(async () => 0),
+      findExistingByExternalIds: vi.fn(async () => [{ externalMatchId: 'm1' }]),
+      findLinkedCompletedExternalIds: vi.fn(async () => ['m1']),
+      findExistingExternalIdsMissingLink: vi.fn(async () => []),
+      listRecentMatchesMissingProductTimeline,
+    };
+
+    await enqueueDiscoveredMatches(
+      {
+        matches: matches as never,
+        ingestionJobs: ingestionJobs as never,
+        producer: producer as never,
+        matchIngestionJobAttempts: 5,
+        logger: { log: vi.fn() },
+        invalidatePlayerCache: vi.fn(),
+        matchTimelineSearchBackfillEnabled: false,
+        timelineProducer: { enqueueEnrichment },
+      },
+      {
+        account: makeAccount(),
+        discoveredMatchIds: ['m1'],
+        correlationId: 'c1',
+      },
+    );
+
+    expect(listRecentMatchesMissingProductTimeline).not.toHaveBeenCalled();
+    expect(enqueueEnrichment).not.toHaveBeenCalled();
+  });
+
+  it('enqueues at most 20 timeline enrich jobs when the search backfill flag is true', async () => {
+    const missingIds = Array.from({ length: 20 }, (_, index) => ({
+      id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, '0')}`,
+    }));
+    const listRecentMatchesMissingProductTimeline = vi.fn(async () => missingIds);
+    const enqueueEnrichment = vi.fn(async () => ({
+      jobId: 'tl_test',
+      published: true,
+      alreadyExists: false,
+    }));
+    const producer = {
+      enqueueMatch: vi.fn(),
+      getJobStates: vi.fn(async () => new Map([[bullJobId('m1'), null]])),
+    };
+    const ingestionJobs = {
+      findByExternalResourceIds: vi.fn(async () => []),
+      createIdempotent: vi.fn(),
+      updateStatus: vi.fn(),
+    };
+    const matches = {
+      linkParticipantsByExternalAccountId: vi.fn(async () => 0),
+      findExistingByExternalIds: vi.fn(async () => [{ externalMatchId: 'm1' }]),
+      findLinkedCompletedExternalIds: vi.fn(async () => ['m1']),
+      findExistingExternalIdsMissingLink: vi.fn(async () => []),
+      listRecentMatchesMissingProductTimeline,
+    };
+
+    await enqueueDiscoveredMatches(
+      {
+        matches: matches as never,
+        ingestionJobs: ingestionJobs as never,
+        producer: producer as never,
+        matchIngestionJobAttempts: 5,
+        logger: { log: vi.fn() },
+        invalidatePlayerCache: vi.fn(),
+        matchTimelineSearchBackfillEnabled: true,
+        timelineProducer: { enqueueEnrichment },
+      },
+      {
+        account: makeAccount(),
+        discoveredMatchIds: ['m1'],
+        correlationId: 'c1',
+      },
+    );
+
+    expect(listRecentMatchesMissingProductTimeline).toHaveBeenCalledWith({
+      playerAccountId: 'acct-1',
+      limit: 20,
+    });
+    expect(enqueueEnrichment).toHaveBeenCalledTimes(20);
+    expect(enqueueEnrichment.mock.calls[0]?.[0]).toEqual({
+      matchId: missingIds[0]?.id,
+      correlationId: 'c1',
+    });
+    expect(enqueueEnrichment.mock.calls[0]?.[0]).not.toHaveProperty('includeIneligible');
+    expect(producer.enqueueMatch).not.toHaveBeenCalled();
   });
 });

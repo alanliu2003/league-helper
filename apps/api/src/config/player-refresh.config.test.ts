@@ -27,4 +27,27 @@ describe('loadPlayerRefreshConfig', () => {
     const config = loadPlayerRefreshConfig(process.env);
     expect(config.defaultMatchQueueId).toBe(440);
   });
+
+  it('defaults match timeline search backfill to false', () => {
+    delete process.env.MATCH_TIMELINE_SEARCH_BACKFILL_ENABLED;
+    delete process.env.MATCH_TIMELINE_QUEUE_NAME;
+    delete process.env.MATCH_TIMELINE_JOB_ATTEMPTS;
+    const config = loadPlayerRefreshConfig(process.env);
+    expect(config.matchTimelineSearchBackfillEnabled).toBe(false);
+    expect(config.matchTimelineQueueName).toBe('match-timeline');
+    expect(config.matchTimelineJobAttempts).toBe(5);
+  });
+
+  it('enables match timeline search backfill when the env flag is true', () => {
+    process.env.MATCH_TIMELINE_SEARCH_BACKFILL_ENABLED = 'true';
+    const config = loadPlayerRefreshConfig(process.env);
+    expect(config.matchTimelineSearchBackfillEnabled).toBe(true);
+  });
+
+  it('rejects match timeline job attempts above 20', () => {
+    process.env.MATCH_TIMELINE_JOB_ATTEMPTS = '21';
+    expect(() => loadPlayerRefreshConfig(process.env)).toThrow(
+      /MATCH_TIMELINE_JOB_ATTEMPTS must be at most 20/,
+    );
+  });
 });

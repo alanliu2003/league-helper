@@ -18,6 +18,9 @@ const refreshConfig: PlayerRefreshConfig = {
   matchIngestionQueueName: 'test-match-ingestion',
   matchIngestionJobAttempts: 5,
   matchIngestionReconcileBatchSize: 50,
+  matchTimelineQueueName: 'test-match-timeline',
+  matchTimelineJobAttempts: 5,
+  matchTimelineSearchBackfillEnabled: false,
   refreshLockTtlSeconds: 30,
   redisUrl: 'redis://localhost:6379',
 };
@@ -217,6 +220,7 @@ function createSearchService(input: {
     matches as never,
     ingestionJobs as never,
     producer as never,
+    { enqueueEnrichment: vi.fn() } as never,
     refreshStatus as never,
     cache as never,
     dataDragon as never,
@@ -237,10 +241,7 @@ describe('PlayerSearchService collector enrollment hook', () => {
       collectorConfig: baseCollectorConfig({ enrollFromSearch: false }),
     });
 
-    await service.search(
-      { gameName: 'Searcher', tagLine: 'NA1', platform: 'na1' },
-      'corr-1',
-    );
+    await service.search({ gameName: 'Searcher', tagLine: 'NA1', platform: 'na1' }, 'corr-1');
 
     expect(enroll).not.toHaveBeenCalled();
   });
@@ -249,10 +250,7 @@ describe('PlayerSearchService collector enrollment hook', () => {
     const enroll = vi.fn();
     const { service } = createSearchService({});
 
-    await service.search(
-      { gameName: 'Searcher', tagLine: 'NA1', platform: 'na1' },
-      'corr-2',
-    );
+    await service.search({ gameName: 'Searcher', tagLine: 'NA1', platform: 'na1' }, 'corr-2');
 
     expect(enroll).not.toHaveBeenCalled();
   });
@@ -262,10 +260,7 @@ describe('PlayerSearchService collector enrollment hook', () => {
       collectorConfig: baseCollectorConfig({ enrollFromSearch: true }),
     });
 
-    await service.search(
-      { gameName: 'Searcher', tagLine: 'NA1', platform: 'na1' },
-      'corr-3',
-    );
+    await service.search({ gameName: 'Searcher', tagLine: 'NA1', platform: 'na1' }, 'corr-3');
 
     expect(enroll).toHaveBeenCalledWith({
       account: {
@@ -327,10 +322,7 @@ describe('PlayerSearchService collector enrollment hook', () => {
     gameData.resolvePlayer.mockRejectedValueOnce(new Error('not found'));
 
     await expect(
-      service.search(
-        { gameName: 'Missing', tagLine: 'NA1', platform: 'na1' },
-        'corr-6',
-      ),
+      service.search({ gameName: 'Missing', tagLine: 'NA1', platform: 'na1' }, 'corr-6'),
     ).rejects.toThrow(/not found/i);
 
     expect(playerAccounts.upsertPlayerAccount).not.toHaveBeenCalled();

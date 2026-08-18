@@ -498,6 +498,26 @@ export class MatchRepository {
   }
 
   /**
+   * Recent completed matches for this account that still need product timeline
+   * storage. Caller caps `limit` (search backfill uses 20). Does not filter by queue.
+   */
+  async listRecentMatchesMissingProductTimeline(input: {
+    playerAccountId: string;
+    limit: number; // 20
+  }): Promise<{ id: string }[]> {
+    return this.prisma.match.findMany({
+      where: {
+        ingestionStatus: 'COMPLETED',
+        participants: { some: { playerAccountId: input.playerAccountId } },
+        OR: [{ timeline: null }, { timeline: { productCoverage: { not: 'STORED' } } }],
+      },
+      orderBy: [{ gameCreation: 'desc' }, { id: 'desc' }],
+      take: input.limit,
+      select: { id: true },
+    });
+  }
+
+  /**
    * Creates a match with teams/participants/timeline, or returns the existing match
    * when provider + externalMatchId already exists (idempotent).
    */

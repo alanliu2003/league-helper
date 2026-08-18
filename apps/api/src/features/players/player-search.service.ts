@@ -24,6 +24,7 @@ import { MatchRepository, type PlayerMatchListRow } from '../../persistence/matc
 import { PlayerAccountRepository } from '../../persistence/player-account.repository';
 import { RankSnapshotRepository } from '../../persistence/rank-snapshot.repository';
 import { MatchIngestionProducer } from '../../queues/match-ingestion.producer';
+import { MatchTimelineProducer } from '../../queues/match-timeline.producer';
 import { maybeEnrollFromSearch } from '../collector/collector-enrollment.hooks';
 import {
   COLLECTOR_CONFIG,
@@ -65,6 +66,7 @@ export class PlayerSearchService {
     @Inject(MatchRepository) private readonly matches: MatchRepository,
     @Inject(IngestionJobRepository) private readonly ingestionJobs: IngestionJobRepository,
     @Inject(MatchIngestionProducer) private readonly producer: MatchIngestionProducer,
+    @Inject(MatchTimelineProducer) private readonly timelineProducer: MatchTimelineProducer,
     @Inject(PlayerRefreshStatusService)
     private readonly refreshStatus: PlayerRefreshStatusService,
     @Inject(PlayerCacheService) private readonly cache: PlayerCacheService,
@@ -88,52 +90,52 @@ export class PlayerSearchService {
         platform: parsed.platform,
       });
 
-    const account = await this.playerAccounts.upsertPlayerAccount({
-      provider: resolved.provider,
-      externalAccountId: resolved.externalAccountId,
-      platformRoute: resolved.platform,
-      regionalRoute: resolved.regionalRoute,
-      gameName: resolved.riotId.gameName,
-      tagLine: resolved.riotId.tagLine,
-      summonerId: resolved.summonerId ?? null,
-      accountId: resolved.accountId ?? null,
-      profileIconId: resolved.profileIconId ?? null,
-      summonerLevel: resolved.summonerLevel ?? null,
-      lastResolvedAt: new Date(),
-    });
-
-    this.logger.log({
-      message: 'Player search resolved',
-      correlationId,
-      playerId: account.playerId,
-      platform: account.platformRoute,
-    });
-
-    // Flag-gated: short-circuit before any enrollment when disabled / unavailable.
-    if (this.collectorConfig?.enrollFromSearch === true && this.collectorEnrollment) {
-      await maybeEnrollFromSearch({
-        enabled: true,
-        enroll: (input) => this.collectorEnrollment!.enroll(input),
-        account: {
-          id: account.id,
-          provider: account.provider,
-          platformRoute: account.platformRoute,
-        },
-        warn: (message) => this.logger.warn(message),
+      const account = await this.playerAccounts.upsertPlayerAccount({
+        provider: resolved.provider,
+        externalAccountId: resolved.externalAccountId,
+        platformRoute: resolved.platform,
+        regionalRoute: resolved.regionalRoute,
+        gameName: resolved.riotId.gameName,
+        tagLine: resolved.riotId.tagLine,
+        summonerId: resolved.summonerId ?? null,
+        accountId: resolved.accountId ?? null,
+        profileIconId: resolved.profileIconId ?? null,
+        summonerLevel: resolved.summonerLevel ?? null,
+        lastResolvedAt: new Date(),
       });
-    }
 
-    const response = await this.syncPlayerData({
-      account,
-      providerAccount: resolved,
-      matchCount,
-      queueId: parsed.queueId !== undefined ? parsed.queueId : this.config.defaultMatchQueueId,
-      correlationId,
-    });
+      this.logger.log({
+        message: 'Player search resolved',
+        correlationId,
+        playerId: account.playerId,
+        platform: account.platformRoute,
+      });
 
-    await this.cache.setProfile(account.playerId, response);
-    assertNoPuuidLeak(response);
-    return response;
+      // Flag-gated: short-circuit before any enrollment when disabled / unavailable.
+      if (this.collectorConfig?.enrollFromSearch === true && this.collectorEnrollment) {
+        await maybeEnrollFromSearch({
+          enabled: true,
+          enroll: (input) => this.collectorEnrollment!.enroll(input),
+          account: {
+            id: account.id,
+            provider: account.provider,
+            platformRoute: account.platformRoute,
+          },
+          warn: (message) => this.logger.warn(message),
+        });
+      }
+
+      const response = await this.syncPlayerData({
+        account,
+        providerAccount: resolved,
+        matchCount,
+        queueId: parsed.queueId !== undefined ? parsed.queueId : this.config.defaultMatchQueueId,
+        correlationId,
+      });
+
+      await this.cache.setProfile(account.playerId, response);
+      assertNoPuuidLeak(response);
+      return response;
     });
   }
 
@@ -207,6 +209,8 @@ export class PlayerSearchService {
         matchIngestionJobAttempts: this.config.matchIngestionJobAttempts,
         logger: this.logger,
         invalidatePlayerCache: (playerId) => this.cache.invalidate(playerId),
+        matchTimelineSearchBackfillEnabled: this.config.matchTimelineSearchBackfillEnabled,
+        timelineProducer: this.timelineProducer,
       },
       {
         account,

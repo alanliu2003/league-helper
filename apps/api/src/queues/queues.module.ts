@@ -3,10 +3,12 @@ import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import {
   MATCH_INGESTION_QUEUE_NAME,
+  MATCH_TIMELINE_QUEUE_NAME,
   createBullMqConnectionOptions,
   resolveBullMqPrefix,
   type ChampionAiInsightJobPayload,
   type MatchIngestionJobPayload,
+  type MatchTimelineJobPayload,
   type PlayerPlaystyleInsightJobPayload,
 } from '@league-helper/shared';
 import {
@@ -25,10 +27,12 @@ import { ChampionAiInsightProducer } from './champion-ai-insight.producer';
 import { PlayerPlaystyleInsightProducer } from './player-playstyle-insight.producer';
 import { IngestionReconciliationService } from './ingestion-reconciliation.service';
 import { MatchIngestionProducer } from './match-ingestion.producer';
+import { MatchTimelineProducer } from './match-timeline.producer';
 import { QueuesLifecycleService } from './queues-lifecycle.service';
 import {
   CHAMPION_AI_INSIGHT_QUEUE,
   MATCH_INGESTION_QUEUE,
+  MATCH_TIMELINE_QUEUE,
   PLAYER_AI_PLAYSTYLE_QUEUE,
   REDIS_CONNECTION,
 } from './queue.tokens';
@@ -59,6 +63,17 @@ import {
         // Own connection options (not a shared ioredis instance) so Queue.close()
         // does not leave duplicate Redis sockets that hang Nest shutdown.
         return new Queue<MatchIngestionJobPayload>(queueName, {
+          connection: createBullMqConnectionOptions(config.redisUrl),
+          prefix: resolveBullMqPrefix(),
+        });
+      },
+    },
+    {
+      provide: MATCH_TIMELINE_QUEUE,
+      inject: [PLAYER_REFRESH_CONFIG],
+      useFactory: (config: ReturnType<typeof loadPlayerRefreshConfig>) => {
+        const queueName = config.matchTimelineQueueName || MATCH_TIMELINE_QUEUE_NAME;
+        return new Queue<MatchTimelineJobPayload>(queueName, {
           connection: createBullMqConnectionOptions(config.redisUrl),
           prefix: resolveBullMqPrefix(),
         });
@@ -99,6 +114,7 @@ import {
       },
     },
     MatchIngestionProducer,
+    MatchTimelineProducer,
     ChampionAiInsightProducer,
     PlayerPlaystyleInsightProducer,
     IngestionReconciliationService,
@@ -110,9 +126,11 @@ import {
     PLAYER_PLAYSTYLE_AI_CONFIG,
     REDIS_CONNECTION,
     MATCH_INGESTION_QUEUE,
+    MATCH_TIMELINE_QUEUE,
     CHAMPION_AI_INSIGHT_QUEUE,
     PLAYER_AI_PLAYSTYLE_QUEUE,
     MatchIngestionProducer,
+    MatchTimelineProducer,
     ChampionAiInsightProducer,
     PlayerPlaystyleInsightProducer,
     IngestionReconciliationService,
