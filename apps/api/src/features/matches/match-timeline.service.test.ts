@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MatchIngestionStatus, TimelineFetchStatus, TimelineProductCoverage } from '@prisma/client';
-import { ResourceNotFoundError } from '@league-helper/shared';
+import { PublicMatchTimelineDetailSchema, ResourceNotFoundError } from '@league-helper/shared';
 import type { MatchDetailRow } from '../../persistence/match.repository';
-import { MatchDetailService } from './match-detail.service';
+import { MatchTimelineService } from './match-timeline.service';
 import * as staticLoader from './match-detail-static';
 
 const MATCH_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const UNKNOWN_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 
-function participant(overrides: Partial<MatchDetailRow['participants'][number]> = {}): MatchDetailRow['participants'][number] {
+function participant(
+  overrides: Partial<MatchDetailRow['participants'][number]> = {},
+): MatchDetailRow['participants'][number] {
   return {
     participantId: 1,
     teamId: 100,
@@ -83,10 +86,16 @@ function detailRow(overrides: Partial<MatchDetailRow> = {}): MatchDetailRow {
     ],
     participants: [
       participant(),
-      participant({ participantId: 6, teamId: 200, win: false, championId: 64, riotIdGameName: 'Bob' }),
+      participant({
+        participantId: 6,
+        teamId: 200,
+        win: false,
+        championId: 64,
+        riotIdGameName: 'Bob',
+      }),
     ],
     timeline: {
-      fetchStatus: TimelineFetchStatus.SKIPPED,
+      fetchStatus: TimelineFetchStatus.FETCHED,
       productCoverage: TimelineProductCoverage.NONE,
     },
     ...overrides,
@@ -117,67 +126,111 @@ function createService() {
     buildRuneIconUrl: vi.fn(() => null),
     buildSummonerSpellIconUrl: vi.fn(() => null),
   };
-  const service = new MatchDetailService(
+  const enqueue = vi.fn();
+  const service = new MatchTimelineService(
     matches as never,
     prisma as never,
     staticRepo as never,
     dataDragon as never,
   );
-  return { service, matches, dataDragon, prisma };
+  return { service, matches, dataDragon, prisma, enqueue };
 }
 
-describe('MatchDetailService', () => {
+describe('MatchTimelineService', () => {
   it('throws ResourceNotFoundError when the match is missing', async () => {
     const { service, matches } = createService();
     matches.findDetailById.mockResolvedValue(null);
-    await expect(service.getMatch(MATCH_ID)).rejects.toBeInstanceOf(ResourceNotFoundError);
-  });
-
-  it('maps a found match and loads unique champion ids including bans', async () => {
-    const { service, matches, dataDragon } = createService();
-    matches.findDetailById.mockResolvedValue(detailRow());
-    vi.spyOn(staticLoader, 'loadMatchStaticLookups').mockResolvedValue({
-      dataDragonVersion: '14.11.1',
-      items: new Map(),
-      runes: new Map(),
-      spells: new Map(),
-      styleNames: new Map(),
+    await expect(service.getTimeline(UNKNOWN_ID)).rejects.toBeInstanceOf(ResourceNotFoundError);
+    await expect(service.getTimeline(UNKNOWN_ID)).rejects.toMatchObject({
+      code: 'RESOURCE_NOT_FOUND',
+      message: 'Match not found.',
     });
-
-    const result = await service.getMatch(MATCH_ID);
-
-    expect(result.match.id).toBe(MATCH_ID);
-    expect(result.teams).toHaveLength(2);
-    expect(result.timeline).toEqual({
-      status: 'UNAVAILABLE',
-      metricsAvailable: false,
-      productCoverage: 'NONE',
-      productAvailable: false,
-    });
-    expect(result.timeline).not.toHaveProperty('coverage');
-    const requested = dataDragon.getChampionByNumericId.mock.calls.map((call) => call[0]).sort((a, b) => a - b);
-    expect(requested).toEqual([23, 64, 103]);
-  });
-
-  it('does not query timeline events or frames for overview', async () => {
-    const { service, matches, prisma } = createService();
-    matches.findDetailById.mockResolvedValue(detailRow());
-    vi.spyOn(staticLoader, 'loadMatchStaticLookups').mockResolvedValue({
-      dataDragonVersion: '14.11.1',
-      items: new Map(),
-      runes: new Map(),
-      spells: new Map(),
-      styleNames: new Map(),
-    });
-
-    await service.getMatch(MATCH_ID);
-
     expect(matches.findTimelineEventsByMatchId).not.toHaveBeenCalled();
     expect(matches.findTimelineFramesByMatchId).not.toHaveBeenCalled();
-    expect(matches.findTimelineMetaByMatchId).not.toHaveBeenCalled();
-    expect(prisma.matchTimelineEvent.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns 200 empty coverage for a real match with no product rows', async () => {
+    const { service, matches, prisma } = createService();
+    matches.findDetailById.mockResolvedValue(detailRow());
+    matches.findTimelineEventsByMatchId.mockResolvedValue([]);
+    matches.findTimelineFramesByMatchId.mockResolvedValue([]);
+    matches.findTimelineMetaByMatchId.mockResolvedValue({ frameIntervalMs: null });
+    vi.spyOn(staticLoader, 'loadMatchStaticLookups').mockResolvedValue({
+      dataDragonVersion: '14.11.1',
+      items: new Map(),
+      runes: new Map(),
+      spells: new Map(),
+      styleNames: new Map(),
+    });
+
+    const result = await service.getTimeline(MATCH_ID);
+    const parsed = PublicMatchTimelineDetailSchema.parse(result);
+    expect(parsed.matchId).toBe(MATCH_ID);
+    expect(parsed.coverage).toEqual({
+      items: false,
+      skills: false,
+      kills: false,
+      objectives: false,
+      frames: false,
+    });
+    expect(parsed.events).toEqual([]);
+    expect(parsed.frames).toEqual([]);
+    expect(matches.findTimelineEventsByMatchId).toHaveBeenCalledWith(MATCH_ID);
+    expect(matches.findTimelineFramesByMatchId).toHaveBeenCalledWith(MATCH_ID);
     expect(prisma.matchTimelineEvent.groupBy).not.toHaveBeenCalled();
-    expect(prisma.matchTimelineFrame.findMany).not.toHaveBeenCalled();
-    expect(prisma.matchTimelineFrame.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('loads events and frames and does not enqueue jobs', async () => {
+    const { service, matches, enqueue } = createService();
+    matches.findDetailById.mockResolvedValue(detailRow());
+    matches.findTimelineEventsByMatchId.mockResolvedValue([
+      {
+        eventIndex: 0,
+        type: 'ITEM_PURCHASED',
+        timestampMs: 1000,
+        participantId: 1,
+        itemId: 3031,
+        beforeItemId: null,
+        afterItemId: null,
+        skillSlot: null,
+        levelUpType: null,
+        killerParticipantId: null,
+        victimParticipantId: null,
+        assistingParticipantIds: [],
+        teamId: null,
+        positionX: null,
+        positionY: null,
+        monsterType: null,
+        monsterSubType: null,
+        buildingType: null,
+        towerType: null,
+        laneType: null,
+      },
+    ]);
+    matches.findTimelineFramesByMatchId.mockResolvedValue([
+      { timestampMs: 0, participantId: 1, totalGold: 500, xp: 0, cs: 0, level: 1 },
+      { timestampMs: 0, participantId: 6, totalGold: 400, xp: 0, cs: 0, level: 1 },
+    ]);
+    matches.findTimelineMetaByMatchId.mockResolvedValue({ frameIntervalMs: 60_000 });
+    vi.spyOn(staticLoader, 'loadMatchStaticLookups').mockResolvedValue({
+      dataDragonVersion: '14.11.1',
+      items: new Map(),
+      runes: new Map(),
+      spells: new Map(),
+      styleNames: new Map(),
+    });
+
+    const result = await service.getTimeline(MATCH_ID);
+    expect(result.coverage).toEqual({
+      items: true,
+      skills: false,
+      kills: false,
+      objectives: false,
+      frames: true,
+    });
+    expect(result.frameIntervalMs).toBe(60_000);
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(matches.findTimelineEventsByMatchId).toHaveBeenCalledTimes(1);
+    expect(matches.findTimelineFramesByMatchId).toHaveBeenCalledTimes(1);
   });
 });
